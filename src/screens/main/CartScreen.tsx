@@ -658,7 +658,6 @@ const CartScreen: React.FC = () => {
     if (!product || !product.id) {
       return null;
     }
-    
     const handleLike = async () => {
       if (!isAuthenticated) {
         // showToast(t('home.pleaseLogin'));

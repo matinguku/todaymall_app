@@ -1,8 +1,10 @@
 {
-  "name": "todaymall",
+  "name": "my-package",
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
+    "build": "babel src -d lib",
+    "test": "jest",
     "start": "react-native start",
     "start:reset": "react-native start --reset-cache",
     "android": "adb reverse tcp:8081 tcp:8081 && react-native run-android",
@@ -58,5 +60,10 @@
     "babel-plugin-transform-inline-environment-variables": "^0.4.4",
     "typescript": "~5.9.2"
   },
+  
   "private": true
 }
+
+
+ 
+ 
