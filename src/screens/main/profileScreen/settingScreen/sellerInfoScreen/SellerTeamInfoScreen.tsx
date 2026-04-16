@@ -159,7 +159,7 @@ const getCardColor = (i: number) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.lightRed,
+    backgroundColor: COLORS.background,
   },
 
   header: {

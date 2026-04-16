@@ -130,8 +130,15 @@ const SellerPage: React.FC = () => {
     );
   };
 
+  const formatBizDate = (isoDate: string) => {
+    const date = new Date(isoDate);
+    if (Number.isNaN(date.getTime())) return isoDate;
+    const pad = (value: number) => value.toString().padStart(2, '0');
+    return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()}`;
+  };
+
   const dateRangeText = summary?.range
-    ? `${new Date(summary.range.from).toLocaleDateString()} - ${new Date(summary.range.to).toLocaleDateString()}`
+    ? `${formatBizDate(summary.range.from)} ~ ${formatBizDate(summary.range.to)}`
     : '';
 
   const renderHeader = () => (
@@ -254,12 +261,15 @@ const SellerPage: React.FC = () => {
     <SafeAreaView style={styles.container}>
       {renderHeader()}
        <ScrollView contentContainerStyle={styles.scrollContent}>
-        {renderCards()}
-        {dateRangeText ? (
+
+       {dateRangeText ? (
           <View style={styles.rangeContainer}>
             <Text style={styles.rangeText}>{dateRangeText}</Text>
           </View>
         ) : null}
+
+        {renderCards()}
+        
         {isLoading && (
           <View style={styles.loadingContainer}>
             <Text style={styles.loadingText}>{t('sellerInfo.loadingSummary') || 'Loading summary...'}</Text>
@@ -271,9 +281,7 @@ const SellerPage: React.FC = () => {
           </View>
         ) : null}
         {renderSellerList()}
-        <View>
-          <Text>{t('sellerInfo.performanceTitle')}</Text>
-        </View>
+        
         <View style={styles.dashboardSection}>
           <Text style={styles.sectionTitle}>{t('sellerInfo.chartSubtitle')}</Text>
           <View style={styles.topRow}>
@@ -296,9 +304,10 @@ const SellerPage: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f4f6f9',
+    backgroundColor: COLORS.background,
   },
   scrollContent: {
+    paddingTop: 16,
     paddingBottom: 40,
   },
   header: {
@@ -461,12 +470,22 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   rangeContainer: {
-    paddingHorizontal: 16,
+    marginHorizontal: 16,
     marginBottom: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
   },
   rangeText: {
     fontSize: 14,
-    color: '#6B7280',
+    color: '#374151',
+    fontWeight: '600',
   },
   loadingContainer: {
     paddingHorizontal: 16,

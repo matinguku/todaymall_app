@@ -201,6 +201,7 @@ export const translations = {
       },
     },
     sellerInfo: {
+      SellerSalesRefundInfo:'Seller Sales Refund Information',
       dashboardTitle: 'Seller Dashboard',
       sellerListTitle: 'Seller List',
       sellerIdLabel: 'Seller ID',
@@ -268,6 +269,7 @@ export const translations = {
         },
       },
       team: {
+        More:'More',
         title: 'Seller Team Info',
         sectionTitle: 'Seller Information',
         totalSales: 'Total Sales',
@@ -276,6 +278,9 @@ export const translations = {
         saleAmount: 'Sale Amount',
         saleCount: 'Sale Count',
         rebate: 'Rebate',
+      },
+      Seller: {
+        title: 'Seller'
       },
     },
     sellerDashboard: {
@@ -2860,6 +2865,7 @@ Supports credit and check cards from various banks for recharging and payments.`
       ok: '确定',
     },
     sellerInfo: {
+      SellerSalesRefundInfo: '卖家销售与退款信息',
       dashboardTitle: '卖家仪表板',
       sellerListTitle: '卖家列表',
       sellerIdLabel: '卖家ID',
@@ -2928,6 +2934,7 @@ Supports credit and check cards from various banks for recharging and payments.`
         },
       },
       team: {
+        More:'更多的',
         title: '卖家团队信息',
         sectionTitle: '卖家信息',
         totalSales: '总销售额',
@@ -2936,6 +2943,9 @@ Supports credit and check cards from various banks for recharging and payments.`
         saleAmount: '销售金额',
         saleCount: '销售数量',
         rebate: '返利',
+      },
+      Seller: {
+        title: '卖方'
       },
     },
     live: {
@@ -3441,6 +3451,7 @@ Supports credit and check cards from various banks for recharging and payments.`
       },
     },
     sellerInfo: {
+      SellerSalesRefundInfo: '판매자 판매 및 환불 정보',
       dashboardTitle: '판매자 대시보드',
       sellerListTitle: '판매자 목록',
       sellerIdLabel: '판매자 ID',
@@ -3514,6 +3525,7 @@ Supports credit and check cards from various banks for recharging and payments.`
         },
       },
       team: {
+        More:'더보기',
         title: '판매자 팀 정보',
         sectionTitle: '판매자 정보',
         totalSales: '총 판매금액',
@@ -3522,6 +3534,9 @@ Supports credit and check cards from various banks for recharging and payments.`
         saleAmount: '판매금액',
         saleCount: '판매 수',
         rebate: '리베이트',
+      },
+      Seller: {
+        title: '판매자'
       },
     },
     onboarding: {

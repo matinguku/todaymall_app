@@ -88,7 +88,7 @@ export const sellerApi = {
     params?: SellerDashboardParams
   ): Promise<ApiResponse<SellerDashboardResponseData | null>> => {
     try {
-      const url = `${API_BASE_URL}/v1/users/seller/dashboard`;
+      const url = `${API_BASE_URL}/users/seller/dashboard`;
       const headers = {
         'Content-Type': 'application/json',
         ...(await getAuthHeaders()),
@@ -128,7 +128,7 @@ export const sellerApi = {
     params?: SellerDashboardParams
   ): Promise<ApiResponse<SellerDashboardSummaryResponseData | null>> => {
     try {
-      const url = `${API_BASE_URL}/v1/users/seller/dashboard`;
+      const url = `${API_BASE_URL}/users/seller/dashboard`;
       const headers = {
         'Content-Type': 'application/json',
         ...(await getAuthHeaders()),
@@ -166,7 +166,7 @@ export const sellerApi = {
 
   getSellerDirectTeam: async (params?: SellerDirectTeamParams): Promise<ApiResponse<SellerDirectTeamResponse | null>> => {
     try {
-      const url = `${API_BASE_URL}/v1/users/seller/direct-team`;
+      const url = `${API_BASE_URL}/users/seller/direct-team`;
       const headers = {
         'Content-Type': 'application/json',
         ...(await getAuthHeaders()),

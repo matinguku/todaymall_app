@@ -231,7 +231,7 @@ const SellerSalesRefundInfoScreen: React.FC = () => {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.contentContainer}>
         <View style={styles.headerCard}>
           <View style={styles.headerTop}>
-            <Text style={styles.title}>{t('sellerInfo.orderData.title')}</Text>
+            <Text style={styles.title}>{t('sellerInfo.Seller.title')}</Text>
             <Text style={styles.subTitle}>{t('sellerInfo.orderData.subtitle')}</Text>
           </View>
           {renderTabs()}
@@ -249,7 +249,7 @@ export default SellerSalesRefundInfoScreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.lightRed,
+    backgroundColor: COLORS.background,
   },
   contentContainer: {
     paddingBottom: SPACING.lg,
