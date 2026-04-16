@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -13,9 +13,25 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import Icon from '../../../../../components/Icon';
 import { RootStackParamList } from '../../../../../types';
 import { useTranslation } from '../../../../../hooks/useTranslation';
+import { useSellerDashboardMutation } from '../../../../../hooks/useSellerDashboardMutation';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../../../constants';
 
 type NavigationProp = StackNavigationProp<RootStackParamList, 'SellerSalesRefundInfo'>;
+
+type SellerDashboardMode = 'profit' | 'refund';
+
+type SellerDashboardItem = {
+  firstTierPaidAt: string;
+  orderNumber: string;
+  orderId: string;
+  productNumber: string;
+  quantity: number;
+  recipient: string;
+  paidAmountKrw: number;
+  rebateKrw: number;
+  trackingNumber: string | null;
+  liveCodeSnapshot: string;
+};
 
 const SellerSalesRefundInfoScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -23,11 +39,43 @@ const SellerSalesRefundInfoScreen: React.FC = () => {
   const revenueTab = t('sellerInfo.orderData.revenueTab');
   const refundTab = t('sellerInfo.orderData.refundTab');
   const [activeTab, setActiveTab] = useState<'revenue' | 'refund'>('revenue');
+  const [searchText, setSearchText] = useState<string>('');
+  const [pageSize] = useState<number>(20);
+  const [startDate] = useState<Date>(new Date(new Date().setDate(new Date().getDate() - 30)));
+  const [endDate] = useState<Date>(new Date());
 
-  const [startDate] = useState(new Date());
-  const [endDate] = useState(new Date());
+  const {
+    mutate: fetchDashboard,
+    items,
+    total,
+    page: currentPage,
+    pageSize: currentPageSize,
+    isLoading,
+    isLoadingMore,
+    isError,
+    error,
+  } = useSellerDashboardMutation();
 
   const formatDate = (date: Date) => date.toLocaleDateString('en-US');
+  const formatApiDate = (date: Date) => date.toISOString().split('T')[0];
+
+  const loadDashboard = useCallback(
+    async (nextPage: number = 1) => {
+      await fetchDashboard({
+        search: searchText.trim() || undefined,
+        from: formatApiDate(startDate),
+        to: formatApiDate(endDate),
+        mode: activeTab === 'revenue' ? 'profit' : 'refund',
+        page: nextPage,
+        pageSize,
+      });
+    },
+    [activeTab, fetchDashboard, pageSize, searchText, startDate, endDate]
+  );
+
+  useEffect(() => {
+    loadDashboard(1);
+  }, [activeTab, loadDashboard]);
 
   const renderHeader = () => (
     <View style={styles.header}>
@@ -63,11 +111,15 @@ const SellerSalesRefundInfoScreen: React.FC = () => {
   const renderSearchRow = () => (
     <View style={styles.searchRow}>
       <TextInput
+        value={searchText}
+        onChangeText={setSearchText}
         placeholder={t('sellerInfo.orderData.searchPlaceholder')}
         placeholderTextColor={COLORS.text.secondary}
         style={styles.searchInput}
       />
-      <TouchableOpacity style={styles.searchBtn}>
+      <TouchableOpacity style={styles.searchBtn} onPress={() => {
+        loadDashboard(1);
+      }}>
         <Text style={styles.searchBtnText}>{t('sellerInfo.orderData.searchButton')}</Text>
       </TouchableOpacity>
     </View>
@@ -87,7 +139,12 @@ const SellerSalesRefundInfoScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
       </View>
-      <TouchableOpacity style={styles.dateSearchBtn}>
+      <TouchableOpacity
+        style={styles.dateSearchBtn}
+        onPress={() => {
+          loadDashboard(1);
+        }}
+      >
         <Text style={styles.dateSearchBtnText}>{t('sellerInfo.orderData.dateSearchButton')}</Text>
       </TouchableOpacity>
     </View>
@@ -111,19 +168,60 @@ const SellerSalesRefundInfoScreen: React.FC = () => {
         <Text style={[styles.tableCell, styles.tableHeaderCell]}>
           {t('sellerInfo.orderData.table.recipient')}
         </Text>
-        <Text style={[styles.tableCell, styles.tableHeaderCell]}>
-          {t('sellerInfo.orderData.table.paymentAmount')}
-        </Text>
-        <Text style={[styles.tableCell, styles.tableHeaderCell]}>
-          {t('sellerInfo.orderData.table.rebate')}
-        </Text>
-        <Text style={[styles.tableCell, styles.tableHeaderCell]}>
-          {t('sellerInfo.orderData.table.tracking')}
-        </Text>
       </View>
-      <View style={styles.emptyBox}>
-        <Text style={styles.emptyText}>{t('sellerInfo.orderData.table.noData')}</Text>
-      </View>
+
+      {isLoading && !isLoadingMore ? (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyText}>Loading...</Text>
+        </View>
+      ) : isError ? (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyText}>{error || 'Failed to load seller data.'}</Text>
+        </View>
+      ) : items.length === 0 ? (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyText}>{t('sellerInfo.orderData.table.noData')}</Text>
+        </View>
+      ) : (
+        items.map((item) => (
+          <View key={item.orderId} style={styles.tableRow}>
+            <Text style={styles.tableCell}>{formatDate(new Date(item.firstTierPaidAt))}</Text>
+            <Text style={styles.tableCell}>{item.orderNumber}</Text>
+            <Text style={styles.tableCell}>{item.productNumber}</Text>
+            <Text style={styles.tableCell}>{item.quantity}</Text>
+            <Text style={styles.tableCell}>{item.recipient}</Text>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>{t('sellerInfo.orderData.table.paymentAmount')}:</Text>
+              <Text style={styles.detailValue}>₩{item.paidAmountKrw.toLocaleString()}</Text>
+              <Text style={styles.detailLabel}>{t('sellerInfo.orderData.table.rebate')}:</Text>
+              <Text style={styles.detailValue}>₩{item.rebateKrw.toLocaleString()}</Text>
+              <Text style={styles.detailLabel}>{t('sellerInfo.orderData.table.tracking')}:</Text>
+              <Text style={styles.detailValue}>{item.trackingNumber || '-'}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Live Code:</Text>
+              <Text style={styles.detailValue}>{item.liveCodeSnapshot || '-'}</Text>
+            </View>
+          </View>
+        ))
+      )}
+
+      {items.length > 0 && (
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryText}>{`Total ${total} items`}</Text>
+          {currentPage * currentPageSize < total && (
+            <TouchableOpacity
+              style={styles.loadMoreBtn}
+              onPress={() => {
+                const nextPage = currentPage + 1;
+                loadDashboard(nextPage);
+              }}
+            >
+              <Text style={styles.loadMoreText}>Load More</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
     </View>
   );
 
@@ -319,5 +417,52 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     color: '#999',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: SPACING.md,
+  },
+  summaryText: {
+    color: COLORS.text.secondary,
+    fontSize: FONTS.sizes.sm,
+  },
+  loadMoreBtn: {
+    paddingVertical: SPACING.xssm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  loadMoreText: {
+    color: COLORS.primary,
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+  },
+  detailRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: SPACING.xssm,
+    alignItems: 'center',
+  },
+  detailLabel: {
+    color: COLORS.text.secondary,
+    marginRight: SPACING.xssm,
+    fontSize: FONTS.sizes.xs,
+  },
+  detailValue: {
+    color: COLORS.text.primary,
+    marginRight: SPACING.sm,
+    fontSize: FONTS.sizes.xs,
+    fontWeight: '600',
   },
 });
