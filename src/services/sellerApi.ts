@@ -23,11 +23,41 @@ export interface SellerDashboardResponseData {
   pageSize: number;
 }
 
+export interface SellerDashboardSummary {
+  range: {
+    from: string;
+    to: string;
+  };
+  salesAmountKrw: number;
+  salesQuantity: number;
+  refundAmountKrw: number;
+  refundQuantity: number;
+  rebatePersonalAccruedKrw: number;
+  rebatePersonalDeductedKrw: number;
+  rebateTeamAccruedKrw: number;
+  rebateTeamDeductedKrw: number;
+  averageOrderValueKrw: number;
+  refundRate: number;
+}
+
+export interface SellerDashboardSummaryResponseData {
+  summary: SellerDashboardSummary;
+  directTeam: SellerDirectTeamMember[];
+}
+
 export type SellerDashboardParams = {
   search?: string;
   from?: string;
   to?: string;
   mode?: 'profit' | 'refund';
+  page?: number;
+  pageSize?: number;
+};
+
+export type SellerDirectTeamParams = {
+  search?: string;
+  from?: string;
+  to?: string;
   page?: number;
   pageSize?: number;
 };
@@ -94,14 +124,54 @@ export const sellerApi = {
     }
   },
 
-  getSellerDirectTeam: async (): Promise<ApiResponse<SellerDirectTeamResponse | null>> => {
+  getSellerDashboardSummary: async (
+    params?: SellerDashboardParams
+  ): Promise<ApiResponse<SellerDashboardSummaryResponseData | null>> => {
+    try {
+      const url = `${API_BASE_URL}/v1/users/seller/dashboard`;
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(await getAuthHeaders()),
+      };
+      const response = await axios.get(url, { headers, params });
+      const raw = response.data as any;
+
+      if (raw?.status === 'success') {
+        return {
+          success: true,
+          data: raw.data || null,
+          message: raw?.message || undefined,
+        };
+      }
+
+      return {
+        success: false,
+        message:
+          raw?.message || raw?.error || raw?.status || 'Failed to load seller dashboard summary.',
+        data: null,
+      };
+    } catch (error: any) {
+      const message =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        'Failed to load seller dashboard summary.';
+      return {
+        success: false,
+        message,
+        data: null,
+      };
+    }
+  },
+
+  getSellerDirectTeam: async (params?: SellerDirectTeamParams): Promise<ApiResponse<SellerDirectTeamResponse | null>> => {
     try {
       const url = `${API_BASE_URL}/v1/users/seller/direct-team`;
       const headers = {
         'Content-Type': 'application/json',
         ...(await getAuthHeaders()),
       };
-      const response = await axios.get(url, { headers });
+      const response = await axios.get(url, { headers, params });
       return response.data;
     } catch (error: any) {
       const message =

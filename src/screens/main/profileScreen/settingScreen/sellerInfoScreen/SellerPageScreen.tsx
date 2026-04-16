@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Svg, { Circle } from 'react-native-svg';
 import {
   View,
@@ -15,6 +15,7 @@ import Icon from '../../../../../components/Icon';
 import { RootStackParamList } from '../../../../../types';
 import { COLORS } from '../../../../../constants';
 import { useTranslation } from '../../../../../hooks/useTranslation';
+import { useSellerDashboardSummaryMutation } from '../../../../../hooks/useSellerDashboardSummaryMutation';
 
 const { width } = Dimensions.get('window');
 
@@ -36,11 +37,11 @@ type ChartItem = {
 };
 
 const donutData: ChartItem[] = [
-  { label: 'so ul', value: 25, color: '#4A6CF7' },
-  { label: 'gyong gi do', value: 30, color: '#FF7A00' },
-  { label: 'bu san', value: 25, color: '#00C48C' },
-  { label: 'dae jon', value: 5, color: '#FF5DA2' },
-  { label: 'other', value: 15, color: '#A66CFF' },
+  { label: '서울', value: 25, color: '#4A6CF7' },
+  { label: '경기도', value: 30, color: '#FF7A00' },
+  { label: '부산', value: 25, color: '#00C48C' },
+  { label: '대전', value: 5, color: '#FF5DA2' },
+  { label: '기타', value: 15, color: '#A66CFF' },
 ];
 
 const barData1: ChartItem[] = [
@@ -58,6 +59,7 @@ const barData2: ChartItem[] = [
 const SellerPage: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const { t } = useTranslation();
+  const { mutate: fetchDashboardSummary, summary, directTeam, isLoading, isError, error } = useSellerDashboardSummaryMutation();
   const [sellerInfos, setSellerInfos] = useState<Seller[]>([
     { sellerId: 'S001', name: 'John Kim', amount: 120000, count: 12, rebate: 5000, isActive: false },
     { sellerId: 'S002', name: 'Alice Lee', amount: 80000, count: 8, rebate: 3000, isActive: false },
@@ -65,17 +67,44 @@ const SellerPage: React.FC = () => {
     { sellerId: 'S004', name: 'Emma Choi', amount: 50000, count: 5, rebate: 2000, isActive: false },
   ]);
 
+  const summaryData = summary || {
+    range: { from: '', to: '' },
+    salesAmountKrw: 0,
+    salesQuantity: 0,
+    refundAmountKrw: 0,
+    refundQuantity: 0,
+    rebatePersonalAccruedKrw: 0,
+    rebatePersonalDeductedKrw: 0,
+    rebateTeamAccruedKrw: 0,
+    rebateTeamDeductedKrw: 0,
+    averageOrderValueKrw: 0,
+    refundRate: 0,
+  };
+
+  useEffect(() => {
+    fetchDashboardSummary();
+  }, [fetchDashboardSummary]);
+
+  useEffect(() => {
+    if (directTeam.length > 0) {
+      setSellerInfos(directTeam.map((member) => ({
+        ...member,
+        isActive: false,
+      })));
+    }
+  }, [directTeam]);
+
   const cards = [
-    { title: t('sellerInfo.cards.salesAmount'), value: '0', text: t('sellerInfo.cards.salesAmountText') },
-    { title: t('sellerInfo.cards.orderCount'), value: '0', text: t('sellerInfo.cards.orderCountText') },
-    { title: t('sellerInfo.cards.rebateAmount'), value: '0', text: t('sellerInfo.cards.rebateAmountText') },
-    { title: t('sellerInfo.cards.pendingSettlement'), value: '0', text: t('sellerInfo.cards.pendingSettlementText') },
-    { title: t('sellerInfo.cards.monthlySales'), value: '0', text: t('sellerInfo.cards.monthlySalesText') },
-    { title: t('sellerInfo.cards.monthlyOrders'), value: '0', text: t('sellerInfo.cards.monthlyOrdersText') },
-    { title: t('sellerInfo.cards.monthlyRebate'), value: '0', text: t('sellerInfo.cards.monthlyRebateText') },
-    { title: t('sellerInfo.cards.averageOrderValue'), value: '0', text: t('sellerInfo.cards.averageOrderValueText') },
-    { title: t('sellerInfo.cards.activeSellers'), value: '0', text: t('sellerInfo.cards.activeSellersText') },
-    { title: t('sellerInfo.cards.rebateRate'), value: '0%', text: t('sellerInfo.cards.rebateRateText') },
+    { title: t('sellerInfo.cards.salesAmountKrw'), value: `₩${summaryData.salesAmountKrw.toLocaleString()}`, text: t('sellerInfo.cards.totalCount') },
+    { title: t('sellerInfo.cards.refundAmountKrw'), value: `₩${summaryData.refundAmountKrw.toLocaleString()}`, text: t('sellerInfo.cards.totalCount') },
+    { title: t('sellerInfo.cards.salesQuantity'), value: summaryData.salesQuantity.toString(), text: t('sellerInfo.cards.totalCount') },
+    { title: t('sellerInfo.cards.refundQuantity'), value: summaryData.refundQuantity.toString(), text: t('sellerInfo.cards.totalCount') },
+    { title: t('sellerInfo.cards.rebatePersonalAccruedKrw'), value: `₩${summaryData.rebatePersonalAccruedKrw.toLocaleString()}`, text: t('sellerInfo.cards.totalCount') },
+    { title: t('sellerInfo.cards.rebatePersonalDeductedKrw'), value: `₩${summaryData.rebatePersonalDeductedKrw.toLocaleString()}`, text: t('sellerInfo.cards.totalCount') },
+    { title: t('sellerInfo.cards.rebateTeamAccruedKrw'), value: `₩${summaryData.rebateTeamAccruedKrw.toLocaleString()}`, text: t('sellerInfo.cards.totalCount') },
+    { title: t('sellerInfo.cards.rebateTeamDeductedKrw'), value: `₩${summaryData.rebateTeamDeductedKrw.toLocaleString()}`, text: t('sellerInfo.cards.totalCount') },
+    { title: t('sellerInfo.cards.averageOrderValueKrw'), value: `₩${summaryData.averageOrderValueKrw.toLocaleString()}`, text: t('sellerInfo.cards.totalCount') },
+    { title: t('sellerInfo.cards.refundRate'), value: `${summaryData.refundRate}%`, text: t('sellerInfo.cards.refundRateText') },
   ];
 
   const getCardColor = (i: number) => {
@@ -100,6 +129,10 @@ const SellerPage: React.FC = () => {
       )
     );
   };
+
+  const dateRangeText = summary?.range
+    ? `${new Date(summary.range.from).toLocaleDateString()} - ${new Date(summary.range.to).toLocaleDateString()}`
+    : '';
 
   const renderHeader = () => (
     <View style={styles.header}>
@@ -222,10 +255,25 @@ const SellerPage: React.FC = () => {
       {renderHeader()}
        <ScrollView contentContainerStyle={styles.scrollContent}>
         {renderCards()}
+        {dateRangeText ? (
+          <View style={styles.rangeContainer}>
+            <Text style={styles.rangeText}>{dateRangeText}</Text>
+          </View>
+        ) : null}
+        {isLoading && (
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>{t('sellerInfo.loadingSummary') || 'Loading summary...'}</Text>
+          </View>
+        )}
+        {isError && error ? (
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>{error}</Text>
+          </View>
+        ) : null}
         {renderSellerList()}
-       <View>
-        <Text>{t('sellerInfo.performanceTitle')}</Text>
-       </View>
+        <View>
+          <Text>{t('sellerInfo.performanceTitle')}</Text>
+        </View>
         <View style={styles.dashboardSection}>
           <Text style={styles.sectionTitle}>{t('sellerInfo.chartSubtitle')}</Text>
           <View style={styles.topRow}>
@@ -411,6 +459,22 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     overflow: 'hidden',
     marginBottom: 16,
+  },
+  rangeContainer: {
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  rangeText: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  loadingContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  loadingText: {
+    color: '#6B7280',
+    fontSize: 14,
   },
 });
 
