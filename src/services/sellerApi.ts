@@ -3,23 +3,34 @@ import { getStoredToken } from './authApi';
 import { API_BASE_URL } from '../constants';
 import { ApiResponse } from '../types';
 
-export interface SellerDashboardResponse {
-  salesAmount?: number;
-  orderCount?: number;
-  rebateAmount?: number;
-  pendingSettlement?: number;
-  monthlySales?: number;
-  monthlyOrders?: number;
-  monthlyRebate?: number;
-  averageOrderValue?: number;
-  activeSellers?: number;
-  rebateRate?: number;
-  chart?: {
-    donut?: Array<{ label: string; value: number; color: string }>;
-    bar1?: Array<{ label: string; value: number; color: string }>;
-    bar2?: Array<{ label: string; value: number; color: string }>;
-  };
+export interface SellerDashboardItem {
+  firstTierPaidAt: string;
+  orderNumber: string;
+  orderId: string;
+  productNumber: string;
+  quantity: number;
+  recipient: string;
+  paidAmountKrw: number;
+  rebateKrw: number;
+  trackingNumber: string | null;
+  liveCodeSnapshot: string;
 }
+
+export interface SellerDashboardResponseData {
+  items: SellerDashboardItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export type SellerDashboardParams = {
+  search?: string;
+  from?: string;
+  to?: string;
+  mode?: 'profit' | 'refund';
+  page?: number;
+  pageSize?: number;
+};
 
 export interface SellerDirectTeamMember {
   sellerId: string;
@@ -43,15 +54,32 @@ const getAuthHeaders = async () => {
 };
 
 export const sellerApi = {
-  getSellerDashboard: async (): Promise<ApiResponse<SellerDashboardResponse | null>> => {
+  getSellerDashboard: async (
+    params?: SellerDashboardParams
+  ): Promise<ApiResponse<SellerDashboardResponseData | null>> => {
     try {
       const url = `${API_BASE_URL}/v1/users/seller/dashboard`;
       const headers = {
         'Content-Type': 'application/json',
         ...(await getAuthHeaders()),
       };
-      const response = await axios.get(url, { headers });
-      return response.data;
+      const response = await axios.get(url, { headers, params });
+      const raw = response.data as any;
+
+      if (raw?.status === 'success') {
+        return {
+          success: true,
+          data: raw.data || null,
+          message: raw?.message || undefined,
+        };
+      }
+
+      return {
+        success: false,
+        message:
+          raw?.message || raw?.error || raw?.status || 'Failed to load seller dashboard.',
+        data: null,
+      };
     } catch (error: any) {
       const message =
         error.response?.data?.message ||

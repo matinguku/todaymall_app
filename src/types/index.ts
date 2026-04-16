@@ -662,40 +662,6 @@ export interface StorePerformanceReuquest {
 
 }
 
-export interface SellerDashboardResponse {
-  salesAmount?: number;
-  orderCount?: number;
-  rebateAmount?: number;
-  pendingSettlement?: number;
-  monthlySales?: number;
-  monthlyOrders?: number;
-  monthlyRebate?: number;
-  averageOrderValue?: number;
-  activeSellers?: number;
-  rebateRate?: number;
-  chart?: {
-    donut?: Array<{ label: string; value: number; color: string }>;
-    bar1?: Array<{ label: string; value: number; color: string }>;
-    bar2?: Array<{ label: string; value: number; color: string }>;
-  };
-}
-
-export interface SellerDirectTeamMember {
-  sellerId: string;
-  name: string;
-  amount: number;
-  count: number;
-  rebate: number;
-}
-
-export interface SellerDirectTeamResponse {
-  team?: SellerDirectTeamMember[];
-  members?: SellerDirectTeamMember[];
-  totalSales?: number;
-  totalOrders?: number;
-  totalRebate?: number;
-}
-
 // Add interfaces from useStoreMutation.ts
 export interface StoreResponse {
   id: number;
