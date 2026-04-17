@@ -755,7 +755,7 @@ const LoginScreen: React.FC = () => {
             <View style={styles.footerContainer}>
               <Text style={styles.footerSupportText}>
                 <Text style={styles.footerSupportGray}>
-                  {t('auth.supportText') || '주식회사:투데이몰 /대표 유두성 주소: 경기도 의정부시 녹양로34번길 47, 101동 305호(가능동, e편한세상 녹양역) 사업자번호: 661-12-03163 전화: 07077926663 서비스 이메일: taoexpress_1@163.com '}
+                  {t('auth.supportText') || '주식회사:투데이직구 /대표 유두성 주소: 경기도 의정부시 녹양로34번길 47, 101동 305호(가능동, e편한세상 녹양역) 사업자번호: 661-12-03163 전화: 07077926663 서비스 이메일: taoexpress_1@163.com '}
                 </Text>
               </Text>
               <Text style={styles.footerCopyright}>

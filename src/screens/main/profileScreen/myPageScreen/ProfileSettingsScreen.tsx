@@ -176,6 +176,26 @@ const ProfileSettingsScreen: React.FC = () => {
       {
         name: t('profile.accountandsecurity'),
         items: [
+          {
+        name: t('profile.about'),
+        items: [
+          // {
+          //   icon: 'person-outline',
+          //   title: t('profile.merchantOnboarding'),
+          //   onPress: () => navigation.navigate('EditProfile'),
+          // },
+          {
+            icon: 'key-outline',
+            title: t('profile.helpCenter'),
+            onPress: () => navigation.navigate('HelpCenter'),
+          },
+          {
+            icon: 'trending-up-outline',
+            title: t('profile.aboutUs'),
+            onPress: () => navigation.navigate('AboutUs'),
+          },
+        ]
+      },
           // {
           //   icon: 'person-outline',
           //   title: t('profile.myDetails'),

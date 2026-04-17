@@ -1,1811 +1,2303 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
+  ScrollView,
+  TextInput,
   TouchableOpacity,
   Image,
-  SafeAreaView,
-  ScrollView,
-  Dimensions,
-  ActivityIndicator,
+  Alert,
   Modal,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants';
-import { RootStackParamList } from '../../types';
-import { useAppSelector } from '../../store/hooks';
-import { usePlatformStore } from '../../store/platformStore';
-import { translations } from '../../i18n/translations';
-import { ProductCard } from '../../components';
-import { useAuth } from '../../context/AuthContext';
-import { useToast } from '../../context/ToastContext';
-import { useGetCartMutation } from '../../hooks/useGetCartMutation';
-import { useUpdateCartItemMutation } from '../../hooks/useUpdateCartItemMutation';
-import { useDeleteCartItemMutation } from '../../hooks/useDeleteCartItemMutation';
-import { useClearCartMutation } from '../../hooks/useClearCartMutation';
-import { useDeleteCartBatchMutation } from '../../hooks/useDeleteCartBatchMutation';
-import { useCheckoutCartMutation } from '../../hooks/useCheckoutCartMutation';
-import { useWishlistStatus } from '../../hooks/useWishlistStatus';
-import { useAddToWishlistMutation } from '../../hooks/useAddToWishlistMutation';
-import { useDeleteFromWishlistMutation } from '../../hooks/useDeleteFromWishlistMutation';
-import { useRecommendationsMutation } from '../../hooks/useRecommendationsMutation';
-import { Product } from '../../types';
-import { formatPriceKRW, getLocalizedText } from '../../utils/i18nHelpers';
-import { FlatList } from 'react-native';
-import PrivacyIcon from '../../assets/icons/PrivacyIcon';
-import PackageIcon from '../../assets/icons/PackageIcon';
-import ThickCheckIcon from '../../assets/icons/ThickCheckIcon';
-import HeartIcon from '../../assets/icons/HeartIcon';
-import DeleteIcon from '../../assets/icons/DeleteIcon';
-import PlusIcon from '../../assets/icons/PlusIcon';
-import MinusIcon from '../../assets/icons/MinusIcon';
+import { COLORS, FONTS, SPACING } from '../../constants';
+import {
+  launchImageLibrary,
+  MediaType,
+  ImageLibraryOptions,
+  ImagePickerResponse,
+} from 'react-native-image-picker';
+import { requestPhotoLibraryPermission } from '../../utils/permissions';
 
-const { width } = Dimensions.get('window');
+interface ExtraService {
+  id: string;
+  name: string;
+  icon?: string;
+  price?: string;
+  description?: string;
+  required?: boolean;
+}
 
-// Mock cart data
-const mockCartData = [
-  {
-    id: '1',
-    sellerId: 'seller_123',
-    sellerName: 'bbbxffvwo083i5cyz7jxtprkg',
-    items: [
-      {
-        id: 'cart_item_1',
-        productId: 'shoes_001',
-        name: 'Shoes',
-        color: 'space',
-        size: 'M',
-        price: 5.99,
-        originalPrice: 7.00,
-        quantity: 1,
-        image: 'https://picsum.photos/seed/shoes1/300/300',
-        selected: true,
-      }
-    ]
-  }
+interface ServiceCategory {
+  id: string;
+  title: string;
+  required?: boolean;
+  items: ExtraService[];
+}
+
+interface CartCard {
+  id: string;
+  index: string;
+  companyName: string;
+  productName: string;
+  productImage: string | null;
+  photoUri: string | null;
+  color: string;
+  size: string;
+  quantity: number;
+  unitPrice: number;
+  checked: boolean;
+  expanded: boolean;
+  addedAt: number;
+  remarks: string;
+}
+
+type TabKey = 'past' | 'bundles' | 'offline';
+
+const TIME_PERIODS: Array<{ label: string; value: number }> = [
+  { label: '전체', value: 0 },
+  { label: '1시간', value: 60 * 60 * 1000 },
+  { label: '24시간', value: 24 * 60 * 60 * 1000 },
+  { label: '7일', value: 7 * 24 * 60 * 60 * 1000 },
 ];
 
+const SERVICE_CATEGORIES: ServiceCategory[] = [
+  {
+    id: 'cat-origin',
+    title: '원산지 작업',
+    required: true,
+    items: [
+      { id: 'svc-bongje', name: '봉제', icon: 'cut-outline', price: '¥0.2/PCS', description: '원산지 라벨 봉제 작업' },
+      { id: 'svc-hangtag', name: '행택', icon: 'pricetag-outline', price: '¥0.1/PCS', description: '행택 부착 작업' },
+      { id: 'svc-sticker', name: '스티커', icon: 'pricetags-outline', price: '¥0.1/PCS', description: '스티커 부착 작업' },
+      { id: 'svc-dojang', name: '도장', icon: 'ribbon-outline', price: '¥0.2/PCS', description: '도장 작업' },
+    ],
+  },
+  {
+    id: 'cat-package',
+    title: '패키지 작업',
+    items: [
+      { id: 'svc-opp', name: 'OPP포장', icon: 'bag-outline', price: '¥0.3/PCS', description: '가로+세로 80cm 이상일 경우 0.5위안\n이 비용 표준은 참고일 뿐, 구체적인 비용은 견적을 기준으로 한다' },
+      { id: 'svc-aircap', name: '에어캡/뽁뽁이 포장', icon: 'apps-outline', price: '¥0.5/PCS', description: '에어캡 포장 서비스' },
+      { id: 'svc-jungpo', name: '중포포장', icon: 'file-tray-outline', price: '¥0.8/PCS', description: '중포 포장 서비스' },
+      { id: 'svc-bundle', name: '번들포장', icon: 'layers-outline', price: '¥0.6/PCS', description: '번들 포장 서비스' },
+      { id: 'svc-pkgmake', name: '패키지 제작', icon: 'cube-outline', price: '견적', description: '패키지 제작 (별도 견적)' },
+      { id: 'svc-itemsticker', name: '상품스티커', icon: 'bookmark-outline', price: '¥0.1/PCS', description: '상품 스티커 부착' },
+    ],
+  },
+  {
+    id: 'cat-carton',
+    title: '카톤박스 및 패킹',
+    items: [
+      { id: 'svc-carton-change', name: '카톤박스 갈이', icon: 'swap-horizontal-outline', price: '¥2/BOX', description: '카톤박스 교체' },
+      { id: 'svc-pallet', name: '파렛트 작업', icon: 'grid-outline', price: '¥30/PLT', description: '파렛트 작업' },
+      { id: 'svc-madae', name: '마대포장', icon: 'briefcase-outline', price: '¥3/BOX', description: '마대 포장' },
+      { id: 'svc-carton-make', name: '카톤박스 제작', icon: 'construct-outline', price: '견적', description: '카톤박스 제작 (별도 견적)' },
+    ],
+  },
+  {
+    id: 'cat-inspect',
+    title: '검수방식',
+    items: [
+      { id: 'svc-insp-full', name: '전수검수', icon: 'search-outline', price: '¥0.5/PCS', description: '모든 상품 1:1 검수' },
+      { id: 'svc-insp-sample', name: '샘플검수', icon: 'eye-outline', price: '¥30/LOT', description: '샘플 단위 검수' },
+    ],
+  },
+];
 
-type CartScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Main'>;
+const ALL_SERVICES: ExtraService[] = SERVICE_CATEGORIES.flatMap((c) => c.items);
 
 const CartScreen: React.FC = () => {
-  const navigation = useNavigation<CartScreenNavigationProp>();
-  const { isAuthenticated, user } = useAuth();
-  // Use wishlist status hook to check if products are liked based on external IDs
-  const { isProductLiked, refreshExternalIds, addExternalId, removeExternalId } = useWishlistStatus();
-  const selectedPlatform = usePlatformStore((state) => state.selectedPlatform);
-  
-  // Add to wishlist mutation
-  const { mutate: addToWishlist } = useAddToWishlistMutation({
-    onSuccess: async (data) => {
-      showToast(t('product.productAddedToWishlist'), 'success');
-      // Immediately refresh external IDs to update heart icon color
-      await refreshExternalIds();
-    },
-    onError: (error) => {
-      showToast(error || t('product.failedToAddToWishlist'), 'error');
-    },
-  });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedPeriod, setSelectedPeriod] = useState<number>(0);
+  const [showPeriodMenu, setShowPeriodMenu] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabKey>('past');
+  const [now, setNow] = useState<number>(Date.now());
+  const [showServiceModal, setShowServiceModal] = useState(false);
+  const [extraServices, setExtraServices] = useState<ExtraService[]>([]);
+  const [pendingServices, setPendingServices] = useState<ExtraService[]>([]);
+  const [detailService, setDetailService] = useState<ExtraService | null>(
+    ALL_SERVICES.find((s) => s.id === 'svc-opp') || null,
+  );
+  const [otherRequests, setOtherRequests] = useState('');
+  const [modalPhotoUri, setModalPhotoUri] = useState<string | null>(null);
 
-  // Delete from wishlist mutation
-  const { mutate: deleteFromWishlist } = useDeleteFromWishlistMutation({
-    onSuccess: async (data) => {
-      showToast(t('product.productRemovedFromWishlist'), 'success');
-      // Immediately refresh external IDs to update heart icon color
-      await refreshExternalIds();
+  // Label modal state
+  const [labelModalCardId, setLabelModalCardId] = useState<string | null>(null);
+  const [labelType, setLabelType] = useState<'product' | 'foodInspect'>('product');
+  const [labelFormat, setLabelFormat] = useState<'50x80' | '40x60'>('50x80');
+  const [labelProductName, setLabelProductName] = useState('제품명 : 자석 선반 대형 2P');
+  const [labelContent, setLabelContent] = useState(
+    '수입원 : 빅멀티샵\n제조원 : 빅멀티샵 협력사\n제조일자 : 2025.12\n원산지 : 중국\n내용량 : 단품\n재질 : 탄소강',
+  );
+  const [labelBarcode, setLabelBarcode] = useState('S123456789');
+  const [labelFileUri, setLabelFileUri] = useState<string | null>(null);
+
+  // Order modal state
+  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [purchasePayment, setPurchasePayment] = useState<'manual' | 'auto'>('manual');
+  const [shippingPayment, setShippingPayment] = useState<'manual' | 'auto'>('manual');
+  const [showPaymentTooltip, setShowPaymentTooltip] = useState(false);
+  const [logisticsCenter, setLogisticsCenter] = useState<'위해' | '광저우' | '이우'>('위해');
+  const [applicationType, setApplicationType] = useState<'해운배송' | '항공배송' | '로켓배송'>('로켓배송');
+  const [customsMethod, setCustomsMethod] = useState<'사업자' | '개인'>('사업자');
+  const [shippingMethod, setShippingMethod] = useState<
+    '로켓파레트' | '로켓택배' | '자가배송파렛트' | '자가배송택배'
+  >('로켓파레트');
+  const [businessInfoSelected, setBusinessInfoSelected] = useState('');
+  const [recipientInfoSelected, setRecipientInfoSelected] = useState('');
+
+  const [cards, setCards] = useState<CartCard[]>([
+    {
+      id: 'card-1',
+      index: '001',
+      companyName: '义乌市科桥日用品有限公司',
+      productName: '꿀병',
+      productImage: null,
+      photoUri: null,
+      color: '1',
+      size: '30ml',
+      quantity: 2,
+      unitPrice: 30,
+      checked: false,
+      expanded: false,
+      addedAt: Date.now() - 60 * 1000,
+      remarks: '',
     },
-    onError: (error) => {
-      showToast(error || t('product.failedToRemoveFromWishlist'), 'error');
-    },
-  });
-  
-  // Toggle wishlist function
-  const toggleWishlist = async (product: any) => {
-    if (!isAuthenticated || !user) {
-      showToast(t('home.pleaseLogin'), 'warning');
+  ]);
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const formatElapsed = (ms: number): string => {
+    const sec = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
+  const earliestAdd = cards.length > 0 ? Math.min(...cards.map((c) => c.addedAt)) : now;
+  const elapsed = now - earliestAdd;
+
+  const handleDeleteChecked = () => {
+    const anyChecked = cards.some((c) => c.checked);
+    if (!anyChecked) {
+      Alert.alert('알림', '선택된 상품이 없습니다.');
       return;
     }
-
-    // Get product external ID - prioritize externalId, never use MongoDB _id
-    const externalId = 
-      (product as any).externalId?.toString() ||
-      (product as any).offerId?.toString() ||
-      '';
-
-    if (!externalId) {
-      showToast(t('product.invalidProductId'), 'error');
-      return;
-    }
-
-    const isLiked = isProductLiked(product);
-    const source = (product as any).source || selectedPlatform || '1688';
-    const country = locale || 'en';
-
-    if (isLiked) {
-      // Remove from wishlist - optimistic update (removes from state and AsyncStorage immediately)
-      await removeExternalId(externalId);
-      deleteFromWishlist(externalId);
-    } else {
-      // Add to wishlist - extract required fields from product
-      const imageUrl = product.image || product.images?.[0] || '';
-      const price = product.price || 0;
-      const title = product.name || product.title || '';
-
-      if (!imageUrl || !title || price <= 0) {
-        showToast(t('product.invalidProductData'), 'error');
-        return;
-      }
-
-      // Optimistic update - add to state and AsyncStorage immediately
-      await addExternalId(externalId);
-      addToWishlist({ offerId: externalId, platform: source });
-    }
-  };
-  // Cart context removed - using local state (matches GET cart API: items, totals, estimatedShippingCost)
-  const [cart, setCart] = useState<{
-    items: any[];
-    totalAmount: number;
-    totalItems: number;
-    currency: string;
-    estimatedShippingCost?: number;
-    estimatedShippingCostBySeller?: Record<string, number>;
-  }>({ items: [], totalAmount: 0, totalItems: 0, currency: 'CNY' });
-  const { showToast } = useToast();
-  
-  // i18n - define t function early so it can be used in callbacks
-  const locale = useAppSelector((s) => s.i18n.locale) as 'en' | 'ko' | 'zh';
-  const t = useCallback((key: string) => {
-    const keys = key.split('.');
-    let value: any = translations[locale as keyof typeof translations];
-    for (const k of keys) {
-      value = value?.[k];
-    }
-    return value || key;
-  }, [locale]);
-  
-  // Resolve multilingual object or string to string for current locale
-  const resolveText = useCallback((value: unknown): string => {
-    if (value == null) return '';
-    if (typeof value === 'string') return value;
-    if (typeof value === 'object' && 'en' in value) {
-      const o = value as Record<string, string>;
-      return getLocalizedText(
-        { en: o.en ?? '', ko: o.ko ?? '', zh: o.zh ?? '' },
-        locale
-      );
-    }
-    return String(value);
-  }, [locale]);
-
-  // Helper function to map cart data from API response (supports subjectMultiLang, companyName/categoryName as {en,ko,zh}, sku valueMultiLang)
-  const mapCartData = useCallback((data: any) => {
-    if (data && data.cart) {
-      const cartData = data.cart;
-      const mappedItems = (cartData.items || []).map((item: any) => {
-        const variations = (item.skuInfo?.skuAttributes || []).map((attr: any) => ({
-          name: resolveText(attr.attributeNameMultiLang ?? attr.attributeNameTrans ?? attr.attributeName) || '',
-          value: resolveText(attr.valueMultiLang ?? attr.valueTrans ?? attr.value) || '',
-        }));
-        const price = parseFloat(item.skuInfo?.price || item.skuInfo?.consignPrice || '0');
-        const name = resolveText(item.subjectMultiLang ?? item.subjectTrans ?? item.subject) || '';
-        const companyNameStr = resolveText(item.companyName) || '';
-        return {
-          id: item._id || item.offerId?.toString() || '',
-          _id: item._id,
-          offerId: item.offerId,
-          productId: item.offerId?.toString() || '',
-          name,
-          image: item.imageUrl || '',
-          price,
-          quantity: item.quantity || 1,
-          minOrderQuantity: item.minOrderQuantity || 1,
-          variant: variations,
-          source: item.source || '1688',
-          companyName: companyNameStr,
-          sellerOpenId: item.sellerOpenId,
-          skuInfo: item.skuInfo,
-          originalData: item,
-        };
-      });
-      setCart({
-        items: mappedItems,
-        totalAmount: cartData.totalAmount || 0,
-        totalItems: cartData.totalItems ?? mappedItems.length,
-        currency: cartData.currency || 'CNY',
-        estimatedShippingCost: cartData.estimatedShippingCost,
-        estimatedShippingCostBySeller: cartData.estimatedShippingCostBySeller || {},
-      });
-    }
-  }, [resolveText]);
-
-  // Memoize callbacks to prevent fetchCart from being recreated
-  const handleCartSuccess = useCallback((data: any) => {
-    console.log('🛒 CartScreen: API Success - Raw response:', {
-      hasData: !!data,
-      dataKeys: data ? Object.keys(data) : [],
-      fullResponse: data,
-    });
-    mapCartData(data);
-  }, [mapCartData]);
-
-  const handleCartError = useCallback((error: string) => {
-    // console.error('Failed to fetch cart:', error);
-    showToast(error || t('cart.failedToLoad'), 'error');
-    setCart({ items: [], totalAmount: 0, totalItems: 0, currency: 'CNY' });
-  }, [showToast, t]);
-
-  const { mutate: fetchCart, isLoading: cartLoading } = useGetCartMutation({
-    onSuccess: handleCartSuccess,
-    onError: handleCartError,
-  });
-  
-  const { mutate: updateCartItem } = useUpdateCartItemMutation({
-    onSuccess: (data) => {
-      // console.log('Cart item updated successfully:', data);
-      mapCartData(data);
-      showToast(t('cart.quantityUpdated'), 'success');
-    },
-    onError: (error) => {
-      // console.error('Failed to update cart item:', error);
-      showToast(error || t('cart.failedToUpdateQuantity'), 'error');
-    },
-  });
-
-  const { mutate: deleteCartItem } = useDeleteCartItemMutation({
-    onSuccess: (data) => {
-      // console.log('Cart item deleted successfully:', data);
-      mapCartData(data);
-      showToast(t('cart.itemRemoved'), 'success');
-    },
-    onError: (error) => {
-      // console.error('Failed to delete cart item:', error);
-      showToast(error || t('cart.failedToRemove'), 'error');
-    },
-  });
-
-  const { mutate: clearCart } = useClearCartMutation({
-    onSuccess: (data) => {
-      // console.log('Cart cleared successfully:', data);
-      mapCartData(data);
-      showToast(t('cart.cartCleared'), 'success');
-      setSelectedItems(new Set());
-      setAllSelected(false);
-    },
-    onError: (error) => {
-      // console.error('Failed to clear cart:', error);
-      showToast(error || t('cart.failedToClear'), 'error');
-    },
-  });
-
-  const { mutate: deleteCartBatch } = useDeleteCartBatchMutation({
-    onSuccess: (data) => {
-      // console.log('Cart items deleted successfully:', data);
-      mapCartData(data);
-      showToast(t('cart.itemsRemoved'), 'success');
-      setSelectedItems(new Set());
-      setAllSelected(false);
-    },
-    onError: (error) => {
-      // console.error('Failed to delete cart items:', error);
-      showToast(error || t('cart.failedToDelete'), 'error');
-    },
-  });
-
-  const { mutate: checkoutCart, isLoading: isCheckingOut } = useCheckoutCartMutation({
-    onSuccess: (data) => {
-      if (data.selectedItems && data.selectedItems.length > 0) {
-        const paymentItems = data.selectedItems.map((item: any) => ({
-          id: item._id,
-          _id: item._id,
-          offerId: item.offerId,
-          name: resolveText(item.subjectMultiLang ?? item.subjectTrans ?? item.subject) || '',
-          price: item.previewFinalUnitPriceKRW ?? parseFloat(item.skuInfo?.price || '0'),
-          quantity: item.quantity,
-          image: item.imageUrl,
-          source: item.source,
-          skuInfo: item.skuInfo,
-          companyName: resolveText(item.companyName) || '',
-          sellerOpenId: item.sellerOpenId,
-        }));
-        
-        // Calculate total price from selected items
-        const paymentTotalPrice = data.selectedItems.reduce((sum: number, item: any) => {
-          const price = item.previewFinalUnitPriceKRW || parseFloat(item.skuInfo?.price || '0');
-          return sum + (price * item.quantity);
-        }, 0);
-        
-        // Navigate to payment screen with full checkout API response data
-        (navigation as any).navigate('Payment', {
-          items: paymentItems,
-          totalAmount: data.productTotalKRW ?? paymentTotalPrice,
-          estimatedShippingCost: data.estimatedShippingCost ?? 0,
-          estimatedShippingCostBySeller: data.estimatedShippingCostBySeller ?? {},
-          fromCart: true,
-          checkoutData: {
-            productTotalKRW: data.productTotalKRW,
-            shippingTotalKRW: data.shippingTotalKRW,
-            estimatedShippingCost: data.estimatedShippingCost,
-            estimatedShippingCostBySeller: data.estimatedShippingCostBySeller,
-            availableCoupons: data.availableCoupons,
-            availablePoints: data.availablePoints,
-            transportationMethods: data.transportationMethods,
-            additionalServicePrices: data.additionalServicePrices,
-            serviceFeePercentage: data.serviceFeePercentage,
-            estimatedRuralCost: data.estimatedRuralCost,
-          },
-          directPurchaseItems: data.selectedItems,
-        });
-      } else {
-        showToast(t('cart.selectItems'), 'warning');
-      }
-    },
-    onError: (error) => {
-      // console.error('Failed to checkout:', error);
-      showToast(error || t('cart.checkoutFailed'), 'error');
-    },
-  });
-  
-  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
-  const [allSelected, setAllSelected] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [selectedPlatformFilter, setSelectedPlatformFilter] = useState<string>('All');
-  const isFetchingRecommendationsRef = useRef(false);
-  const loadedPagesRef = useRef<Set<number>>(new Set());
-  const lastFetchTimeRef = useRef<number>(0);
-  const FETCH_DEBOUNCE_MS = 1000; // Only fetch if at least 1 second has passed since last fetch
-  
-  // Recommendations state for "More to Love"
-  const [recommendationsProducts, setRecommendationsProducts] = useState<Product[]>([]);
-  const [recommendationsOffset, setRecommendationsOffset] = useState(1); // Current page offset
-  const [hasMoreRecommendations, setHasMoreRecommendations] = useState(true); // Whether more products exist
-  const isRecommendationsRefreshingRef = useRef(false); // Prevent loading during refresh
-  const currentRecommendationsPageRef = useRef<number>(1); // Track current page for callbacks
-  const isLoadingMoreRecommendationsRef = useRef(false); // Prevent multiple simultaneous loads
-  
-  // Store fetchCart in a ref to avoid dependency issues
-  const fetchCartRef = useRef(fetchCart);
-  useEffect(() => {
-    fetchCartRef.current = fetchCart;
-  }, [fetchCart]);
-
-  // Recommendations mutation with infinite scroll support
-  const {
-    mutate: fetchRecommendations,
-    isLoading: recommendationsLoading,
-    error: recommendationsError,
-  } = useRecommendationsMutation({
-    onSuccess: (data) => {
-      // Updated API structure: data.products (not data.recommendations)
-      const productsArray = data?.products || [];
-      const currentPage = currentRecommendationsPageRef.current;
-      
-      // Reset loading flag
-      isLoadingMoreRecommendationsRef.current = false;
-      
-      if (productsArray.length > 0) {
-        // Map API response to Product format
-        const mappedProducts = productsArray.map((item: any): Product => {
-          const price = parseFloat(item.priceInfo?.price || item.priceInfo?.consignPrice || 0);
-          const originalPrice = parseFloat(item.priceInfo?.consignPrice || item.priceInfo?.price || 0);
-          const discount = originalPrice > price && originalPrice > 0
-            ? Math.round(((originalPrice - price) / originalPrice) * 100)
-            : 0;
-          
-          const productData: Product = {
-            id: item.offerId?.toString() || '',
-            externalId: item.offerId?.toString() || '',
-            offerId: item.offerId?.toString() || '',
-            name: locale === 'zh' ? (item.subject || item.subjectTrans || '') : (item.subjectTrans || item.subject || ''),
-            image: item.imageUrl || '',
-            price: price,
-            originalPrice: originalPrice,
-            discount: discount,
-            description: '',
-            category: { id: '', name: '', icon: '', image: '', subcategories: [] },
-            subcategory: '',
-            brand: '',
-            seller: { 
-              id: '', 
-              name: '', 
-              avatar: '', 
-              rating: 0, 
-              reviewCount: 0, 
-              isVerified: false, 
-              followersCount: 0, 
-              description: '', 
-              location: '', 
-              joinedDate: new Date() 
-            },
-            rating: 0,
-            reviewCount: 0,
-            rating_count: 0,
-            inStock: true,
-            stockCount: 0,
-            tags: [],
-            isNew: false,
-            isFeatured: false,
-            isOnSale: discount > 0,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            orderCount: item.monthSold || 0,
-            repurchaseRate: item.repurchaseRate || '',
-          };
-          
-          // Preserve non-typed fields for navigation / tracking
-          (productData as any).source = selectedPlatform || '1688';
-          
-          return productData;
-        });
-        
-        // Check pagination - if we got fewer products than pageSize, no more pages
-        const pageSize = 20;
-        const hasMore = productsArray.length >= pageSize;
-        setHasMoreRecommendations(hasMore);
-        
-        // If it's the first page, replace products, otherwise append
-        if (currentPage === 1) {
-          setRecommendationsProducts(mappedProducts);
-        } else {
-          setRecommendationsProducts(prev => [...prev, ...mappedProducts]);
-        }
-      } else {
-        // No products found
-        if (currentPage === 1) {
-        setRecommendationsProducts([]);
-        }
-        setHasMoreRecommendations(false);
-      }
-    },
-    onError: (error) => {
-      // Reset loading flag
-      isLoadingMoreRecommendationsRef.current = false;
-      const currentPage = currentRecommendationsPageRef.current;
-      if (currentPage === 1) {
-        setRecommendationsProducts([]);
-      }
-      setHasMoreRecommendations(false);
-    },
-  });
-
-  // Store fetchRecommendations in ref to prevent dependency issues
-  const fetchRecommendationsRef = useRef(fetchRecommendations);
-  useEffect(() => {
-    fetchRecommendationsRef.current = fetchRecommendations;
-  }, [fetchRecommendations]);
-
-  // Load more recommendations when offset changes (infinite scroll)
-  useEffect(() => {
-    // Prevent loading more data when refreshing or already loading
-    if (isRecommendationsRefreshingRef.current || isLoadingMoreRecommendationsRef.current) {
-      return;
-    }
-    
-    if (recommendationsOffset > 1 && fetchRecommendationsRef.current && hasMoreRecommendations) {
-      isLoadingMoreRecommendationsRef.current = true;
-      const outMemberId = user?.id?.toString() || 'dferg0001';
-      const platform = '1688'; // Always use 1688 for More to Love products
-      currentRecommendationsPageRef.current = recommendationsOffset;
-      fetchRecommendationsRef.current(locale || 'en', outMemberId, recommendationsOffset, 20, platform)
-        .finally(() => {
-          isLoadingMoreRecommendationsRef.current = false;
-        });
-    }
-  }, [recommendationsOffset, locale, user?.id, hasMoreRecommendations]);
-
-  // Track if initial fetch has been done (prevent real-time updates)
-  const hasInitialFetchRef = useRef<string | null>(null);
-
-  // Fetch recommendations only once on mount or when locale/user changes (not on every focus)
-  useEffect(() => {
-    if (locale && fetchRecommendationsRef.current) {
-      const outMemberId = isAuthenticated ? (user?.id?.toString() || 'dferg0001') : 'dferg0001';
-      const platform = '1688'; // Always use 1688 for More to Love products
-      const fetchKey = `${locale}-${outMemberId}-${platform}`;
-      
-      // Only fetch if this is the first time or locale/user changed
-      if (!hasInitialFetchRef.current || hasInitialFetchRef.current !== fetchKey) {
-        hasInitialFetchRef.current = fetchKey;
-        // Reset pagination state
-        setRecommendationsOffset(1);
-        setHasMoreRecommendations(true);
-        // Clear existing products BEFORE making the API call
-        setRecommendationsProducts([]);
-        // Fetch first page
-        currentRecommendationsPageRef.current = 1;
-        fetchRecommendationsRef.current(locale || 'en', outMemberId, 1, 20, platform);
-      }
-    }
-  }, [locale, user?.id, isAuthenticated, fetchRecommendations]);
-
-  // Fetch cart status when screen comes into focus (but debounced to prevent too frequent calls)
-  useFocusEffect(
-    useCallback(() => {
-      if (isAuthenticated) {
-        const now = Date.now();
-        const timeSinceLastFetch = now - lastFetchTimeRef.current;
-        
-        // Only fetch if enough time has passed since last fetch
-        if (timeSinceLastFetch >= FETCH_DEBOUNCE_MS) {
-          lastFetchTimeRef.current = now;
-          fetchCartRef.current();
-        }
-      } else {
-        // Reset cart when user is not authenticated
-        setCart({ items: [], totalAmount: 0, totalItems: 0, currency: 'CNY' });
-        setSelectedItems(new Set());
-        setAllSelected(false);
-        lastFetchTimeRef.current = 0;
-      }
-    }, [isAuthenticated]) // Removed fetchCart from dependencies
-  );
-
-
-  // Navigate to product detail helper
-  const navigateToProductDetail = async (
-    productId: string | number,
-    source: string = '1688',
-    country: string = 'en'
-  ) => {
-    (navigation as any).navigate('ProductDetail', {
-      productId: productId.toString(),
-      source: source,
-      country: country,
-    });
+    Alert.alert('확인', '선택한 상품을 삭제하시겠습니까?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: () => setCards((prev) => prev.filter((c) => !c.checked)),
+      },
+    ]);
   };
 
-  const renderHeader = () => (
-    <View style={styles.header}>
-      <Text style={styles.headerTitle}>
-        {t('cart.title')} { selectedCount > 0 ? `(${selectedCount})` : '(0)' }
-      </Text>
-      <TouchableOpacity 
-        style={styles.backButton}
-        // onPress={() => navigation.goBack()}
-      >
-        {/* <Ionicons name="ar row-back" size={24} color={COLORS.black} /> */}
-      </TouchableOpacity>
-      
-      
-      <View style={styles.headerActions}>
-        <TouchableOpacity style={styles.headerIcon} onPress={() => {navigation.navigate('Wishlist' as never)}}>
-          <HeartIcon width={24} height={24} color={COLORS.black} />
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.headerIcon} 
-          onPress={handleDeleteSelected}
-          disabled={cart.items.length === 0}
-        >
-          <DeleteIcon 
-            width={24} 
-            height={24} 
-            color={cart.items.length === 0 ? COLORS.gray[300] : COLORS.black} 
-          />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
-  const renderPlatformFilter = () => {
-    const platforms = ['1688', 'taobao'];
-    const counts: Record<string, number> = { All: cart.items.length };
-    platforms.forEach(p => {
-      counts[p] = cart.items.filter(item => (item.source || '1688').toLowerCase() === p.toLowerCase()).length;
-    });
-    const tabs = [
-      { label: `All (${counts.All})`, value: 'All' },
-      { label: `1688 (${counts['1688'] ?? 0})`, value: '1688' },
-      { label: `Taobao (${counts['taobao'] ?? 0})`, value: 'taobao' },
-    ];
-    return (
-      <View style={styles.platformFilterBar}>
-        {tabs.map(tab => (
-          <TouchableOpacity
-            key={tab.value}
-            style={[styles.platformFilterTab, selectedPlatformFilter === tab.value && styles.platformFilterTabActive]}
-            onPress={() => setSelectedPlatformFilter(tab.value)}
-          >
-            <Text style={[styles.platformFilterText, selectedPlatformFilter === tab.value && styles.platformFilterTextActive]}>
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    );
+  const handleDeleteOne = (id: string) => {
+    setCards((prev) => prev.filter((c) => c.id !== id));
   };
 
-  // Render delete confirmation modal
-  const renderDeleteModal = () => (
-    <Modal
-      visible={showDeleteModal}
-      transparent={true}
-      animationType="fade"
-      onRequestClose={cancelDelete}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContainer}>
-          <Text style={styles.modalTitle}>
-            {t('cart.confirmDelete')}
-          </Text>
-          
-          <View style={styles.modalButtons}>
-            <TouchableOpacity 
-              style={styles.modalCancelButton}
-              onPress={cancelDelete}
-            >
-              <Text style={styles.modalCancelText}>
-                {t('cart.cancel')}
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.modalConfirmButton}
-              onPress={confirmDelete}
-            >
-              <Text style={styles.modalConfirmText}>
-                {t('cart.confirm')}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-
-  const renderMoreToLoveItem = ({ item: product, index }: { item: Product; index: number }) => {
-    if (!product || !product.id) {
-      return null;
-    }
-    const handleLike = async () => {
-      if (!isAuthenticated) {
-        // showToast(t('home.pleaseLogin'));
-        return;
-      }
-      try {
-        await toggleWishlist(product);
-      } catch (error) {
-        // Error toggling wishlist
-      }
-    };
-
-    const handlePress = () => {
-      const productIdToUse = (product as any).offerId || product.id;
-      const source = '1688'; // Default source
-      navigateToProductDetail(productIdToUse, source, 'en');
-    };
-    
-    return (
-      <View style={styles.productCardWrapper}>
-        <ProductCard
-          key={`moretolove-${product.id || product.offerId || index}-${index}`}
-          product={product}
-          variant="moreToLove"
-          onPress={handlePress}
-          onLikePress={handleLike}
-          isLiked={isProductLiked(product)}
-          showLikeButton={true}
-          showDiscountBadge={true}
-          showRating={true}
-        />
-      </View>
-    );
+  const toggleCheck = (id: string) => {
+    setCards((prev) => prev.map((c) => (c.id === id ? { ...c, checked: !c.checked } : c)));
   };
 
-  const renderMoreToLove = () => {
-    const productsToDisplay = recommendationsProducts;
-    
-    // Show loading state if fetching
-    if (recommendationsLoading && productsToDisplay.length === 0) {
-      return (
-        <View style={styles.moreToLoveSection}>
-          <Text style={styles.sectionTitle}>{t('home.moreToLove')}</Text>
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color={COLORS.primary} />
-            <Text style={styles.loadingText}>{t('cart.loadingRecommendations')}</Text>
-          </View>
-        </View>
-      );
-    }
-    
-    // Show error state
-    if (recommendationsError && productsToDisplay.length === 0) {
-      return (
-        <View style={styles.moreToLoveSection}>
-          <Text style={styles.sectionTitle}>{t('home.moreToLove')}</Text>
-          <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>{t('cart.failedToLoadRecommendations')}</Text>
-          </View>
-        </View>
-      );
-    }
-    
-    // Don't show section if no products
-    if (!Array.isArray(productsToDisplay) || productsToDisplay.length === 0) {
-      return null;
-    }
-    
-    return (
-      <View style={styles.moreToLoveSection}>
-        <Text style={styles.sectionTitle}>{t('home.moreToLove')}</Text>
-        <FlatList
-          data={productsToDisplay}
-          renderItem={renderMoreToLoveItem}
-          keyExtractor={(item, index) => `moretolove-${item.id?.toString() || index}-${index}`}
-          numColumns={2}
-          scrollEnabled={false}
-          nestedScrollEnabled={true}
-          columnWrapperStyle={styles.productsGridRow}
-          removeClippedSubviews={true}
-          maxToRenderPerBatch={10}
-          windowSize={5}
-          initialNumToRender={10}
-          updateCellsBatchingPeriod={50}
-          onEndReached={() => {
-            // For nested FlatList with scrollEnabled={false}, onEndReached may not fire reliably
-            // Rely on parent ScrollView scroll detection instead
-            // This is kept as a backup but parent scroll detection is primary
-          }}
-          onEndReachedThreshold={0.5}
-          ListFooterComponent={() => {
-            if (isLoadingMoreRecommendationsRef.current && productsToDisplay.length > 0) {
-              return (
-                <View style={styles.loadingMoreContainer}>
-                  <ActivityIndicator size="small" color={COLORS.primary} />
-                  <Text style={styles.loadingMoreText}>{t('cart.loadingMore')}</Text>
-                </View>
-              );
-            }
-            if (!hasMoreRecommendations && productsToDisplay.length > 0) {
-              return (
-                <View style={styles.endOfListContainer}>
-                  <Text style={styles.endOfListText}>{t('cart.noMoreProducts')}</Text>
-                </View>
-              );
-            }
-            return null;
-          }}
-        />
-      </View>
-    );
-  };
-  
-  // If not authenticated, show login prompt
-  if (!isAuthenticated) {
-    return (
-      <SafeAreaView style={styles.container}>
-        {renderHeader()}
-        {renderDeleteModal()}
-        <ScrollView 
-          style={styles.scrollView} 
-          showsVerticalScrollIndicator={false}
-          onScroll={(event) => {
-            const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-            
-            // Check if user has scrolled near the bottom (within 200px)
-            const scrollPosition = contentOffset.y;
-            const scrollHeight = contentSize.height;
-            const screenHeight = layoutMeasurement.height;
-            const distanceFromBottom = scrollHeight - scrollPosition - screenHeight;
-            
-            // Check if user is near bottom to trigger infinite scroll for "More to Love"
-            if (distanceFromBottom < 200 && hasMoreRecommendations && !recommendationsLoading && !isRecommendationsRefreshingRef.current && !isLoadingMoreRecommendationsRef.current) {
-              setRecommendationsOffset(prev => prev + 1);
-            }
-          }}
-          scrollEventThrottle={400}
-        >
-          <View style={styles.emptyCart}>
-            <Image 
-              source={require('../../assets/icons/cart_empty.png')} 
-              style={styles.emptyCartImage}
-            />
-            <Text style={styles.welcomeText}>{t('cart.welcome')}</Text>
-            <Text style={styles.loginPrompt}>
-              {t('cart.loginPrompt')}
-            </Text>
-            {/* <Text style={styles.emptySubtitle}>
-              {t('cart.emptySubtitle')}
-            </Text> */}
-            <TouchableOpacity
-              style={[styles.continueShoppingButton, {backgroundColor: COLORS.text.red, marginBottom: SPACING.sm}]}
-              onPress={() => navigation.navigate('Auth')}
-            >
-              <Text style={styles.continueShoppingButtonText}>{t('cart.login')}</Text>
-            </TouchableOpacity>
-          </View>
-          {renderMoreToLove()}
-          
-          <View style={styles.bottomSpace} />
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
-  // Calculate totals from cart items
-  const selectedCartItems = cart.items.filter(item => selectedItems.has(item.id));
-  const totalPrice = selectedCartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const selectedCount = selectedCartItems.length;
-
-  const handleSelectItem = (itemId: string) => {
-    const newSelected = new Set(selectedItems);
-    if (newSelected.has(itemId)) {
-      newSelected.delete(itemId);
-    } else {
-      newSelected.add(itemId);
-    }
-    setSelectedItems(newSelected);
-    
-    // Update all selected state
-    const allItemIds = cart.items.map(item => item.id);
-    setAllSelected(newSelected.size === allItemIds.length && allItemIds.length > 0);
-  };
-
-  const handleSelectAll = () => {
-    if (allSelected) {
-      setSelectedItems(new Set());
-      setAllSelected(false);
-    } else {
-      const allItemIds = cart.items.map(item => item.id);
-      setSelectedItems(new Set(allItemIds));
-      setAllSelected(true);
-    }
-  };
-
-  const handleQuantityChange = async (itemId: string, increment: boolean) => {
-    const item = cart.items.find(i => i.id === itemId);
-    if (!item) return;
-    
-    const minOrderQuantity = (item as any).minOrderQuantity || 1;
-    
-    let newQuantity: number;
-    if (increment) {
-      newQuantity = item.quantity + 1;
-    } else {
-      // When reducing, check if new quantity is still >= minOrderQuantity
-      const reducedQuantity = item.quantity - 1;
-      if (reducedQuantity < minOrderQuantity) {
-        showToast(
-          t('cart.minOrderQuantity') + minOrderQuantity,
-          'warning'
-        );
-        return;
-      }
-      newQuantity = reducedQuantity;
-    }
-    
-    // Update quantity locally only - no API call
-    setCart(prevCart => ({
-      ...prevCart,
-      items: prevCart.items.map(i => 
-        i.id === itemId ? { ...i, quantity: newQuantity } : i
+  const toggleExpand = (id: string) => {
+    setCards((prev) =>
+      prev.map((c) =>
+        c.id === id ? { ...c, expanded: !c.expanded } : { ...c, expanded: false },
       ),
-    }));
-  };
-
-  const handleRemoveItem = async (itemId: string) => {
-    const item = cart.items.find(i => i.id === itemId);
-    if (!item) return;
-    
-    const cartItemId = (item as any)._id || itemId;
-    if (!cartItemId) {
-      showToast(t('cart.invalidCartItem'), 'error');
-      return;
-    }
-    
-    deleteCartItem(cartItemId);
-  };
-
-  const handleDeleteSelected = async () => {
-    // Show confirmation modal instead of deleting immediately
-    setShowDeleteModal(true);
-  };
-
-  const confirmDelete = async () => {
-    setShowDeleteModal(false);
-    
-    if (selectedItems.size === 0) {
-      // If no items selected, clear entire cart
-      if (cart.items.length > 0) {
-        clearCart();
-      }
-      return;
-    }
-
-    // Delete selected items in batch
-    const selectedCartItems = cart.items.filter(item => selectedItems.has(item.id));
-    const itemIds = selectedCartItems.map(item => (item as any)._id || item.id).filter(id => id);
-    
-    if (itemIds.length > 0) {
-      deleteCartBatch(itemIds);
-    } else {
-      showToast(t('cart.noValidItems'), 'warning');
-    }
-  };
-
-  const cancelDelete = () => {
-    setShowDeleteModal(false);
-  };
-
-
-  // Group cart items by source and companyName
-  const groupCartItemsBySourceAndCompany = (items: any[]) => {
-    const grouped: { [key: string]: any[] } = {};
-    
-    items.forEach((item) => {
-      const source = item.source || '1688';
-      const companyName = item.companyName || '';
-      const key = `${source}_${companyName}`;
-      
-      if (!grouped[key]) {
-        grouped[key] = [];
-      }
-      grouped[key].push(item);
-    });
-    
-    // Convert to array format with source and companyName
-    return Object.keys(grouped).map((key) => {
-      const [source, ...companyParts] = key.split('_');
-      const companyName = companyParts.join('_');
-      return {
-        source,
-        companyName,
-        items: grouped[key],
-      };
-    });
-  };
-
-  const renderCartItem = (item: any, uniqueKey?: string) => {
-    // Get variations from item.variant array
-    const variations = (item as any).variant || [];
-    // Show only values, not "Product Specification" text
-    const variationText = variations.map((v: any) => v.value).filter(Boolean).join(', ');
-    
-    // Get image from item.image
-    const itemImage = item.image || '';
-    
-    // Get source from item for navigation
-    const itemSource = item.source || '1688';
-    
-    // Generate unique key
-    const itemKey = uniqueKey || `cart-item-${item.id || item._id || item.offerId || Math.random()}`;
-    
-    // Debug logging for rendering
-    console.log('🎨 CartScreen: Rendering cart item:', {
-      itemId: item.id,
-      itemKey: itemKey,
-      itemName: item.name,
-      itemImage: itemImage,
-      hasImage: !!itemImage,
-      hasName: !!item.name,
-      variationText,
-      price: item.price,
-    });
-    
-    return (
-      <View style={styles.cartItem} key={itemKey}>
-        {/* <TouchableOpacity 
-          style={styles.removeButton}
-          onPress={() => handleRemoveItem(item.id)}
-        >
-          <Icon name="close" size={20} color={COLORS.gray[400]} />
-        </TouchableOpacity> */}
-        
-        <View style={styles.itemContent}>
-          <TouchableOpacity 
-            style={styles.itemCheckbox}
-            onPress={() => handleSelectItem(item.id)}
-          >
-            <View style={[
-              styles.checkbox,
-              selectedItems.has(item.id) && styles.checkboxSelected
-            ]}>
-              {selectedItems.has(item.id) && (
-                <ThickCheckIcon size={12} color={COLORS.white} />
-              )}
-            </View>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            onPress={() => {
-              if (item.offerId) {
-                navigateToProductDetail(item.offerId, itemSource, locale);
-              }
-            }}
-          >
-            <Image 
-              source={{ 
-                uri: itemImage || 'https://via.placeholder.com/80x80/f0f0f0/999999?text=No+Image'
-              }}
-              style={styles.productImage}
-              defaultSource={{ uri: 'https://via.placeholder.com/80x80/f0f0f0/999999?text=Loading' }}
-              onError={(error) => {
-                console.log('🖼️ CartScreen: Image failed to load:', {
-                  itemId: item.id,
-                  imageUrl: itemImage,
-                  error: error.nativeEvent.error,
-                });
-              }}
-              onLoad={() => {
-                console.log('✅ CartScreen: Image loaded successfully:', itemImage);
-              }}
-              onLoadStart={() => {
-                console.log('🔄 CartScreen: Image loading started:', itemImage);
-              }}
-            />
-          </TouchableOpacity>
-          
-          <View style={styles.productInfo}>
-            <TouchableOpacity
-              onPress={() => {
-                if (item.offerId) {
-                  navigateToProductDetail(item.offerId, itemSource, locale);
-                }
-              }}
-            >
-              <Text style={styles.productName} numberOfLines={1}>
-                {(() => {
-                  const displayName = item.name || t('cart.unknownItem');
-                  console.log('📝 CartScreen: Rendering product name:', {
-                    itemId: item.id,
-                    itemName: item.name,
-                    displayName: displayName,
-                    hasName: !!item.name,
-                    fallbackText: t('cart.unknownItem'),
-                  });
-                  return displayName;
-                })()}
-              </Text>
-            </TouchableOpacity>
-            {variationText && (
-              <Text style={styles.productVariant} numberOfLines={1}>{variationText}</Text>
-            )}
-            
-            <View style={styles.priceRow}>
-              <Text style={styles.currentPrice}>{formatPriceKRW(item.price)}</Text>
-              <View style={styles.quantityControls}>
-                <TouchableOpacity 
-                  style={styles.quantityButton}
-                  onPress={() => handleQuantityChange(item.id, false)}
-                >
-                  <MinusIcon width={16} height={16} color={COLORS.black} />
-                </TouchableOpacity>
-                
-                <Text style={styles.quantityText}>{item.quantity}</Text>
-                
-                <TouchableOpacity 
-                  style={styles.quantityButton}
-                  onPress={() => handleQuantityChange(item.id, true)}
-                >
-                  <PlusIcon width={16} height={16} color={COLORS.black} />
-                </TouchableOpacity>
-              </View>
-            </View>
-            
-          </View>
-        </View>
-      </View>
     );
   };
 
-  // Check if all items in a group are selected
-  const isGroupSelected = (groupItems: any[]) => {
-    if (groupItems.length === 0) return false;
-    return groupItems.every(item => selectedItems.has(item.id));
+  const collapseAll = () => {
+    setCards((prev) => prev.map((c) => (c.expanded ? { ...c, expanded: false } : c)));
   };
 
-  // Handle group selection/deselection
-  const handleGroupSelect = (groupItems: any[]) => {
-    const allSelected = isGroupSelected(groupItems);
-    const newSelected = new Set(selectedItems);
-    
-    if (allSelected) {
-      // Deselect all items in the group
-      groupItems.forEach(item => newSelected.delete(item.id));
-    } else {
-      // Select all items in the group
-      groupItems.forEach(item => newSelected.add(item.id));
+  const openServiceModal = () => {
+    setPendingServices(extraServices);
+    setShowServiceModal(true);
+  };
+
+  const closeServiceModal = () => {
+    setShowServiceModal(false);
+  };
+
+  const confirmServiceModal = () => {
+    setExtraServices(pendingServices);
+    setShowServiceModal(false);
+  };
+
+  const togglePendingService = (svc: ExtraService) => {
+    setDetailService(svc);
+    setPendingServices((prev) => {
+      const exists = prev.some((s) => s.id === svc.id);
+      return exists ? prev.filter((s) => s.id !== svc.id) : [...prev, svc];
+    });
+  };
+
+  const openLabelModal = (cardId: string) => {
+    setLabelModalCardId(cardId);
+  };
+
+  const closeLabelModal = () => {
+    setLabelModalCardId(null);
+  };
+
+  const saveLabel = () => {
+    setLabelModalCardId(null);
+  };
+
+  const pickLabelFile = async () => {
+    try {
+      const granted = await requestPhotoLibraryPermission();
+      if (!granted) {
+        Alert.alert('권한', '사진 접근 권한이 필요합니다.');
+        return;
+      }
+      const options: ImageLibraryOptions = { mediaType: 'photo' as MediaType, quality: 0.7 };
+      launchImageLibrary(options, (res: ImagePickerResponse) => {
+        if (res.didCancel || res.errorCode) return;
+        const uri = res.assets?.[0]?.uri;
+        if (uri) setLabelFileUri(uri);
+      });
+    } catch {
+      Alert.alert('오류', '갤러리를 열지 못했습니다.');
     }
-    
-    setSelectedItems(newSelected);
-    
-    // Update all selected state
-    const allItemIds = cart.items.map(item => item.id);
-    setAllSelected(newSelected.size === allItemIds.length && allItemIds.length > 0);
   };
 
-  const renderGroupedCartItems = () => {
-    const allItems = selectedPlatformFilter === 'All'
-      ? cart.items
-      : cart.items.filter(item => (item.source || '1688').toLowerCase() === selectedPlatformFilter.toLowerCase());
-    const groupedItems = groupCartItemsBySourceAndCompany(allItems);
-    
-    return groupedItems.map((group, groupIndex) => {
-      const groupSelected = isGroupSelected(group.items);
-      
-      return (
-        <View key={`group-${group.source}-${group.companyName}-${groupIndex}`} style={styles.groupContainer}>
-          <View style={styles.groupHeader}>
-            <TouchableOpacity 
-              style={styles.groupCheckbox}
-              onPress={() => handleGroupSelect(group.items)}
-            >
-              <View style={[
-                styles.checkbox,
-                groupSelected && styles.checkboxSelected
-              ]}>
-                {groupSelected && (
-                  <ThickCheckIcon size={12} color={COLORS.white} />
-                )}
-              </View>
-            </TouchableOpacity>
-            <Text style={styles.groupHeaderText}>
-              {group.companyName}
+  const pickModalPhoto = async () => {
+    try {
+      const granted = await requestPhotoLibraryPermission();
+      if (!granted) {
+        Alert.alert('권한', '사진 접근 권한이 필요합니다.');
+        return;
+      }
+      const options: ImageLibraryOptions = { mediaType: 'photo' as MediaType, quality: 0.7 };
+      launchImageLibrary(options, (res: ImagePickerResponse) => {
+        if (res.didCancel || res.errorCode) return;
+        const uri = res.assets?.[0]?.uri;
+        if (uri) setModalPhotoUri(uri);
+      });
+    } catch {
+      Alert.alert('오류', '갤러리를 열지 못했습니다.');
+    }
+  };
+
+  const changeQty = (id: string, delta: number) => {
+    setCards((prev) =>
+      prev.map((c) =>
+        c.id === id ? { ...c, quantity: Math.max(1, c.quantity + delta) } : c,
+      ),
+    );
+  };
+
+  const updateUnitPrice = (id: string, text: string) => {
+    const clean = text.replace(/[^0-9.]/g, '');
+    const value = clean ? parseFloat(clean) : 0;
+    setCards((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, unitPrice: isNaN(value) ? 0 : value } : c)),
+    );
+  };
+
+  const pickPhoto = async (id: string) => {
+    try {
+      const granted = await requestPhotoLibraryPermission();
+      if (!granted) {
+        Alert.alert('권한', '사진 접근 권한이 필요합니다.');
+        return;
+      }
+      const options: ImageLibraryOptions = { mediaType: 'photo' as MediaType, quality: 0.7 };
+      launchImageLibrary(options, (res: ImagePickerResponse) => {
+        if (res.didCancel || res.errorCode) return;
+        const uri = res.assets?.[0]?.uri;
+        if (uri) {
+          setCards((prev) => prev.map((c) => (c.id === id ? { ...c, photoUri: uri } : c)));
+        }
+      });
+    } catch {
+      Alert.alert('오류', '갤러리를 열지 못했습니다.');
+    }
+  };
+
+  const updateRemarks = (id: string, text: string) => {
+    setCards((prev) => prev.map((c) => (c.id === id ? { ...c, remarks: text } : c)));
+  };
+
+  const toggleExtraService = (svc: ExtraService) => {
+    setExtraServices((prev) => {
+      const exists = prev.some((s) => s.id === svc.id);
+      return exists ? prev.filter((s) => s.id !== svc.id) : [...prev, svc];
+    });
+  };
+
+  const filteredCards = cards.filter((c) => {
+    if (searchQuery && !c.productName.toLowerCase().includes(searchQuery.toLowerCase())) {
+      return false;
+    }
+    if (selectedPeriod > 0 && now - c.addedAt > selectedPeriod) {
+      return false;
+    }
+    return true;
+  });
+
+  const totalQty = filteredCards.reduce((s, c) => s + c.quantity, 0);
+  const grandTotal = filteredCards.reduce((s, c) => s + c.quantity * c.unitPrice, 0);
+
+  const renderCard = (card: CartCard) => {
+    const subtotal = card.quantity * card.unitPrice;
+
+    return (
+      <TouchableOpacity
+        key={card.id}
+        style={styles.card}
+        activeOpacity={1}
+        onPress={() => {
+          if (card.expanded) collapseAll();
+        }}
+      >
+        {/* Accent strip */}
+        <View style={styles.cardAccent} />
+
+        {/* TOP — company name + checkbox + photo button */}
+        <View style={styles.cardTop}>
+          <TouchableOpacity style={styles.checkBtn} onPress={() => toggleCheck(card.id)}>
+            <View style={[styles.checkBox, card.checked && styles.checkBoxChecked]}>
+              {card.checked && <Icon name="checkmark" size={12} color={COLORS.white} />}
+            </View>
+          </TouchableOpacity>
+          <View style={styles.companyWrap}>
+            <Text style={styles.indexBadge}>{card.index}</Text>
+            <Text style={styles.companyName} numberOfLines={1}>
+              {card.companyName.length > 10
+                ? `${card.companyName.slice(0, 10)}...`
+                : card.companyName}
             </Text>
           </View>
-          {group.items.map((item, itemIndex) => renderCartItem(item, `${groupIndex}-${itemIndex}`))}
-        </View>
-      );
-    });
-  };
-
-
-  const renderBottomBar = () => (
-    <View style={styles.bottomBar}>
-      <View style={styles.bottomContent}>
-        <TouchableOpacity 
-          style={styles.allCheckbox}
-          onPress={handleSelectAll}
-        >
-          <View style={[
-            styles.checkbox,
-            allSelected && styles.checkboxSelected
-          ]}>
-            {allSelected && (
-              <ThickCheckIcon size={12} color={COLORS.white} />
+          <TouchableOpacity style={styles.photoBtn} onPress={() => pickPhoto(card.id)}>
+            {card.photoUri ? (
+              <Image source={{ uri: card.photoUri }} style={styles.photoPreview} />
+            ) : (
+              <Icon name="camera-outline" size={14} color={COLORS.primary} />
             )}
-          </View>
-          <Text style={styles.allText}>{t('cart.all')}</Text>
-        </TouchableOpacity>
-        <View style={{flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'flex-end'}}>
-          <Text style={styles.totalPrice}>{formatPriceKRW(totalPrice)}</Text>
-          <TouchableOpacity 
-          style={styles.payButton}
-          onPress={() => {
-            if (selectedCount === 0) {
-              showToast(t('cart.selectItems'), 'warning');
-              return;
-            }
-
-            // Build quantities object with selected items only
-            const quantities: { [cartItemId: string]: number } = {};
-            selectedCartItems.forEach(item => {
-              const cartItemId = (item as any)._id;
-              if (cartItemId) {
-                quantities[cartItemId] = item.quantity;
-              }
-            });
-
-            // Call checkout API with selected items' quantities
-            checkoutCart(quantities);
-          }}
-          disabled={isCheckingOut || selectedCount === 0}
-        >
-          <Text style={styles.payButtonText}>
-            {isCheckingOut ? t('cart.processing') : `${t('cart.pay')} (${selectedCount})`}
-          </Text>
           </TouchableOpacity>
         </View>
-      </View>
-    </View>
-  );
 
-  // Show loading only on initial load (when cart is empty and loading)
-  // Don't show loading during updates/deletes
-  const isInitialLoad = cartLoading && (!cart.items || cart.items.length === 0);
-  
-  if (isInitialLoad) {
-    return (
-      <SafeAreaView style={styles.container}>
-        {renderHeader()}
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={{ marginTop: SPACING.md, color: COLORS.text.secondary }}>{t('cart.loading')}</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!cart.items || cart.items.length === 0) {
-    return (
-      <SafeAreaView style={styles.container}>
-        {renderHeader()}
-        {renderDeleteModal()}
-        <ScrollView 
-          style={styles.scrollView} 
-          showsVerticalScrollIndicator={false}
-          onScroll={(event) => {
-            const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-            
-            // Check if user has scrolled near the bottom (within 200px)
-            const scrollPosition = contentOffset.y;
-            const scrollHeight = contentSize.height;
-            const screenHeight = layoutMeasurement.height;
-            const distanceFromBottom = scrollHeight - scrollPosition - screenHeight;
-            
-            // Check if user is near bottom to trigger infinite scroll for "More to Love"
-            if (distanceFromBottom < 200 && hasMoreRecommendations && !recommendationsLoading && !isRecommendationsRefreshingRef.current && !isLoadingMoreRecommendationsRef.current) {
-              setRecommendationsOffset(prev => prev + 1);
-            }
-          }}
-          scrollEventThrottle={400}
-        >
-          <View style={styles.emptyCart}>
-            <Image 
-              source={require('../../assets/icons/cart_empty.png')} 
-              style={styles.emptyCartImage}
-            />
-            <Text style={styles.emptyTitle}>{t('cart.emptyTitle')}</Text>
-            {/* <Text style={styles.emptySubtitle}>
-              {t('cart.emptySubtitle')}
-            </Text> */}
-            {!isAuthenticated && (
-              <TouchableOpacity
-                style={[styles.continueShoppingButton, {backgroundColor: COLORS.text.red, marginBottom: SPACING.sm}]}
-                onPress={() => navigation.navigate('Auth')}
-              >
-                <Text style={styles.continueShoppingButtonText}>{t('cart.login')}</Text>
-              </TouchableOpacity>
+        {/* MIDDLE — product row */}
+        <View style={styles.cardMiddle}>
+          {/* Left: image + info */}
+          <View style={styles.middleLeft}>
+            {card.productImage ? (
+              <Image source={{ uri: card.productImage }} style={styles.productImage} />
+            ) : (
+              <View style={[styles.productImage, styles.productImagePlaceholder]}>
+                <Icon name="cube-outline" size={22} color={COLORS.gray[400]} />
+              </View>
             )}
+            <View style={styles.productInfo}>
+              <View style={styles.productNameBox}>
+                <Text style={styles.productName} numberOfLines={1}>
+                  {card.productName}
+                </Text>
+                <Icon name="chevron-down" size={12} color={COLORS.gray[500]} />
+              </View>
+              <View style={styles.metaRow}>
+                <Text style={styles.metaTag}>색상 {card.color}</Text>
+                <Text style={styles.metaTag}>{card.size}</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Center: qty + unit price */}
+          <View style={styles.middleCenter}>
+            <View style={styles.qtyRow}>
+              <TouchableOpacity style={styles.qtyBtn} onPress={() => changeQty(card.id, -1)}>
+                <Icon name="remove" size={14} color={COLORS.white} />
+              </TouchableOpacity>
+              <Text style={styles.qtyValue}>{card.quantity}</Text>
+              <TouchableOpacity style={styles.qtyBtn} onPress={() => changeQty(card.id, 1)}>
+                <Icon name="add" size={14} color={COLORS.white} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.unitPriceBox}>
+              <Text style={styles.yenMark}>¥</Text>
+              <TextInput
+                style={styles.unitPriceInput}
+                keyboardType="numeric"
+                value={String(card.unitPrice)}
+                onChangeText={(t) => updateUnitPrice(card.id, t)}
+              />
+            </View>
+          </View>
+
+          {/* Right: subtotal (상품금액) + View More */}
+          <View style={styles.middleRight}>
+            <Text style={styles.rightLabel}>상품금액</Text>
+            <Text style={styles.rightValue}>¥{subtotal.toFixed(2)}</Text>
             <TouchableOpacity
-              style={styles.continueShoppingButton}
-              onPress={() => navigation.goBack()}
+              style={styles.viewMoreBtn}
+              onPress={() => toggleExpand(card.id)}
             >
-              <Text style={styles.continueShoppingButtonText}>{t('cart.continueShopping')}</Text>
+              <Text style={styles.viewMoreText}>
+                {card.expanded ? '접기' : '더보기'}
+              </Text>
+              <Icon
+                name={card.expanded ? 'chevron-up' : 'chevron-down'}
+                size={10}
+                color={COLORS.primary}
+              />
             </TouchableOpacity>
           </View>
-          <View style={styles.helpCenter} >
-            <View style={styles.helpCenterItem} >
-              <View style={styles.helpCenterItemHeader} >
-                <PackageIcon />
-                <Text style={styles.helpCenterTitle}>{t('cart.helpCenter')}</Text>
-              </View>
-              <Text style={styles.helpCenterSubTitle}>{t('cart.helpCenterSubTitle')}</Text>
-            </View>
-            <View style={styles.helpCenterItem} >
-              <View style={styles.helpCenterItemHeader} >
-                <PrivacyIcon />
-                <Text style={styles.helpCenterTitle}>{t('cart.helpCenter2')}</Text>
-              </View>
-              <Text style={styles.helpCenterSubTitle}>{t('cart.helpCenterSubTitle2')}</Text>
+        </View>
+
+        {/* BOTTOM — hidden remarks area */}
+        {card.expanded && (
+          <View style={styles.cardBottom}>
+            <Text style={styles.remarksLabel}>비고</Text>
+            <TextInput
+              style={styles.remarksInput}
+              multiline
+              maxLength={200}
+              placeholder="비고 입력"
+              placeholderTextColor={COLORS.gray[400]}
+              value={card.remarks}
+              onChangeText={(t) => updateRemarks(card.id, t)}
+            />
+            <Text style={styles.remarksCounter}>{card.remarks.length}/200</Text>
+            <View style={styles.bottomActions}>
+              <TouchableOpacity
+                style={styles.labelRowBtn}
+                onPress={() => openLabelModal(card.id)}
+              >
+                <Icon name="pricetag-outline" size={12} color={COLORS.white} />
+                <Text style={styles.labelRowText}>라벨</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.deleteRowBtn}
+                onPress={() => handleDeleteOne(card.id)}
+              >
+                <Icon name="trash-outline" size={12} color={COLORS.primary} />
+                <Text style={styles.deleteRowText}>삭제</Text>
+              </TouchableOpacity>
             </View>
           </View>
-          
-          {renderMoreToLove()}
-          
-          <View style={styles.bottomSpace} />
-        </ScrollView>
-      </SafeAreaView>
+        )}
+      </TouchableOpacity>
     );
-  }
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      {renderHeader()}
-      {renderPlatformFilter()}
-      {renderDeleteModal()}
-      
-      <ScrollView 
-        style={styles.scrollView} 
-        showsVerticalScrollIndicator={false}
-        onScroll={(event) => {
-          const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-          
-            // Check if user has scrolled near the bottom (within 200px)
-          const scrollPosition = contentOffset.y;
-          const scrollHeight = contentSize.height;
-          const screenHeight = layoutMeasurement.height;
-          const distanceFromBottom = scrollHeight - scrollPosition - screenHeight;
-          
-          // Check if user is near bottom to trigger infinite scroll for "More to Love"
-          if (distanceFromBottom < 200 && hasMoreRecommendations && !recommendationsLoading && !isRecommendationsRefreshingRef.current && !isLoadingMoreRecommendationsRef.current) {
-            // Trigger loading more recommendations
-            setRecommendationsOffset(prev => prev + 1);
-            }
-        }}
-        scrollEventThrottle={400}
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {/* HEADER */}
+      <View style={styles.header}>
+        <View style={styles.searchBar}>
+          <Icon name="search" size={14} color={COLORS.gray[500]} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="검색"
+            placeholderTextColor={COLORS.gray[400]}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+        </View>
+
+        <View style={styles.periodWrap}>
+          <TouchableOpacity
+            style={styles.periodBtn}
+            onPress={() => setShowPeriodMenu((v) => !v)}
+          >
+            <Icon name="calendar-outline" size={12} color={COLORS.text.primary} />
+            <Text style={styles.periodText} numberOfLines={1}>
+              기간 선택 · {formatElapsed(elapsed)}
+            </Text>
+            <Icon name="chevron-down" size={12} color={COLORS.text.primary} />
+          </TouchableOpacity>
+          {showPeriodMenu && (
+            <View style={styles.periodMenu}>
+              {TIME_PERIODS.map((p) => (
+                <TouchableOpacity
+                  key={p.value}
+                  style={styles.periodMenuItem}
+                  onPress={() => {
+                    setSelectedPeriod(p.value);
+                    setShowPeriodMenu(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.periodMenuText,
+                      selectedPeriod === p.value && styles.periodMenuTextActive,
+                    ]}
+                  >
+                    {p.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+
+        <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteChecked}>
+          <Icon name="trash-outline" size={14} color={COLORS.white} />
+        </TouchableOpacity>
+      </View>
+
+      {/* 부가서비스 bar — directly under the header */}
+      <View style={styles.extraBar}>
+        <Text style={styles.extraLabel}>부가서비스</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.extraChipsScroll}
+          contentContainerStyle={styles.extraChipsContent}
+        >
+          {extraServices.length === 0 ? (
+            <Text style={styles.extraPlaceholder}>선택된 서비스가 없습니다</Text>
+          ) : (
+            extraServices.map((s) => (
+              <View key={s.id} style={styles.extraChip}>
+                <Text style={styles.extraChipText}>{s.name}</Text>
+                <TouchableOpacity onPress={() => toggleExtraService(s)}>
+                  <Icon name="close" size={10} color={COLORS.primary} />
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
+        </ScrollView>
+        <TouchableOpacity style={styles.extraSelectBtn} onPress={openServiceModal}>
+          <Icon name="add" size={12} color={COLORS.white} />
+          <Text style={styles.extraSelectBtnText}>부가서비스선택</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* BODY — see-through */}
+      <View style={styles.body}>
+        <View style={styles.tabsRow}>
+          <TouchableOpacity
+            style={[styles.tabBtn, activeTab === 'past' && styles.tabBtnActive]}
+            onPress={() => setActiveTab('past')}
+          >
+            <Text style={[styles.tabText, activeTab === 'past' && styles.tabTextActive]}>
+              과거주문
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabBtn, activeTab === 'bundles' && styles.tabBtnActive]}
+            onPress={() => setActiveTab('bundles')}
+          >
+            <Text style={[styles.tabText, activeTab === 'bundles' && styles.tabTextActive]}>
+              세트묶음
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabBtn, activeTab === 'offline' && styles.tabBtnActive]}
+            onPress={() => setActiveTab('offline')}
+          >
+            <Text style={[styles.tabText, activeTab === 'offline' && styles.tabTextActive]}>
+              오프라인상품
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          style={styles.cardsList}
+          contentContainerStyle={styles.cardsContent}
+          showsVerticalScrollIndicator={false}
+          onScrollBeginDrag={() => collapseAll()}
+        >
+          {filteredCards.length === 0 ? (
+            <View style={styles.emptyWrap}>
+              <Text style={styles.emptyText}>상품이 없습니다</Text>
+            </View>
+          ) : (
+            filteredCards.map(renderCard)
+          )}
+        </ScrollView>
+
+        <View style={styles.summaryBar}>
+          <Text style={styles.summaryText}>총수량 {totalQty}</Text>
+          <Text style={styles.summaryTotal}>합계 ¥{grandTotal.toFixed(2)}</Text>
+          <TouchableOpacity style={styles.orderBtn} onPress={() => setShowOrderModal(true)}>
+            <Text style={styles.orderBtnText}>바로주문</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* 발주정보 작성 및 확인 MODAL */}
+      <Modal
+        visible={showOrderModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowOrderModal(false)}
       >
-        {renderGroupedCartItems()}
-        
-        {renderMoreToLove()}
-        
-        <View style={styles.bottomSpace} />
-      </ScrollView>
-      
-      {renderBottomBar()}
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>발주정보 작성 및 확인</Text>
+              <TouchableOpacity onPress={() => setShowOrderModal(false)}>
+                <Icon name="close" size={22} color={COLORS.text.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={styles.modalBody}
+              contentContainerStyle={styles.modalBodyContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* 예치금결제 */}
+              <View style={styles.orderSection}>
+                <View style={styles.orderSectionHead}>
+                  <View style={styles.orderSectionBar} />
+                  <Text style={styles.orderSectionTitle}>예치금결제</Text>
+                </View>
+
+                <View style={styles.orderFieldRow}>
+                  <Text style={styles.orderFieldLabel}>구매결제</Text>
+                  <View style={styles.pillGroup}>
+                    <TouchableOpacity
+                      style={[styles.pill, purchasePayment === 'manual' && styles.pillActive]}
+                      onPress={() => setPurchasePayment('manual')}
+                    >
+                      <Text style={[styles.pillText, purchasePayment === 'manual' && styles.pillTextActive]}>수동</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.pill, purchasePayment === 'auto' && styles.pillActive]}
+                      onPress={() => setPurchasePayment('auto')}
+                    >
+                      <Text style={[styles.pillText, purchasePayment === 'auto' && styles.pillTextActive]}>자동</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity onPress={() => setShowPaymentTooltip((v) => !v)} style={styles.helpBtn}>
+                    <Icon name="help-circle-outline" size={16} color={COLORS.gray[500]} />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.orderFieldRow}>
+                  <Text style={styles.orderFieldLabel}>배송결제</Text>
+                  <View style={styles.pillGroup}>
+                    <TouchableOpacity
+                      style={[styles.pill, shippingPayment === 'manual' && styles.pillActive]}
+                      onPress={() => setShippingPayment('manual')}
+                    >
+                      <Text style={[styles.pillText, shippingPayment === 'manual' && styles.pillTextActive]}>수동</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.pill, shippingPayment === 'auto' && styles.pillActive]}
+                      onPress={() => setShippingPayment('auto')}
+                    >
+                      <Text style={[styles.pillText, shippingPayment === 'auto' && styles.pillTextActive]}>자동</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity onPress={() => setShowPaymentTooltip((v) => !v)} style={styles.helpBtn}>
+                    <Icon name="help-circle-outline" size={16} color={COLORS.gray[500]} />
+                  </TouchableOpacity>
+                </View>
+
+                {showPaymentTooltip && (
+                  <View style={styles.tooltipBox}>
+                    <Text style={styles.tooltipText}>
+                      자동결제 안내: 견적 제출 후 예치금에서 자동으로 차감되오니, 확인 후 선택해 주시기 바랍니다.
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* 기본정보 */}
+              <View style={styles.orderSection}>
+                <View style={styles.orderSectionHead}>
+                  <View style={styles.orderSectionBar} />
+                  <Text style={styles.orderSectionTitle}>기본정보</Text>
+                </View>
+
+                <View style={styles.orderFieldCol}>
+                  <Text style={styles.orderFieldLabel}>물류센터</Text>
+                  <View style={styles.pillGroup}>
+                    {(['위해', '광저우', '이우'] as const).map((v) => (
+                      <TouchableOpacity
+                        key={v}
+                        style={[styles.pill, logisticsCenter === v && styles.pillActive]}
+                        onPress={() => setLogisticsCenter(v)}
+                      >
+                        <Text style={[styles.pillText, logisticsCenter === v && styles.pillTextActive]}>{v}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.orderFieldCol}>
+                  <Text style={styles.orderFieldLabel}>신청구분</Text>
+                  <View style={styles.pillGroup}>
+                    {(['해운배송', '항공배송', '로켓배송'] as const).map((v) => (
+                      <TouchableOpacity
+                        key={v}
+                        style={[styles.pill, applicationType === v && styles.pillActive]}
+                        onPress={() => setApplicationType(v)}
+                      >
+                        <Text style={[styles.pillText, applicationType === v && styles.pillTextActive]}>{v}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.orderFieldCol}>
+                  <Text style={styles.orderFieldLabel}>통관방식</Text>
+                  <View style={styles.pillGroup}>
+                    {(['사업자', '개인'] as const).map((v) => (
+                      <TouchableOpacity
+                        key={v}
+                        style={[styles.pill, customsMethod === v && styles.pillActive]}
+                        onPress={() => setCustomsMethod(v)}
+                      >
+                        <Text style={[styles.pillText, customsMethod === v && styles.pillTextActive]}>{v}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.orderFieldCol}>
+                  <Text style={styles.orderFieldLabel}>운송방식</Text>
+                  <View style={styles.pillGroup}>
+                    {(['로켓파레트', '로켓택배', '자가배송파렛트', '자가배송택배'] as const).map((v) => (
+                      <TouchableOpacity
+                        key={v}
+                        style={[styles.pill, shippingMethod === v && styles.pillActive]}
+                        onPress={() => setShippingMethod(v)}
+                      >
+                        <Text style={[styles.pillText, shippingMethod === v && styles.pillTextActive]}>{v}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </View>
+
+              {/* 사업자/개인정보 & 수령정보 — placed at the bottom per spec */}
+              <View style={styles.orderSection}>
+                <View style={styles.orderFieldRow}>
+                  <Text style={styles.orderFieldLabel}>사업자/개인정보</Text>
+                  <TouchableOpacity
+                    style={styles.selectBtn}
+                    onPress={() =>
+                      setBusinessInfoSelected(businessInfoSelected ? '' : '기본 사업자 정보')
+                    }
+                  >
+                    <Text style={styles.selectBtnText} numberOfLines={1}>
+                      {businessInfoSelected || '선택'}
+                    </Text>
+                    <Icon name="chevron-forward" size={14} color={COLORS.gray[500]} />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.orderFieldRow}>
+                  <Text style={styles.orderFieldLabel}>수령정보</Text>
+                  <TouchableOpacity
+                    style={styles.selectBtn}
+                    onPress={() =>
+                      setRecipientInfoSelected(recipientInfoSelected ? '' : '기본 수령지')
+                    }
+                  >
+                    <Text style={styles.selectBtnText} numberOfLines={1}>
+                      {recipientInfoSelected || '선택'}
+                    </Text>
+                    <Icon name="chevron-forward" size={14} color={COLORS.gray[500]} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.modalFooterBtn, styles.modalCancelBtn]}
+                onPress={() => setShowOrderModal(false)}
+              >
+                <Text style={styles.modalCancelText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalFooterBtn, styles.modalConfirmBtn]}
+                onPress={() => setShowOrderModal(false)}
+              >
+                <Text style={styles.modalConfirmText}>주문확정</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 라벨설정 MODAL */}
+      <Modal
+        visible={labelModalCardId !== null}
+        animationType="slide"
+        transparent
+        onRequestClose={closeLabelModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>라벨설정</Text>
+              <TouchableOpacity onPress={closeLabelModal}>
+                <Icon name="close" size={22} color={COLORS.text.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={styles.modalBody}
+              contentContainerStyle={styles.modalBodyContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* 라벨종류 */}
+              <View style={styles.labelSection}>
+                <Text style={styles.labelSectionLabel}>라벨종류</Text>
+                <View style={styles.radioRow}>
+                  <TouchableOpacity
+                    style={styles.radioOption}
+                    onPress={() => setLabelType('product')}
+                  >
+                    <View style={[styles.radioOuter, labelType === 'product' && styles.radioOuterOn]}>
+                      {labelType === 'product' && <View style={styles.radioInner} />}
+                    </View>
+                    <Text style={styles.radioText}>상품라벨</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.radioOption}
+                    onPress={() => setLabelType('foodInspect')}
+                  >
+                    <View style={[styles.radioOuter, labelType === 'foodInspect' && styles.radioOuterOn]}>
+                      {labelType === 'foodInspect' && <View style={styles.radioInner} />}
+                    </View>
+                    <Text style={styles.radioText}>식검라벨</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.labelHint}>
+                  체크 후 해당 상품라벨/식검라벨 작업 설정이 됩니다.
+                </Text>
+              </View>
+
+              {/* 라벨양식 */}
+              <View style={styles.labelSection}>
+                <Text style={styles.labelSectionLabel}>라벨양식</Text>
+                <View style={styles.radioRow}>
+                  <TouchableOpacity
+                    style={styles.radioOption}
+                    onPress={() => setLabelFormat('50x80')}
+                  >
+                    <View style={[styles.radioOuter, labelFormat === '50x80' && styles.radioOuterOn]}>
+                      {labelFormat === '50x80' && <View style={styles.radioInner} />}
+                    </View>
+                    <Text style={styles.radioText}>50*80mm라벨</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.radioOption}
+                    onPress={() => setLabelFormat('40x60')}
+                  >
+                    <View style={[styles.radioOuter, labelFormat === '40x60' && styles.radioOuterOn]}>
+                      {labelFormat === '40x60' && <View style={styles.radioInner} />}
+                    </View>
+                    <Text style={styles.radioText}>
+                      40*60mm라벨
+                      {labelType === 'foodInspect' && labelFormat === '40x60' ? (
+                        <Text style={styles.labelHintInline}> (바코드 불필요)</Text>
+                      ) : null}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* PREVIEW — middle section on desktop, top on mobile per spec */}
+              <View style={styles.labelSection}>
+                <Text style={styles.labelSectionLabel}>라벨미리보기</Text>
+                <View style={styles.previewWrap}>
+                  <View
+                    style={[
+                      styles.previewCard,
+                      labelFormat === '50x80' ? styles.previewCard5080 : styles.previewCard4060,
+                    ]}
+                  >
+                    {labelType === 'foodInspect' && (
+                      <View style={styles.foodBadge}>
+                        <Icon name="restaurant-outline" size={10} color={COLORS.text.primary} />
+                        <Text style={styles.foodBadgeText}>식품용</Text>
+                      </View>
+                    )}
+                    {!(labelType === 'foodInspect' && labelFormat === '40x60') && (
+                      <Text style={styles.previewProductName}>{labelProductName}</Text>
+                    )}
+                    {!(labelType === 'product' && labelFormat === '40x60') && (
+                      <Text style={styles.previewContent}>{labelContent}</Text>
+                    )}
+                    {!(labelType === 'foodInspect' && labelFormat === '40x60') && (
+                      <View style={styles.barcodePreview}>
+                        <View style={styles.barcodeLines}>
+                          {Array.from({ length: 28 }).map((_, i) => (
+                            <View
+                              key={i}
+                              style={[
+                                styles.barcodeBar,
+                                { width: (i % 3) + 1 },
+                                i % 2 === 0 && styles.barcodeBarThick,
+                              ]}
+                            />
+                          ))}
+                        </View>
+                        <Text style={styles.barcodeText}>{labelBarcode}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.dimensionLabel}>
+                    <Text style={styles.dimensionText}>
+                      {labelFormat === '50x80' ? '50mm × 80mm' : '60mm × 40mm'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* INPUTS — right section on desktop, center on mobile per spec */}
+              <View style={styles.labelSection}>
+                <Text style={styles.labelSectionLabel}>라벨내용</Text>
+                <View style={styles.fontToolbar}>
+                  <View style={styles.fontChip}><Text style={styles.fontChipText}>글꼴</Text></View>
+                  <View style={styles.fontChip}><Text style={styles.fontChipText}>9pt</Text></View>
+                  <View style={styles.fontChip}><Text style={[styles.fontChipText, { fontWeight: '800' }]}>가</Text></View>
+                  <View style={styles.fontChip}><Text style={[styles.fontChipText, { fontStyle: 'italic' }]}>가</Text></View>
+                  <View style={styles.fontChip}><Text style={[styles.fontChipText, { textDecorationLine: 'underline' }]}>가</Text></View>
+                </View>
+
+                {!(labelType === 'foodInspect' && labelFormat === '40x60') && (
+                  <>
+                    <Text style={styles.labelInputLabel}>상품명</Text>
+                    <TextInput
+                      style={styles.labelInput}
+                      value={labelProductName}
+                      onChangeText={setLabelProductName}
+                      placeholder="제품명 입력"
+                      placeholderTextColor={COLORS.gray[400]}
+                    />
+                  </>
+                )}
+
+                {!(labelType === 'product' && labelFormat === '40x60') && (
+                  <>
+                    <Text style={styles.labelInputLabel}>라벨 내용 입력</Text>
+                    <TextInput
+                      style={styles.labelContentInput}
+                      value={labelContent}
+                      onChangeText={setLabelContent}
+                      multiline
+                      placeholder="라벨 내용을 입력해 주세요"
+                      placeholderTextColor={COLORS.gray[400]}
+                    />
+                  </>
+                )}
+
+                {!(labelType === 'foodInspect' && labelFormat === '40x60') && (
+                  <>
+                    <Text style={styles.labelInputLabel}>바코드 번호</Text>
+                    <TextInput
+                      style={styles.labelInput}
+                      value={labelBarcode}
+                      onChangeText={setLabelBarcode}
+                      placeholder="바코드 번호"
+                      placeholderTextColor={COLORS.gray[400]}
+                    />
+                  </>
+                )}
+
+                {labelFileUri ? (
+                  <View style={styles.labelFilePreviewWrap}>
+                    <Image source={{ uri: labelFileUri }} style={styles.labelFilePreview} />
+                    <TouchableOpacity
+                      style={styles.uploadRemove}
+                      onPress={() => setLabelFileUri(null)}
+                    >
+                      <Icon name="close" size={12} color={COLORS.white} />
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+              </View>
+            </ScrollView>
+
+            {/* Footer */}
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.modalFooterBtn, styles.modalCancelBtn]}
+                onPress={pickLabelFile}
+              >
+                <Icon name="cloud-upload-outline" size={14} color={COLORS.text.primary} />
+                <Text style={[styles.modalCancelText, { marginLeft: 4 }]}>파일 업로드</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalFooterBtn, styles.modalConfirmBtn]}
+                onPress={saveLabel}
+              >
+                <Text style={styles.modalConfirmText}>저장</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 부가서비스선택 MODAL */}
+      <Modal
+        visible={showServiceModal}
+        animationType="slide"
+        transparent
+        onRequestClose={closeServiceModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>부가서비스선택</Text>
+              <TouchableOpacity onPress={closeServiceModal}>
+                <Icon name="close" size={22} color={COLORS.text.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={styles.modalBody}
+              contentContainerStyle={styles.modalBodyContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* TOP — product/service detail (middle section) */}
+              <View style={styles.detailSection}>
+                <View style={styles.detailImageWrap}>
+                  {detailService ? (
+                    <Icon name={(detailService.icon as any) || 'cube-outline'} size={72} color={PRIMARY} />
+                  ) : (
+                    <Icon name="cube-outline" size={72} color={COLORS.gray[300]} />
+                  )}
+                </View>
+                <Text style={styles.detailName}>
+                  {detailService?.name || '서비스를 선택해 주세요'}
+                </Text>
+                {detailService?.price ? (
+                  <Text style={styles.detailPriceRow}>
+                    <Text style={styles.detailPriceLabel}>요금 기준: </Text>
+                    <Text style={styles.detailPrice}>{detailService.price}</Text>
+                  </Text>
+                ) : null}
+                {detailService?.description ? (
+                  <Text style={styles.detailDescription}>
+                    <Text style={styles.detailDescLabel}>상세설명: </Text>
+                    {detailService.description}
+                  </Text>
+                ) : null}
+              </View>
+
+              {/* CENTER — other requests + photo upload (right section) */}
+              <View style={styles.requestSection}>
+                <Text style={styles.sectionLabel}>기타 요청사항</Text>
+                <TextInput
+                  style={styles.requestInput}
+                  multiline
+                  maxLength={200}
+                  placeholder="요청사항을 입력해 주세요"
+                  placeholderTextColor={COLORS.gray[400]}
+                  value={otherRequests}
+                  onChangeText={setOtherRequests}
+                />
+                <Text style={styles.requestCounter}>{otherRequests.length}/200</Text>
+
+                <Text style={[styles.sectionLabel, { marginTop: 12 }]}>사진업로드</Text>
+                <View style={styles.uploadRow}>
+                  {modalPhotoUri ? (
+                    <View style={styles.uploadPreviewWrap}>
+                      <Image source={{ uri: modalPhotoUri }} style={styles.uploadPreview} />
+                      <TouchableOpacity
+                        style={styles.uploadRemove}
+                        onPress={() => setModalPhotoUri(null)}
+                      >
+                        <Icon name="close" size={12} color={COLORS.white} />
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
+                  <TouchableOpacity style={styles.uploadBtn} onPress={pickModalPhoto}>
+                    <Icon name="add" size={20} color={COLORS.gray[500]} />
+                    <Text style={styles.uploadBtnText}>업로드</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* BOTTOM — service categories (left section) */}
+              <View style={styles.categoriesSection}>
+                {SERVICE_CATEGORIES.map((cat) => (
+                  <View key={cat.id} style={styles.categoryBlock}>
+                    <Text style={styles.categoryTitle}>
+                      {cat.title}
+                      {cat.required ? (
+                        <Text style={styles.categoryRequired}> (필수)</Text>
+                      ) : null}
+                    </Text>
+                    <View style={styles.categoryGrid}>
+                      {cat.items.map((svc) => {
+                        const selected = pendingServices.some((s) => s.id === svc.id);
+                        const focused = detailService?.id === svc.id;
+                        return (
+                          <TouchableOpacity
+                            key={svc.id}
+                            style={[
+                              styles.serviceTile,
+                              selected && styles.serviceTileSelected,
+                              focused && !selected && styles.serviceTileFocused,
+                            ]}
+                            onPress={() => togglePendingService(svc)}
+                          >
+                            <Icon
+                              name={(svc.icon as any) || 'cube-outline'}
+                              size={24}
+                              color={selected ? PRIMARY : COLORS.text.primary}
+                            />
+                            {selected && (
+                              <View style={styles.serviceTileCheck}>
+                                <Icon name="checkmark" size={10} color={COLORS.white} />
+                              </View>
+                            )}
+                            <Text
+                              style={[
+                                styles.serviceTileText,
+                                selected && styles.serviceTileTextSelected,
+                              ]}
+                              numberOfLines={2}
+                            >
+                              {svc.name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+
+            {/* Footer actions */}
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.modalFooterBtn, styles.modalCancelBtn]}
+                onPress={closeServiceModal}
+              >
+                <Text style={styles.modalCancelText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalFooterBtn, styles.modalConfirmBtn]}
+                onPress={confirmServiceModal}
+              >
+                <Text style={styles.modalConfirmText}>확인</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
 
+const PRIMARY = COLORS.primary || '#FF6B35';
+const PRIMARY_SOFT = 'rgba(255, 107, 53, 0.10)';
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: '#F3F4F8',
   },
+  // HEADER
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 10,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray[200],
+    zIndex: 10,
+  },
+  searchBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.gray[100],
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    height: 36,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 6,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.primary,
+    padding: 0,
+  },
+  periodWrap: {
+    marginHorizontal: 8,
+    position: 'relative',
+  },
+  periodBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    height: 36,
+  },
+  periodText: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.text.primary,
+    marginHorizontal: 4,
+    fontWeight: '500',
+  },
+  periodMenu: {
+    position: 'absolute',
+    top: 40,
+    right: 0,
+    backgroundColor: COLORS.white,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    paddingVertical: 4,
+    zIndex: 20,
+    minWidth: 100,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  periodMenuItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  periodMenuText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.primary,
+  },
+  periodMenuTextActive: {
+    color: PRIMARY,
+    fontWeight: '600',
+  },
+  deleteBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: PRIMARY,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: PRIMARY,
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  // 부가서비스 bar (under header)
+  extraBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 10,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray[100],
+    zIndex: 9,
+  },
+  extraLabel: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.gray[600],
+    fontWeight: '700',
+    marginRight: 8,
+  },
+  extraChipsScroll: {
+    flex: 1,
+    maxHeight: 28,
+  },
+  extraChipsContent: {
+    alignItems: 'center',
+    paddingRight: 8,
+  },
+  extraPlaceholder: {
+    fontSize: 11,
+    color: COLORS.gray[400],
+    fontStyle: 'italic',
+  },
+  extraChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: PRIMARY_SOFT,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginRight: 6,
+  },
+  extraChipText: {
+    fontSize: 11,
+    color: PRIMARY,
+    marginRight: 4,
+    fontWeight: '600',
+  },
+  extraSelectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: PRIMARY,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    shadowColor: PRIMARY,
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  extraSelectBtnText: {
+    fontSize: 11,
+    color: COLORS.white,
+    fontWeight: '700',
+    marginLeft: 3,
+  },
+  // MODAL
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '92%',
+    overflow: 'hidden',
+  },
+  modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-    paddingTop: SPACING['2xl'],
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray[200],
-    backgroundColor: COLORS.white,
+    borderBottomColor: COLORS.gray[100],
   },
-  backButton: {
-    padding: SPACING.xs,
-    width: 48
-  },
-  headerTitle: {
-    fontSize: FONTS.sizes.lg,
+  modalTitle: {
+    fontSize: FONTS.sizes.md,
     fontWeight: '800',
     color: COLORS.text.primary,
-    flex: 1,
-    textAlign: 'center',
   },
-  headerActions: {
-    flexDirection: 'row',
-    gap: SPACING.md,
+  modalBody: {
+    maxHeight: '100%',
   },
-  headerIcon: {
-    padding: SPACING.xs,
+  modalBodyContent: {
+    paddingBottom: 12,
   },
-  platformFilterBar: {
-    flexDirection: 'row',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+  // Detail (top)
+  detailSection: {
+    padding: SPACING.md,
+    backgroundColor: COLORS.gray[50],
+    alignItems: 'flex-start',
+  },
+  detailImageWrap: {
+    alignSelf: 'center',
+    width: '100%',
+    height: 160,
     backgroundColor: COLORS.white,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray[200],
-    gap: SPACING.sm,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
   },
-  platformFilterTab: {
+  detailName: {
+    fontSize: FONTS.sizes.md,
+    fontWeight: '800',
+    color: COLORS.text.primary,
+    marginBottom: 6,
+  },
+  detailPriceRow: {
+    marginBottom: 6,
+  },
+  detailPriceLabel: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+  },
+  detailPrice: {
+    fontSize: FONTS.sizes.sm,
+    color: PRIMARY,
+    fontWeight: '700',
+  },
+  detailDescLabel: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+  },
+  detailDescription: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.gray[600],
+    lineHeight: 20,
+  },
+  // Requests (center)
+  requestSection: {
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.full,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray[100],
+  },
+  sectionLabel: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+    marginBottom: 6,
+  },
+  requestInput: {
+    minHeight: 80,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.primary,
+    textAlignVertical: 'top',
+  },
+  requestCounter: {
+    fontSize: 10,
+    color: COLORS.gray[500],
+    textAlign: 'right',
+    marginTop: 2,
+  },
+  uploadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  uploadPreviewWrap: {
+    marginRight: 8,
+    position: 'relative',
+  },
+  uploadPreview: {
+    width: 64,
+    height: 64,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+  },
+  uploadRemove: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: PRIMARY,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadBtn: {
+    width: 64,
+    height: 64,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.gray[50],
+  },
+  uploadBtnText: {
+    fontSize: 10,
+    color: COLORS.gray[500],
+    marginTop: 2,
+  },
+  // Categories (bottom)
+  categoriesSection: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+  },
+  categoryBlock: {
+    marginBottom: 16,
+  },
+  categoryTitle: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '800',
+    color: COLORS.text.primary,
+    marginBottom: 8,
+  },
+  categoryRequired: {
+    fontSize: FONTS.sizes.xs,
+    color: PRIMARY,
+    fontWeight: '700',
+  },
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  serviceTile: {
+    width: '23%',
+    aspectRatio: 1,
+    margin: '1%',
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: COLORS.gray[200],
     backgroundColor: COLORS.white,
-  },
-  platformFilterTabActive: {
-    backgroundColor: COLORS.lightRed,
-    borderColor: COLORS.red,
-  },
-  platformFilterText: {
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.text.primary,
-    fontWeight: '400',
-  },
-  platformFilterTextActive: {
-    color: COLORS.red,
-    fontWeight: '600',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  groupContainer: {
-    marginVertical: SPACING.sm,
-    backgroundColor: COLORS.white,
-  },
-  groupHeader: {
-    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-  },
-  groupCheckbox: {
-    marginRight: SPACING.md,
-  },
-  groupHeaderText: {
-    fontSize: FONTS.sizes.md,
-    fontWeight: '600',
-    color: COLORS.text.primary,
-    flex: 1,
-  },
-  sellerSection: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray[100],
-  },
-  sellerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  sellerCheckbox: {
-    marginRight: SPACING.md,
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 3,
-    borderColor: COLORS.black,
-    backgroundColor: COLORS.white,
     justifyContent: 'center',
-    alignItems: 'center',
-  },
-  checkboxSelected: {
-    backgroundColor: COLORS.text.red,
-    borderColor: COLORS.text.red,
-  },
-  sellerAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    marginRight: SPACING.sm,
-  },
-  sellerName: {
-    fontSize: FONTS.sizes.md,
-    fontWeight: '500',
-    color: COLORS.text.primary,
-  },
-  cartItem: {
-    marginHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray[100],
+    paddingHorizontal: 4,
     position: 'relative',
   },
-  removeButton: {
+  serviceTileSelected: {
+    borderColor: PRIMARY,
+    backgroundColor: PRIMARY_SOFT,
+  },
+  serviceTileFocused: {
+    borderColor: PRIMARY,
+  },
+  serviceTileCheck: {
     position: 'absolute',
-    top: SPACING.md,
-    right: SPACING.lg,
-    zIndex: 1,
+    top: 4,
+    right: 4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: PRIMARY,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  itemContent: {
+  serviceTileText: {
+    fontSize: 10,
+    color: COLORS.text.primary,
+    textAlign: 'center',
+    marginTop: 4,
+    fontWeight: '500',
+  },
+  serviceTileTextSelected: {
+    color: PRIMARY,
+    fontWeight: '700',
+  },
+  // Footer
+  modalFooter: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    padding: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray[100],
+    backgroundColor: COLORS.white,
   },
-  itemCheckbox: {
-    marginRight: SPACING.md,
-    marginTop: SPACING.xs,
+  modalFooterBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelBtn: {
+    backgroundColor: COLORS.gray[100],
+    marginRight: 8,
+  },
+  modalConfirmBtn: {
+    backgroundColor: PRIMARY,
+    shadowColor: PRIMARY,
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  modalCancelText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.primary,
+    fontWeight: '700',
+  },
+  modalConfirmText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.white,
+    fontWeight: '800',
+  },
+  // BODY
+  body: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  tabsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: SPACING.md,
+    paddingTop: 12,
+    paddingBottom: 8,
+    backgroundColor: 'transparent',
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    marginHorizontal: 4,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    alignItems: 'center',
+  },
+  tabBtnActive: {
+    backgroundColor: PRIMARY,
+    borderColor: PRIMARY,
+    shadowColor: PRIMARY,
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  tabText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.primary,
+    fontWeight: '500',
+  },
+  tabTextActive: {
+    color: COLORS.white,
+    fontWeight: '700',
+  },
+  cardsList: {
+    flex: 1,
+  },
+  cardsContent: {
+    paddingHorizontal: SPACING.md,
+    paddingTop: 6,
+    paddingBottom: SPACING.lg,
+  },
+  // CARD — stylish
+  card: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    marginBottom: 12,
+    overflow: 'hidden',
+    shadowColor: '#1A1A2E',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.03)',
+  },
+  cardAccent: {
+    height: 3,
+    backgroundColor: PRIMARY,
+  },
+  cardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray[100],
+  },
+  checkBtn: {
+    padding: 2,
+    marginRight: 8,
+  },
+  checkBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: COLORS.gray[300],
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.white,
+  },
+  checkBoxChecked: {
+    backgroundColor: PRIMARY,
+    borderColor: PRIMARY,
+  },
+  companyWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  indexBadge: {
+    fontSize: 10,
+    color: COLORS.white,
+    fontWeight: '700',
+    backgroundColor: PRIMARY,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginRight: 8,
+    overflow: 'hidden',
+  },
+  companyName: {
+    flex: 1,
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+  },
+  photoBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: PRIMARY_SOFT,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 53, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoPreview: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+  },
+  // MIDDLE
+  cardMiddle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+  },
+  middleLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   productImage: {
-    width: 80,
-    height: 80,
-    borderRadius: BORDER_RADIUS.md,
-    marginRight: SPACING.md,
+    width: 52,
+    height: 52,
+    borderRadius: 10,
     backgroundColor: COLORS.gray[100],
+    marginRight: 10,
+  },
+  productImagePlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   productInfo: {
     flex: 1,
   },
-  productName: {
-    fontSize: FONTS.sizes.md,
-    fontWeight: '500',
-    color: COLORS.text.primary,
-    marginBottom: SPACING.xs,
-  },
-  productVariant: {
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.gray[500],
-    marginBottom: SPACING.sm,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.sm,
-  },
-  currentPrice: {
-    fontSize: FONTS.sizes.md,
-    fontWeight: '600',
-    color: COLORS.text.primary,
-    marginRight: SPACING.sm,
-  },
-  originalPrice: {
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.gray[400],
-    textDecorationLine: 'line-through',
-  },
-  quantityControls: {
+  productNameBox: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: COLORS.gray[200],
-    borderRadius: BORDER_RADIUS.full,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: COLORS.gray[50],
+    marginBottom: 6,
   },
-  quantityButton: {
-    width: 28,
-    height: 20,
-    justifyContent: 'center',
+  productName: {
+    flex: 1,
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  metaTag: {
+    fontSize: 10,
+    color: COLORS.gray[600],
+    backgroundColor: COLORS.gray[100],
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    marginRight: 4,
+    marginBottom: 2,
+    overflow: 'hidden',
+  },
+  middleCenter: {
+    width: 100,
+    paddingHorizontal: 4,
     alignItems: 'center',
   },
-  quantityText: {
-    fontSize: FONTS.sizes.md,
+  qtyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: PRIMARY_SOFT,
+    borderRadius: 999,
+    padding: 2,
+    marginBottom: 6,
+  },
+  qtyBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: PRIMARY,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qtyValue: {
+    width: 32,
+    textAlign: 'center',
+    fontSize: FONTS.sizes.sm,
     fontWeight: '700',
     color: COLORS.text.primary,
-    marginHorizontal: SPACING.md,
-    minWidth: 20,
-    textAlign: 'center',
   },
-  moreToLoveSection: {
-    margin: SPACING.sm,
-  },
-  sectionTitle: {
-    fontSize: FONTS.sizes.lg,
-    fontWeight: '600',
-    color: COLORS.text.primary,
-    marginBottom: SPACING.md,
-    textAlign: 'center',
-  },
-  productsGrid: {
+  unitPriceBox: {
     flexDirection: 'row',
-    // flexWrap: 'wrap',
-    justifyContent: 'flex-start',
-  },
-  productsGridRow: {
-    justifyContent: 'flex-start',
-    gap: SPACING.lg,
-  },
-  loadingContainer: {
-    paddingVertical: SPACING.xl,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    borderRadius: 6,
+    backgroundColor: COLORS.white,
+    paddingHorizontal: 8,
+    height: 28,
+    width: '100%',
+    justifyContent: 'center',
   },
-  loadingText: {
+  yenMark: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.text.primary,
+    marginRight: 2,
+    fontWeight: '600',
+  },
+  unitPriceInput: {
+    flex: 1,
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.text.primary,
+    padding: 0,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  middleRight: {
+    width: 84,
+    alignItems: 'flex-end',
+    paddingLeft: 4,
+  },
+  rightLabel: {
+    fontSize: 10,
+    color: COLORS.gray[500],
+    marginBottom: 2,
+  },
+  rightValue: {
     fontSize: FONTS.sizes.md,
-    color: COLORS.text.secondary,
+    color: PRIMARY,
+    fontWeight: '800',
+    marginBottom: 8,
   },
-  loadingMoreContainer: {
-    paddingVertical: SPACING.md,
+  viewMoreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: PRIMARY_SOFT,
+  },
+  viewMoreText: {
+    fontSize: 10,
+    color: PRIMARY,
+    fontWeight: '700',
+    marginRight: 2,
+  },
+  // BOTTOM
+  cardBottom: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray[100],
+    backgroundColor: COLORS.gray[50],
+  },
+  remarksLabel: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.gray[600],
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  remarksInput: {
+    minHeight: 52,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.primary,
+    textAlignVertical: 'top',
+  },
+  remarksCounter: {
+    fontSize: 10,
+    color: COLORS.gray[500],
+    textAlign: 'right',
+    marginTop: 2,
+  },
+  bottomActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  labelRowBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: PRIMARY,
+    marginRight: 6,
+  },
+  labelRowText: {
+    fontSize: 11,
+    color: COLORS.white,
+    fontWeight: '700',
+    marginLeft: 3,
+  },
+  deleteRowBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: PRIMARY_SOFT,
+  },
+  deleteRowText: {
+    fontSize: 11,
+    color: PRIMARY,
+    fontWeight: '700',
+    marginLeft: 3,
+  },
+  emptyWrap: {
+    paddingVertical: 40,
     alignItems: 'center',
   },
-  loadingMoreText: {
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.text.secondary,
+  emptyText: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.gray[500],
   },
-  endOfListContainer: {
-    paddingVertical: SPACING.md,
+  // Summary bar
+  summaryBar: {
+    flexDirection: 'row',
     alignItems: 'center',
-  },
-  endOfListText: {
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.text.secondary,
-  },
-  productCardWrapper: {
-    width: (width - SPACING.lg * 2 - SPACING.sm) / 2,
-    marginBottom: SPACING.md,
-  },
-  bottomSpace: {
-    height: 100,
-  },
-  bottomBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     backgroundColor: COLORS.white,
     borderTopWidth: 1,
-    borderTopColor: '#0000000D',
-    ...SHADOWS.lg,
+    borderTopColor: COLORS.gray[200],
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 12,
   },
-  bottomContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-  },
-  allCheckbox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: SPACING.lg,
-  },
-  allText: {
-    fontSize: FONTS.sizes.md,
-    color: COLORS.text.primary,
-    marginLeft: SPACING.sm,
-  },
-  totalPrice: {
-    fontSize: FONTS.sizes.sm,
-    fontWeight: '600',
-    color: COLORS.text.primary,
-    textAlign: 'center',
-    marginRight: SPACING.md,
-  },
-  payButton: {
-    backgroundColor: COLORS.text.red,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.full,
-  },
-  payButtonText: {
-    fontSize: FONTS.sizes.md,
-    fontWeight: '600',
-    color: COLORS.white,
-  },
-  emptyCart: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    margin: SPACING.md,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
-    backgroundColor: '#FFF4EF',
-  },
-  emptyCartImage: {
-    width: 80,
-    height: 80,
-    marginVertical: SPACING.md,
-  },
-  emptyTitle: {
-    fontSize: FONTS.sizes.sm,
-    fontWeight: '600',
-    color: COLORS.text.primary,
-    marginBottom: SPACING.sm,
-    textAlign: 'center',
-  },
-  emptySubtitle: {
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.gray[500],
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: SPACING.lg,
-  },
-  continueShoppingButton: {
-    backgroundColor: COLORS.black,
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: 10,
-    borderRadius: BORDER_RADIUS.lg,
-    width: '85%',
-  },
-  continueShoppingButtonText: {
-    fontSize: FONTS.sizes.md,
-    fontWeight: '700',
-    color: COLORS.white,
-    textAlign: 'center',
-  },
-  helpCenter: {
-    flexDirection: 'column',
-    justifyContent: 'space-between',
-    marginHorizontal: SPACING.md,
-    padding: SPACING.sm,
-    borderRadius: BORDER_RADIUS.lg,
-    backgroundColor: COLORS.white,
-    borderWidth: 0.5,
-    borderColor: '#0000000D',
-    gap: SPACING.sm,
-  },
-  helpCenterItem: {
-    flexDirection: 'column',
-    justifyContent: 'space-between',
-    gap: SPACING.sm,
-    backgroundColor: '#FAFAFA',
-    padding: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
-  },
-  helpCenterItemHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  helpCenterTitle: {
-    fontSize: FONTS.sizes.sm,
-    fontWeight: '600',
-    color: COLORS.text.primary,
-  },
-  helpCenterSubTitle: {
+  summaryText: {
     fontSize: FONTS.sizes.xs,
-    color: COLORS.text.secondary,
-    lineHeight: 20,
-  },
-  iconContainer: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: '#FFF4E6',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACING.xl,
-  },
-  cartImage: {
-    width: 160,
-    height: 200,
-  },
-  welcomeText: {
-    fontSize: FONTS.sizes.md,
-    fontWeight: '700',
     color: COLORS.text.primary,
-    marginBottom: SPACING.sm,
-    textAlign: 'center',
+    marginRight: 12,
+    fontWeight: '500',
   },
-  loginPrompt: {
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.text.secondary,
-    marginBottom: SPACING.xl,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  loginButton: {
-    flexDirection: 'row',
-    backgroundColor: '#FF0055',
-    borderRadius: 9999,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    width: '100%',
-  },
-  loginButtonText: {
-    fontSize: FONTS.sizes.xl,
-    fontWeight: '700',
-    color: COLORS.white,
-    letterSpacing: 0.5,
-  },
-  // Delete confirmation modal styles
-  modalOverlay: {
+  summaryTotal: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
+    fontSize: FONTS.sizes.sm,
+    color: PRIMARY,
+    fontWeight: '800',
   },
-  modalContainer: {
-    backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.xl,
-    padding: SPACING.xl,
-    width: '100%',
-    maxWidth: 400,
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 4 },
+  orderBtn: {
+    backgroundColor: PRIMARY,
+    borderRadius: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    shadowColor: PRIMARY,
     shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
-  modalTitle: {
-    fontSize: FONTS.sizes.lg,
-    fontWeight: '600',
-    color: COLORS.text.primary,
-    textAlign: 'center',
-    marginBottom: SPACING.xl,
-    lineHeight: 28,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-  },
-  modalCancelButton: {
-    flex: 1,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    borderRadius: BORDER_RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-  },
-  modalCancelText: {
-    fontSize: FONTS.sizes.md,
-    fontWeight: '600',
-    color: COLORS.text.primary,
-  },
-  modalConfirmButton: {
-    flex: 1,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    borderRadius: BORDER_RADIUS.lg,
-    backgroundColor: '#FF5722',
-    alignItems: 'center',
-  },
-  modalConfirmText: {
-    fontSize: FONTS.sizes.md,
-    fontWeight: '600',
+  orderBtnText: {
+    fontSize: FONTS.sizes.sm,
     color: COLORS.white,
+    fontWeight: '800',
+  },
+  // Label modal
+  labelSection: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray[100],
+  },
+  labelSectionLabel: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '800',
+    color: COLORS.text.primary,
+    marginBottom: 8,
+  },
+  labelHint: {
+    fontSize: 11,
+    color: COLORS.gray[500],
+    marginTop: 6,
+  },
+  labelHintInline: {
+    fontSize: 11,
+    color: COLORS.gray[500],
+  },
+  radioRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  radioOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 16,
+    marginBottom: 4,
+  },
+  radioOuter: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: COLORS.gray[300],
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+    backgroundColor: COLORS.white,
+  },
+  radioOuterOn: {
+    borderColor: PRIMARY,
+  },
+  radioInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: PRIMARY,
+  },
+  radioText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+  },
+  previewWrap: {
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  previewCard: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.gray[300],
+    borderRadius: 6,
+    padding: 10,
+    position: 'relative',
+  },
+  previewCard5080: {
+    width: 200,
+    height: 320,
+  },
+  previewCard4060: {
+    width: 280,
+    height: 180,
+  },
+  foodBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.gray[300],
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  foodBadgeText: {
+    fontSize: 9,
+    color: COLORS.text.primary,
+    marginLeft: 2,
+    fontWeight: '600',
+  },
+  previewProductName: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+    marginBottom: 4,
+  },
+  previewContent: {
+    fontSize: 10,
+    color: COLORS.text.primary,
+    lineHeight: 14,
+    marginBottom: 8,
+  },
+  barcodePreview: {
+    marginTop: 'auto',
+    alignItems: 'center',
+  },
+  barcodeLines: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    height: 40,
+  },
+  barcodeBar: {
+    height: '100%',
+    backgroundColor: '#000',
+    marginRight: 1,
+  },
+  barcodeBarThick: {
+    backgroundColor: '#000',
+  },
+  barcodeText: {
+    fontSize: 10,
+    color: '#000',
+    marginTop: 2,
+    letterSpacing: 1,
+  },
+  dimensionLabel: {
+    marginTop: 8,
+  },
+  dimensionText: {
+    fontSize: 11,
+    color: COLORS.gray[500],
+    fontWeight: '600',
+  },
+  fontToolbar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    backgroundColor: COLORS.gray[50],
+    borderRadius: 8,
+    padding: 4,
+    marginBottom: 10,
+  },
+  fontChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: COLORS.white,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    marginRight: 4,
+    marginBottom: 4,
+  },
+  fontChipText: {
+    fontSize: 11,
+    color: COLORS.text.primary,
+  },
+  labelInputLabel: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.gray[600],
+    fontWeight: '600',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  labelInput: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.primary,
+  },
+  labelContentInput: {
+    minHeight: 100,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.primary,
+    textAlignVertical: 'top',
+  },
+  labelFilePreviewWrap: {
+    marginTop: 10,
+    width: 80,
+    height: 80,
+    position: 'relative',
+  },
+  labelFilePreview: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+  },
+  // Order modal
+  orderSection: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray[100],
+  },
+  orderSectionHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  orderSectionBar: {
+    width: 3,
+    height: 14,
+    borderRadius: 2,
+    backgroundColor: PRIMARY,
+    marginRight: 6,
+  },
+  orderSectionTitle: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '800',
+    color: COLORS.text.primary,
+  },
+  orderFieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  orderFieldCol: {
+    marginBottom: 12,
+  },
+  orderFieldLabel: {
+    fontSize: FONTS.sizes.xs,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+    width: 96,
+    marginBottom: 4,
+  },
+  pillGroup: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  pill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.gray[300],
+    backgroundColor: COLORS.white,
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  pillActive: {
+    borderColor: PRIMARY,
+    backgroundColor: PRIMARY_SOFT,
+  },
+  pillText: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+  },
+  pillTextActive: {
+    color: PRIMARY,
+    fontWeight: '800',
+  },
+  helpBtn: {
+    padding: 4,
+  },
+  tooltipBox: {
+    backgroundColor: PRIMARY_SOFT,
+    borderWidth: 1,
+    borderColor: PRIMARY,
+    borderRadius: 8,
+    padding: 8,
+    marginTop: 4,
+  },
+  tooltipText: {
+    fontSize: 11,
+    color: PRIMARY,
+    lineHeight: 16,
+  },
+  selectBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: COLORS.gray[300],
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: COLORS.white,
+  },
+  selectBtnText: {
+    flex: 1,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.primary,
+    fontWeight: '600',
   },
 });
 
