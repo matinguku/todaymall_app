@@ -173,72 +173,54 @@ const ProfileSettingsScreen: React.FC = () => {
 
   const renderMenuItems = () => {
     const menuItems = [
-      {
-        name: t('profile.accountandsecurity'),
-        items: [
+         {
+        name: t('profile.productManagement'),
+        items: [          
           {
-        name: t('profile.about'),
+            icon: 'key-outline',
+            title: t('profile.productList'),
+            onPress: () => navigation.navigate('HelpCenter'),
+          },
+          {
+            icon: 'trending-up-outline',
+            title: t('profile.category'),
+            onPress: () => navigation.navigate('AboutUs'),
+          },
+        ]
+          },
+
+          {
+        name: t('profile.marketSurvey'),
         items: [
           // {
           //   icon: 'person-outline',
           //   title: t('profile.merchantOnboarding'),
           //   onPress: () => navigation.navigate('EditProfile'),
           // },
+           {
+            icon: 'key-outline',
+            title: t('profile.unitPriceSurvey'),
+            onPress: () => navigation.navigate('SellerPage'),
+          },
           {
             icon: 'key-outline',
-            title: t('profile.helpCenter'),
-            onPress: () => navigation.navigate('HelpCenter'),
-          },
-          {
-            icon: 'trending-up-outline',
-            title: t('profile.aboutUs'),
-            onPress: () => navigation.navigate('AboutUs'),
-          },
-        ]
-      },
-          // {
-          //   icon: 'person-outline',
-          //   title: t('profile.myDetails'),
-          //   onPress: () => navigation.navigate('EditProfile'),
-          // },
-          // {
-          //   icon: 'key-outline',
-          //   title: t('profile.changePassword'),
-          //   onPress: () => navigation.navigate('ChangePassword'),
-          // },
-          // {
-          //   icon: 'storefront-outline',
-          //   title: 'Followed Store',
-          //   onPress: () => (navigation as any).navigate('FollowedStore'),
-          // },
+            title: t('profile.OEM'),
+            onPress: () => navigation.navigate('SellerSalesRefundInfo'),
+          },              
           // {
           //   icon: 'trending-up-outline',
-          //   title: t('profile.affiliateMarketing'),
-          //   onPress: () => navigation.navigate('AffiliateMarketing' as never),
+          //   title: t('profile.aboutUs'),
+          //   onPress: () => navigation.navigate('AboutUs'),
           // },
-          // {
-          //   icon: 'cube-outline',
-          //   title: t('profile.unit'),
-          //   onPress: () => navigation.navigate('UnitSettings'),
-          // },
-          // {
-          //   icon: 'lock-closed-outline',
-          //   title: t('profile.paymentPassword'),
-          //   onPress: () => navigation.navigate('PaymentPassword'),
-          // },
-          // {
-          //   icon: 'trash-outline',
-          //   title: t('profile.deleteAccount'),
-          //   onPress: () => setShowDeleteModal(true),
-          // },
-          // {
-          //   icon: 'gift-outline',
-          //   title: t('profile.inviteCodeBinding'),
-          //   onPress: () => setShowInviteCodeModal(true),
-          // },
+        ]
+      },      
+
+      {
+        name: t('profile.accountCenter'),
+        items: [                 
           {
             icon: 'person-outline',
-            title: t('profile.shippingAddress'),
+            title: t('profile.payment'),
             onPress: () => navigation.navigate('AddressBook', { fromShippingSettings: false }),
           },
           {
@@ -251,14 +233,14 @@ const ProfileSettingsScreen: React.FC = () => {
             title: t('profile.personalInformation'),
             onPress: () => navigation.navigate('EditProfile'),
           },
-          // {
-          //   icon: 'person-outline',
-          //   title: t('profile.personalTransactionSettings'),
-          //   onPress: () => navigation.navigate('PaymentPassword'),
-          // },
           {
             icon: 'person-outline',
-            title: t('profile.affiliateMarketing'),
+            title: t('profile.progressNotification'),
+            onPress: () => navigation.navigate('PaymentPassword'),
+          },
+          {
+            icon: 'person-outline',
+            title: t('profile.deliveryAddress'),
             onPress: () => navigation.navigate('AffiliateMarketing'),
           },
           // {
@@ -273,61 +255,6 @@ const ProfileSettingsScreen: React.FC = () => {
           // },
         ]
       },
-
-      {
-        name: t('profile.sellerInfo'),
-        items: [
-          // {
-          //   icon: 'person-outline',
-          //   title: t('profile.merchantOnboarding'),
-          //   onPress: () => navigation.navigate('EditProfile'),
-          // },
-           {
-            icon: 'key-outline',
-            title: t('profile.Sellerpage'),
-            onPress: () => navigation.navigate('SellerPage'),
-          },
-          {
-            icon: 'key-outline',
-            title: t('profile.SellerSalesRefundInfo'),
-            onPress: () => navigation.navigate('SellerSalesRefundInfo'),
-          },
-          
-          {
-            icon: 'key-outline',
-            title: t('profile.sellerTeamInfo'),
-            onPress: () => navigation.navigate('SellerTeamInfo'),
-          },
-          
-         
-          // {
-          //   icon: 'trending-up-outline',
-          //   title: t('profile.aboutUs'),
-          //   onPress: () => navigation.navigate('AboutUs'),
-          // },
-        ]
-      },
-
-      {
-        name: t('profile.about'),
-        items: [
-          // {
-          //   icon: 'person-outline',
-          //   title: t('profile.merchantOnboarding'),
-          //   onPress: () => navigation.navigate('EditProfile'),
-          // },
-          {
-            icon: 'key-outline',
-            title: t('profile.helpCenter'),
-            onPress: () => navigation.navigate('HelpCenter'),
-          },
-          {
-            icon: 'trending-up-outline',
-            title: t('profile.aboutUs'),
-            onPress: () => navigation.navigate('AboutUs'),
-          },
-        ]
-      }
     ];
 
     return (

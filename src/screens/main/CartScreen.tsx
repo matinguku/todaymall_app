@@ -20,6 +20,7 @@ import {
   ImagePickerResponse,
 } from 'react-native-image-picker';
 import { requestPhotoLibraryPermission } from '../../utils/permissions';
+import { useTranslation } from '../../hooks/useTranslation';
 
 interface ExtraService {
   id: string;
@@ -56,11 +57,11 @@ interface CartCard {
 
 type TabKey = 'past' | 'bundles' | 'offline';
 
-const TIME_PERIODS: Array<{ label: string; value: number }> = [
-  { label: '전체', value: 0 },
-  { label: '1시간', value: 60 * 60 * 1000 },
-  { label: '24시간', value: 24 * 60 * 60 * 1000 },
-  { label: '7일', value: 7 * 24 * 60 * 60 * 1000 },
+const TIME_PERIODS: Array<{ labelKey: 'all' | 'h1' | 'h24' | 'd7'; value: number }> = [
+  { labelKey: 'all', value: 0 },
+  { labelKey: 'h1', value: 60 * 60 * 1000 },
+  { labelKey: 'h24', value: 24 * 60 * 60 * 1000 },
+  { labelKey: 'd7', value: 7 * 24 * 60 * 60 * 1000 },
 ];
 
 const SERVICE_CATEGORIES: ServiceCategory[] = [
@@ -110,6 +111,7 @@ const SERVICE_CATEGORIES: ServiceCategory[] = [
 const ALL_SERVICES: ExtraService[] = SERVICE_CATEGORIES.flatMap((c) => c.items);
 
 const CartScreen: React.FC = () => {
+  const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPeriod, setSelectedPeriod] = useState<number>(0);
   const [showPeriodMenu, setShowPeriodMenu] = useState(false);
@@ -140,14 +142,19 @@ const CartScreen: React.FC = () => {
   const [purchasePayment, setPurchasePayment] = useState<'manual' | 'auto'>('manual');
   const [shippingPayment, setShippingPayment] = useState<'manual' | 'auto'>('manual');
   const [showPaymentTooltip, setShowPaymentTooltip] = useState(false);
-  const [logisticsCenter, setLogisticsCenter] = useState<'위해' | '광저우' | '이우'>('위해');
-  const [applicationType, setApplicationType] = useState<'해운배송' | '항공배송' | '로켓배송'>('로켓배송');
-  const [customsMethod, setCustomsMethod] = useState<'사업자' | '개인'>('사업자');
+  const [logisticsCenter, setLogisticsCenter] = useState<'haerae' | 'guangzhou' | 'yiwu'>('haerae');
+  const [applicationType, setApplicationType] = useState<'sea' | 'air' | 'rocket'>('rocket');
+  const [customsMethod, setCustomsMethod] = useState<'business' | 'personal'>('business');
   const [shippingMethod, setShippingMethod] = useState<
-    '로켓파레트' | '로켓택배' | '자가배송파렛트' | '자가배송택배'
-  >('로켓파레트');
+    'rocketPallet' | 'rocketDelivery' | 'selfPallet' | 'selfDelivery'
+  >('rocketPallet');
   const [businessInfoSelected, setBusinessInfoSelected] = useState('');
   const [recipientInfoSelected, setRecipientInfoSelected] = useState('');
+
+  const svcKey = (id: string) => id.replace(/^svc-/, '').replace(/-/g, '');
+  const catKey = (id: string) => id.replace(/^cat-/, '');
+  const tServiceName = (id: string) => t(`cartOrder.serviceModal.services.${svcKey(id)}`);
+  const tCategoryTitle = (id: string) => t(`cartOrder.serviceModal.categories.${catKey(id)}`);
 
   const [cards, setCards] = useState<CartCard[]>([
     {
@@ -187,13 +194,13 @@ const CartScreen: React.FC = () => {
   const handleDeleteChecked = () => {
     const anyChecked = cards.some((c) => c.checked);
     if (!anyChecked) {
-      Alert.alert('알림', '선택된 상품이 없습니다.');
+      Alert.alert(t('cartOrder.alerts.notice'), t('cartOrder.alerts.noItemsSelected'));
       return;
     }
-    Alert.alert('확인', '선택한 상품을 삭제하시겠습니까?', [
-      { text: '취소', style: 'cancel' },
+    Alert.alert(t('cartOrder.alerts.confirm'), t('cartOrder.alerts.deletePrompt'), [
+      { text: t('cartOrder.alerts.cancel'), style: 'cancel' },
       {
-        text: '삭제',
+        text: t('cartOrder.alerts.delete'),
         style: 'destructive',
         onPress: () => setCards((prev) => prev.filter((c) => !c.checked)),
       },
@@ -258,7 +265,7 @@ const CartScreen: React.FC = () => {
     try {
       const granted = await requestPhotoLibraryPermission();
       if (!granted) {
-        Alert.alert('권한', '사진 접근 권한이 필요합니다.');
+        Alert.alert(t('cartOrder.alerts.permission'), t('cartOrder.alerts.photoPermission'));
         return;
       }
       const options: ImageLibraryOptions = { mediaType: 'photo' as MediaType, quality: 0.7 };
@@ -268,7 +275,7 @@ const CartScreen: React.FC = () => {
         if (uri) setLabelFileUri(uri);
       });
     } catch {
-      Alert.alert('오류', '갤러리를 열지 못했습니다.');
+      Alert.alert(t('cartOrder.alerts.error'), t('cartOrder.alerts.galleryFailed'));
     }
   };
 
@@ -276,7 +283,7 @@ const CartScreen: React.FC = () => {
     try {
       const granted = await requestPhotoLibraryPermission();
       if (!granted) {
-        Alert.alert('권한', '사진 접근 권한이 필요합니다.');
+        Alert.alert(t('cartOrder.alerts.permission'), t('cartOrder.alerts.photoPermission'));
         return;
       }
       const options: ImageLibraryOptions = { mediaType: 'photo' as MediaType, quality: 0.7 };
@@ -286,7 +293,7 @@ const CartScreen: React.FC = () => {
         if (uri) setModalPhotoUri(uri);
       });
     } catch {
-      Alert.alert('오류', '갤러리를 열지 못했습니다.');
+      Alert.alert(t('cartOrder.alerts.error'), t('cartOrder.alerts.galleryFailed'));
     }
   };
 
@@ -310,7 +317,7 @@ const CartScreen: React.FC = () => {
     try {
       const granted = await requestPhotoLibraryPermission();
       if (!granted) {
-        Alert.alert('권한', '사진 접근 권한이 필요합니다.');
+        Alert.alert(t('cartOrder.alerts.permission'), t('cartOrder.alerts.photoPermission'));
         return;
       }
       const options: ImageLibraryOptions = { mediaType: 'photo' as MediaType, quality: 0.7 };
@@ -322,7 +329,7 @@ const CartScreen: React.FC = () => {
         }
       });
     } catch {
-      Alert.alert('오류', '갤러리를 열지 못했습니다.');
+      Alert.alert(t('cartOrder.alerts.error'), t('cartOrder.alerts.galleryFailed'));
     }
   };
 
@@ -408,7 +415,7 @@ const CartScreen: React.FC = () => {
                 <Icon name="chevron-down" size={12} color={COLORS.gray[500]} />
               </View>
               <View style={styles.metaRow}>
-                <Text style={styles.metaTag}>색상 {card.color}</Text>
+                <Text style={styles.metaTag}>{t('cartOrder.card.color')} {card.color}</Text>
                 <Text style={styles.metaTag}>{card.size}</Text>
               </View>
             </View>
@@ -438,14 +445,14 @@ const CartScreen: React.FC = () => {
 
           {/* Right: subtotal (상품금액) + View More */}
           <View style={styles.middleRight}>
-            <Text style={styles.rightLabel}>상품금액</Text>
+            <Text style={styles.rightLabel}>{t('cartOrder.card.productAmount')}</Text>
             <Text style={styles.rightValue}>¥{subtotal.toFixed(2)}</Text>
             <TouchableOpacity
               style={styles.viewMoreBtn}
               onPress={() => toggleExpand(card.id)}
             >
               <Text style={styles.viewMoreText}>
-                {card.expanded ? '접기' : '더보기'}
+                {card.expanded ? t('cartOrder.card.collapse') : t('cartOrder.card.viewMore')}
               </Text>
               <Icon
                 name={card.expanded ? 'chevron-up' : 'chevron-down'}
@@ -459,12 +466,12 @@ const CartScreen: React.FC = () => {
         {/* BOTTOM — hidden remarks area */}
         {card.expanded && (
           <View style={styles.cardBottom}>
-            <Text style={styles.remarksLabel}>비고</Text>
+            <Text style={styles.remarksLabel}>{t('cartOrder.card.remarks')}</Text>
             <TextInput
               style={styles.remarksInput}
               multiline
               maxLength={200}
-              placeholder="비고 입력"
+              placeholder={t('cartOrder.card.remarksPlaceholder')}
               placeholderTextColor={COLORS.gray[400]}
               value={card.remarks}
               onChangeText={(t) => updateRemarks(card.id, t)}
@@ -476,14 +483,14 @@ const CartScreen: React.FC = () => {
                 onPress={() => openLabelModal(card.id)}
               >
                 <Icon name="pricetag-outline" size={12} color={COLORS.white} />
-                <Text style={styles.labelRowText}>라벨</Text>
+                <Text style={styles.labelRowText}>{t('cartOrder.card.label')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.deleteRowBtn}
                 onPress={() => handleDeleteOne(card.id)}
               >
                 <Icon name="trash-outline" size={12} color={COLORS.primary} />
-                <Text style={styles.deleteRowText}>삭제</Text>
+                <Text style={styles.deleteRowText}>{t('cartOrder.card.delete')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -494,13 +501,19 @@ const CartScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {/* PAGE TITLE */}
+      <View style={styles.pageHeader}>
+        <Icon name="cart-outline" size={22} color={COLORS.red} />
+        <Text style={styles.pageHeaderTitle}>{t('cart.title')}</Text>
+      </View>
+
       {/* HEADER */}
       <View style={styles.header}>
         <View style={styles.searchBar}>
           <Icon name="search" size={14} color={COLORS.gray[500]} />
           <TextInput
             style={styles.searchInput}
-            placeholder="검색"
+            placeholder={t('cartOrder.search')}
             placeholderTextColor={COLORS.gray[400]}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -514,7 +527,7 @@ const CartScreen: React.FC = () => {
           >
             <Icon name="calendar-outline" size={12} color={COLORS.text.primary} />
             <Text style={styles.periodText} numberOfLines={1}>
-              기간 선택 · {formatElapsed(elapsed)}
+              {t('cartOrder.periodSelect')} · {formatElapsed(elapsed)}
             </Text>
             <Icon name="chevron-down" size={12} color={COLORS.text.primary} />
           </TouchableOpacity>
@@ -535,7 +548,7 @@ const CartScreen: React.FC = () => {
                       selectedPeriod === p.value && styles.periodMenuTextActive,
                     ]}
                   >
-                    {p.label}
+                    {t(`cartOrder.periods.${p.labelKey}`)}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -550,7 +563,7 @@ const CartScreen: React.FC = () => {
 
       {/* 부가서비스 bar — directly under the header */}
       <View style={styles.extraBar}>
-        <Text style={styles.extraLabel}>부가서비스</Text>
+        <Text style={styles.extraLabel}>{t('cartOrder.extraServiceBar.title')}</Text>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -558,11 +571,11 @@ const CartScreen: React.FC = () => {
           contentContainerStyle={styles.extraChipsContent}
         >
           {extraServices.length === 0 ? (
-            <Text style={styles.extraPlaceholder}>선택된 서비스가 없습니다</Text>
+            <Text style={styles.extraPlaceholder}>{t('cartOrder.extraServiceBar.placeholder')}</Text>
           ) : (
             extraServices.map((s) => (
               <View key={s.id} style={styles.extraChip}>
-                <Text style={styles.extraChipText}>{s.name}</Text>
+                <Text style={styles.extraChipText}>{tServiceName(s.id)}</Text>
                 <TouchableOpacity onPress={() => toggleExtraService(s)}>
                   <Icon name="close" size={10} color={COLORS.primary} />
                 </TouchableOpacity>
@@ -572,7 +585,7 @@ const CartScreen: React.FC = () => {
         </ScrollView>
         <TouchableOpacity style={styles.extraSelectBtn} onPress={openServiceModal}>
           <Icon name="add" size={12} color={COLORS.white} />
-          <Text style={styles.extraSelectBtnText}>부가서비스선택</Text>
+          <Text style={styles.extraSelectBtnText}>{t('cartOrder.extraServiceBar.selectBtn')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -584,7 +597,7 @@ const CartScreen: React.FC = () => {
             onPress={() => setActiveTab('past')}
           >
             <Text style={[styles.tabText, activeTab === 'past' && styles.tabTextActive]}>
-              과거주문
+              {t('cartOrder.tabs.past')}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -592,7 +605,7 @@ const CartScreen: React.FC = () => {
             onPress={() => setActiveTab('bundles')}
           >
             <Text style={[styles.tabText, activeTab === 'bundles' && styles.tabTextActive]}>
-              세트묶음
+              {t('cartOrder.tabs.bundles')}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -600,7 +613,7 @@ const CartScreen: React.FC = () => {
             onPress={() => setActiveTab('offline')}
           >
             <Text style={[styles.tabText, activeTab === 'offline' && styles.tabTextActive]}>
-              오프라인상품
+              {t('cartOrder.tabs.offline')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -613,7 +626,7 @@ const CartScreen: React.FC = () => {
         >
           {filteredCards.length === 0 ? (
             <View style={styles.emptyWrap}>
-              <Text style={styles.emptyText}>상품이 없습니다</Text>
+              <Text style={styles.emptyText}>{t('cartOrder.empty')}</Text>
             </View>
           ) : (
             filteredCards.map(renderCard)
@@ -621,10 +634,10 @@ const CartScreen: React.FC = () => {
         </ScrollView>
 
         <View style={styles.summaryBar}>
-          <Text style={styles.summaryText}>총수량 {totalQty}</Text>
-          <Text style={styles.summaryTotal}>합계 ¥{grandTotal.toFixed(2)}</Text>
+          <Text style={styles.summaryText}>{t('cartOrder.summary.totalQty')} {totalQty}</Text>
+          <Text style={styles.summaryTotal}>{t('cartOrder.summary.total')} ¥{grandTotal.toFixed(2)}</Text>
           <TouchableOpacity style={styles.orderBtn} onPress={() => setShowOrderModal(true)}>
-            <Text style={styles.orderBtnText}>바로주문</Text>
+            <Text style={styles.orderBtnText}>{t('cartOrder.summary.order')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -639,7 +652,7 @@ const CartScreen: React.FC = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>발주정보 작성 및 확인</Text>
+              <Text style={styles.modalTitle}>{t('cartOrder.orderModal.title')}</Text>
               <TouchableOpacity onPress={() => setShowOrderModal(false)}>
                 <Icon name="close" size={22} color={COLORS.text.primary} />
               </TouchableOpacity>
@@ -654,23 +667,23 @@ const CartScreen: React.FC = () => {
               <View style={styles.orderSection}>
                 <View style={styles.orderSectionHead}>
                   <View style={styles.orderSectionBar} />
-                  <Text style={styles.orderSectionTitle}>예치금결제</Text>
+                  <Text style={styles.orderSectionTitle}>{t('cartOrder.orderModal.depositPayment')}</Text>
                 </View>
 
                 <View style={styles.orderFieldRow}>
-                  <Text style={styles.orderFieldLabel}>구매결제</Text>
+                  <Text style={styles.orderFieldLabel}>{t('cartOrder.orderModal.purchasePayment')}</Text>
                   <View style={styles.pillGroup}>
                     <TouchableOpacity
                       style={[styles.pill, purchasePayment === 'manual' && styles.pillActive]}
                       onPress={() => setPurchasePayment('manual')}
                     >
-                      <Text style={[styles.pillText, purchasePayment === 'manual' && styles.pillTextActive]}>수동</Text>
+                      <Text style={[styles.pillText, purchasePayment === 'manual' && styles.pillTextActive]}>{t('cartOrder.orderModal.manual')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.pill, purchasePayment === 'auto' && styles.pillActive]}
                       onPress={() => setPurchasePayment('auto')}
                     >
-                      <Text style={[styles.pillText, purchasePayment === 'auto' && styles.pillTextActive]}>자동</Text>
+                      <Text style={[styles.pillText, purchasePayment === 'auto' && styles.pillTextActive]}>{t('cartOrder.orderModal.auto')}</Text>
                     </TouchableOpacity>
                   </View>
                   <TouchableOpacity onPress={() => setShowPaymentTooltip((v) => !v)} style={styles.helpBtn}>
@@ -679,19 +692,19 @@ const CartScreen: React.FC = () => {
                 </View>
 
                 <View style={styles.orderFieldRow}>
-                  <Text style={styles.orderFieldLabel}>배송결제</Text>
+                  <Text style={styles.orderFieldLabel}>{t('cartOrder.orderModal.shippingPayment')}</Text>
                   <View style={styles.pillGroup}>
                     <TouchableOpacity
                       style={[styles.pill, shippingPayment === 'manual' && styles.pillActive]}
                       onPress={() => setShippingPayment('manual')}
                     >
-                      <Text style={[styles.pillText, shippingPayment === 'manual' && styles.pillTextActive]}>수동</Text>
+                      <Text style={[styles.pillText, shippingPayment === 'manual' && styles.pillTextActive]}>{t('cartOrder.orderModal.manual')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.pill, shippingPayment === 'auto' && styles.pillActive]}
                       onPress={() => setShippingPayment('auto')}
                     >
-                      <Text style={[styles.pillText, shippingPayment === 'auto' && styles.pillTextActive]}>자동</Text>
+                      <Text style={[styles.pillText, shippingPayment === 'auto' && styles.pillTextActive]}>{t('cartOrder.orderModal.auto')}</Text>
                     </TouchableOpacity>
                   </View>
                   <TouchableOpacity onPress={() => setShowPaymentTooltip((v) => !v)} style={styles.helpBtn}>
@@ -702,7 +715,7 @@ const CartScreen: React.FC = () => {
                 {showPaymentTooltip && (
                   <View style={styles.tooltipBox}>
                     <Text style={styles.tooltipText}>
-                      자동결제 안내: 견적 제출 후 예치금에서 자동으로 차감되오니, 확인 후 선택해 주시기 바랍니다.
+                      {t('cartOrder.orderModal.paymentTooltip')}
                     </Text>
                   </View>
                 )}
@@ -712,64 +725,64 @@ const CartScreen: React.FC = () => {
               <View style={styles.orderSection}>
                 <View style={styles.orderSectionHead}>
                   <View style={styles.orderSectionBar} />
-                  <Text style={styles.orderSectionTitle}>기본정보</Text>
+                  <Text style={styles.orderSectionTitle}>{t('cartOrder.orderModal.basicInfo')}</Text>
                 </View>
 
                 <View style={styles.orderFieldCol}>
-                  <Text style={styles.orderFieldLabel}>물류센터</Text>
+                  <Text style={styles.orderFieldLabel}>{t('cartOrder.orderModal.logistics')}</Text>
                   <View style={styles.pillGroup}>
-                    {(['위해', '광저우', '이우'] as const).map((v) => (
+                    {(['haerae', 'guangzhou', 'yiwu'] as const).map((v) => (
                       <TouchableOpacity
                         key={v}
                         style={[styles.pill, logisticsCenter === v && styles.pillActive]}
                         onPress={() => setLogisticsCenter(v)}
                       >
-                        <Text style={[styles.pillText, logisticsCenter === v && styles.pillTextActive]}>{v}</Text>
+                        <Text style={[styles.pillText, logisticsCenter === v && styles.pillTextActive]}>{t(`cartOrder.orderModal.${v}`)}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                 </View>
 
                 <View style={styles.orderFieldCol}>
-                  <Text style={styles.orderFieldLabel}>신청구분</Text>
+                  <Text style={styles.orderFieldLabel}>{t('cartOrder.orderModal.appType')}</Text>
                   <View style={styles.pillGroup}>
-                    {(['해운배송', '항공배송', '로켓배송'] as const).map((v) => (
+                    {(['sea', 'air', 'rocket'] as const).map((v) => (
                       <TouchableOpacity
                         key={v}
                         style={[styles.pill, applicationType === v && styles.pillActive]}
                         onPress={() => setApplicationType(v)}
                       >
-                        <Text style={[styles.pillText, applicationType === v && styles.pillTextActive]}>{v}</Text>
+                        <Text style={[styles.pillText, applicationType === v && styles.pillTextActive]}>{t(`cartOrder.orderModal.${v}`)}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                 </View>
 
                 <View style={styles.orderFieldCol}>
-                  <Text style={styles.orderFieldLabel}>통관방식</Text>
+                  <Text style={styles.orderFieldLabel}>{t('cartOrder.orderModal.customs')}</Text>
                   <View style={styles.pillGroup}>
-                    {(['사업자', '개인'] as const).map((v) => (
+                    {(['business', 'personal'] as const).map((v) => (
                       <TouchableOpacity
                         key={v}
                         style={[styles.pill, customsMethod === v && styles.pillActive]}
                         onPress={() => setCustomsMethod(v)}
                       >
-                        <Text style={[styles.pillText, customsMethod === v && styles.pillTextActive]}>{v}</Text>
+                        <Text style={[styles.pillText, customsMethod === v && styles.pillTextActive]}>{t(`cartOrder.orderModal.${v}`)}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                 </View>
 
                 <View style={styles.orderFieldCol}>
-                  <Text style={styles.orderFieldLabel}>운송방식</Text>
+                  <Text style={styles.orderFieldLabel}>{t('cartOrder.orderModal.shippingMethod')}</Text>
                   <View style={styles.pillGroup}>
-                    {(['로켓파레트', '로켓택배', '자가배송파렛트', '자가배송택배'] as const).map((v) => (
+                    {(['rocketPallet', 'rocketDelivery', 'selfPallet', 'selfDelivery'] as const).map((v) => (
                       <TouchableOpacity
                         key={v}
                         style={[styles.pill, shippingMethod === v && styles.pillActive]}
                         onPress={() => setShippingMethod(v)}
                       >
-                        <Text style={[styles.pillText, shippingMethod === v && styles.pillTextActive]}>{v}</Text>
+                        <Text style={[styles.pillText, shippingMethod === v && styles.pillTextActive]}>{t(`cartOrder.orderModal.${v}`)}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -779,30 +792,30 @@ const CartScreen: React.FC = () => {
               {/* 사업자/개인정보 & 수령정보 — placed at the bottom per spec */}
               <View style={styles.orderSection}>
                 <View style={styles.orderFieldRow}>
-                  <Text style={styles.orderFieldLabel}>사업자/개인정보</Text>
+                  <Text style={styles.orderFieldLabel}>{t('cartOrder.orderModal.businessInfo')}</Text>
                   <TouchableOpacity
                     style={styles.selectBtn}
                     onPress={() =>
-                      setBusinessInfoSelected(businessInfoSelected ? '' : '기본 사업자 정보')
+                      setBusinessInfoSelected(businessInfoSelected ? '' : t('cartOrder.orderModal.defaultBusiness'))
                     }
                   >
                     <Text style={styles.selectBtnText} numberOfLines={1}>
-                      {businessInfoSelected || '선택'}
+                      {businessInfoSelected || t('cartOrder.orderModal.selectPlaceholder')}
                     </Text>
                     <Icon name="chevron-forward" size={14} color={COLORS.gray[500]} />
                   </TouchableOpacity>
                 </View>
 
                 <View style={styles.orderFieldRow}>
-                  <Text style={styles.orderFieldLabel}>수령정보</Text>
+                  <Text style={styles.orderFieldLabel}>{t('cartOrder.orderModal.recipientInfo')}</Text>
                   <TouchableOpacity
                     style={styles.selectBtn}
                     onPress={() =>
-                      setRecipientInfoSelected(recipientInfoSelected ? '' : '기본 수령지')
+                      setRecipientInfoSelected(recipientInfoSelected ? '' : t('cartOrder.orderModal.defaultRecipient'))
                     }
                   >
                     <Text style={styles.selectBtnText} numberOfLines={1}>
-                      {recipientInfoSelected || '선택'}
+                      {recipientInfoSelected || t('cartOrder.orderModal.selectPlaceholder')}
                     </Text>
                     <Icon name="chevron-forward" size={14} color={COLORS.gray[500]} />
                   </TouchableOpacity>
@@ -815,13 +828,13 @@ const CartScreen: React.FC = () => {
                 style={[styles.modalFooterBtn, styles.modalCancelBtn]}
                 onPress={() => setShowOrderModal(false)}
               >
-                <Text style={styles.modalCancelText}>취소</Text>
+                <Text style={styles.modalCancelText}>{t('cartOrder.orderModal.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalFooterBtn, styles.modalConfirmBtn]}
                 onPress={() => setShowOrderModal(false)}
               >
-                <Text style={styles.modalConfirmText}>주문확정</Text>
+                <Text style={styles.modalConfirmText}>{t('cartOrder.orderModal.orderConfirm')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -838,7 +851,7 @@ const CartScreen: React.FC = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>라벨설정</Text>
+              <Text style={styles.modalTitle}>{t('cartOrder.labelModal.title')}</Text>
               <TouchableOpacity onPress={closeLabelModal}>
                 <Icon name="close" size={22} color={COLORS.text.primary} />
               </TouchableOpacity>
@@ -851,7 +864,7 @@ const CartScreen: React.FC = () => {
             >
               {/* 라벨종류 */}
               <View style={styles.labelSection}>
-                <Text style={styles.labelSectionLabel}>라벨종류</Text>
+                <Text style={styles.labelSectionLabel}>{t('cartOrder.labelModal.labelType')}</Text>
                 <View style={styles.radioRow}>
                   <TouchableOpacity
                     style={styles.radioOption}
@@ -860,7 +873,7 @@ const CartScreen: React.FC = () => {
                     <View style={[styles.radioOuter, labelType === 'product' && styles.radioOuterOn]}>
                       {labelType === 'product' && <View style={styles.radioInner} />}
                     </View>
-                    <Text style={styles.radioText}>상품라벨</Text>
+                    <Text style={styles.radioText}>{t('cartOrder.labelModal.productLabel')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.radioOption}
@@ -869,17 +882,17 @@ const CartScreen: React.FC = () => {
                     <View style={[styles.radioOuter, labelType === 'foodInspect' && styles.radioOuterOn]}>
                       {labelType === 'foodInspect' && <View style={styles.radioInner} />}
                     </View>
-                    <Text style={styles.radioText}>식검라벨</Text>
+                    <Text style={styles.radioText}>{t('cartOrder.labelModal.foodLabel')}</Text>
                   </TouchableOpacity>
                 </View>
                 <Text style={styles.labelHint}>
-                  체크 후 해당 상품라벨/식검라벨 작업 설정이 됩니다.
+                  {t('cartOrder.labelModal.typeHint')}
                 </Text>
               </View>
 
               {/* 라벨양식 */}
               <View style={styles.labelSection}>
-                <Text style={styles.labelSectionLabel}>라벨양식</Text>
+                <Text style={styles.labelSectionLabel}>{t('cartOrder.labelModal.labelFormat')}</Text>
                 <View style={styles.radioRow}>
                   <TouchableOpacity
                     style={styles.radioOption}
@@ -888,7 +901,7 @@ const CartScreen: React.FC = () => {
                     <View style={[styles.radioOuter, labelFormat === '50x80' && styles.radioOuterOn]}>
                       {labelFormat === '50x80' && <View style={styles.radioInner} />}
                     </View>
-                    <Text style={styles.radioText}>50*80mm라벨</Text>
+                    <Text style={styles.radioText}>{t('cartOrder.labelModal.format5080')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.radioOption}
@@ -898,9 +911,9 @@ const CartScreen: React.FC = () => {
                       {labelFormat === '40x60' && <View style={styles.radioInner} />}
                     </View>
                     <Text style={styles.radioText}>
-                      40*60mm라벨
+                      {t('cartOrder.labelModal.format4060')}
                       {labelType === 'foodInspect' && labelFormat === '40x60' ? (
-                        <Text style={styles.labelHintInline}> (바코드 불필요)</Text>
+                        <Text style={styles.labelHintInline}> {t('cartOrder.labelModal.noBarcode')}</Text>
                       ) : null}
                     </Text>
                   </TouchableOpacity>
@@ -909,7 +922,7 @@ const CartScreen: React.FC = () => {
 
               {/* PREVIEW — middle section on desktop, top on mobile per spec */}
               <View style={styles.labelSection}>
-                <Text style={styles.labelSectionLabel}>라벨미리보기</Text>
+                <Text style={styles.labelSectionLabel}>{t('cartOrder.labelModal.preview')}</Text>
                 <View style={styles.previewWrap}>
                   <View
                     style={[
@@ -920,7 +933,7 @@ const CartScreen: React.FC = () => {
                     {labelType === 'foodInspect' && (
                       <View style={styles.foodBadge}>
                         <Icon name="restaurant-outline" size={10} color={COLORS.text.primary} />
-                        <Text style={styles.foodBadgeText}>식품용</Text>
+                        <Text style={styles.foodBadgeText}>{t('cartOrder.labelModal.foodBadge')}</Text>
                       </View>
                     )}
                     {!(labelType === 'foodInspect' && labelFormat === '40x60') && (
@@ -949,7 +962,7 @@ const CartScreen: React.FC = () => {
                   </View>
                   <View style={styles.dimensionLabel}>
                     <Text style={styles.dimensionText}>
-                      {labelFormat === '50x80' ? '50mm × 80mm' : '60mm × 40mm'}
+                      {labelFormat === '50x80' ? t('cartOrder.labelModal.dim5080') : t('cartOrder.labelModal.dim4060')}
                     </Text>
                   </View>
                 </View>
@@ -957,23 +970,23 @@ const CartScreen: React.FC = () => {
 
               {/* INPUTS — right section on desktop, center on mobile per spec */}
               <View style={styles.labelSection}>
-                <Text style={styles.labelSectionLabel}>라벨내용</Text>
+                <Text style={styles.labelSectionLabel}>{t('cartOrder.labelModal.labelContent')}</Text>
                 <View style={styles.fontToolbar}>
-                  <View style={styles.fontChip}><Text style={styles.fontChipText}>글꼴</Text></View>
+                  <View style={styles.fontChip}><Text style={styles.fontChipText}>{t('cartOrder.labelModal.font')}</Text></View>
                   <View style={styles.fontChip}><Text style={styles.fontChipText}>9pt</Text></View>
-                  <View style={styles.fontChip}><Text style={[styles.fontChipText, { fontWeight: '800' }]}>가</Text></View>
-                  <View style={styles.fontChip}><Text style={[styles.fontChipText, { fontStyle: 'italic' }]}>가</Text></View>
-                  <View style={styles.fontChip}><Text style={[styles.fontChipText, { textDecorationLine: 'underline' }]}>가</Text></View>
+                  <View style={styles.fontChip}><Text style={[styles.fontChipText, { fontWeight: '800' }]}>{t('cartOrder.labelModal.gaLetter')}</Text></View>
+                  <View style={styles.fontChip}><Text style={[styles.fontChipText, { fontStyle: 'italic' }]}>{t('cartOrder.labelModal.gaLetter')}</Text></View>
+                  <View style={styles.fontChip}><Text style={[styles.fontChipText, { textDecorationLine: 'underline' }]}>{t('cartOrder.labelModal.gaLetter')}</Text></View>
                 </View>
 
                 {!(labelType === 'foodInspect' && labelFormat === '40x60') && (
                   <>
-                    <Text style={styles.labelInputLabel}>상품명</Text>
+                    <Text style={styles.labelInputLabel}>{t('cartOrder.labelModal.productName')}</Text>
                     <TextInput
                       style={styles.labelInput}
                       value={labelProductName}
                       onChangeText={setLabelProductName}
-                      placeholder="제품명 입력"
+                      placeholder={t('cartOrder.labelModal.productNamePlaceholder')}
                       placeholderTextColor={COLORS.gray[400]}
                     />
                   </>
@@ -981,13 +994,13 @@ const CartScreen: React.FC = () => {
 
                 {!(labelType === 'product' && labelFormat === '40x60') && (
                   <>
-                    <Text style={styles.labelInputLabel}>라벨 내용 입력</Text>
+                    <Text style={styles.labelInputLabel}>{t('cartOrder.labelModal.contentInput')}</Text>
                     <TextInput
                       style={styles.labelContentInput}
                       value={labelContent}
                       onChangeText={setLabelContent}
                       multiline
-                      placeholder="라벨 내용을 입력해 주세요"
+                      placeholder={t('cartOrder.labelModal.contentPlaceholder')}
                       placeholderTextColor={COLORS.gray[400]}
                     />
                   </>
@@ -995,12 +1008,12 @@ const CartScreen: React.FC = () => {
 
                 {!(labelType === 'foodInspect' && labelFormat === '40x60') && (
                   <>
-                    <Text style={styles.labelInputLabel}>바코드 번호</Text>
+                    <Text style={styles.labelInputLabel}>{t('cartOrder.labelModal.barcodeNumber')}</Text>
                     <TextInput
                       style={styles.labelInput}
                       value={labelBarcode}
                       onChangeText={setLabelBarcode}
-                      placeholder="바코드 번호"
+                      placeholder={t('cartOrder.labelModal.barcodePlaceholder')}
                       placeholderTextColor={COLORS.gray[400]}
                     />
                   </>
@@ -1027,13 +1040,13 @@ const CartScreen: React.FC = () => {
                 onPress={pickLabelFile}
               >
                 <Icon name="cloud-upload-outline" size={14} color={COLORS.text.primary} />
-                <Text style={[styles.modalCancelText, { marginLeft: 4 }]}>파일 업로드</Text>
+                <Text style={[styles.modalCancelText, { marginLeft: 4 }]}>{t('cartOrder.labelModal.fileUpload')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalFooterBtn, styles.modalConfirmBtn]}
                 onPress={saveLabel}
               >
-                <Text style={styles.modalConfirmText}>저장</Text>
+                <Text style={styles.modalConfirmText}>{t('cartOrder.labelModal.save')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1050,7 +1063,7 @@ const CartScreen: React.FC = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>부가서비스선택</Text>
+              <Text style={styles.modalTitle}>{t('cartOrder.serviceModal.title')}</Text>
               <TouchableOpacity onPress={closeServiceModal}>
                 <Icon name="close" size={22} color={COLORS.text.primary} />
               </TouchableOpacity>
@@ -1071,17 +1084,17 @@ const CartScreen: React.FC = () => {
                   )}
                 </View>
                 <Text style={styles.detailName}>
-                  {detailService?.name || '서비스를 선택해 주세요'}
+                  {detailService ? tServiceName(detailService.id) : t('cartOrder.serviceModal.selectPrompt')}
                 </Text>
                 {detailService?.price ? (
                   <Text style={styles.detailPriceRow}>
-                    <Text style={styles.detailPriceLabel}>요금 기준: </Text>
+                    <Text style={styles.detailPriceLabel}>{t('cartOrder.serviceModal.feeLabel')}</Text>
                     <Text style={styles.detailPrice}>{detailService.price}</Text>
                   </Text>
                 ) : null}
                 {detailService?.description ? (
                   <Text style={styles.detailDescription}>
-                    <Text style={styles.detailDescLabel}>상세설명: </Text>
+                    <Text style={styles.detailDescLabel}>{t('cartOrder.serviceModal.descLabel')}</Text>
                     {detailService.description}
                   </Text>
                 ) : null}
@@ -1089,19 +1102,19 @@ const CartScreen: React.FC = () => {
 
               {/* CENTER — other requests + photo upload (right section) */}
               <View style={styles.requestSection}>
-                <Text style={styles.sectionLabel}>기타 요청사항</Text>
+                <Text style={styles.sectionLabel}>{t('cartOrder.serviceModal.otherRequests')}</Text>
                 <TextInput
                   style={styles.requestInput}
                   multiline
                   maxLength={200}
-                  placeholder="요청사항을 입력해 주세요"
+                  placeholder={t('cartOrder.serviceModal.otherRequestsPlaceholder')}
                   placeholderTextColor={COLORS.gray[400]}
                   value={otherRequests}
                   onChangeText={setOtherRequests}
                 />
                 <Text style={styles.requestCounter}>{otherRequests.length}/200</Text>
 
-                <Text style={[styles.sectionLabel, { marginTop: 12 }]}>사진업로드</Text>
+                <Text style={[styles.sectionLabel, { marginTop: 12 }]}>{t('cartOrder.serviceModal.photoUpload')}</Text>
                 <View style={styles.uploadRow}>
                   {modalPhotoUri ? (
                     <View style={styles.uploadPreviewWrap}>
@@ -1116,7 +1129,7 @@ const CartScreen: React.FC = () => {
                   ) : null}
                   <TouchableOpacity style={styles.uploadBtn} onPress={pickModalPhoto}>
                     <Icon name="add" size={20} color={COLORS.gray[500]} />
-                    <Text style={styles.uploadBtnText}>업로드</Text>
+                    <Text style={styles.uploadBtnText}>{t('cartOrder.serviceModal.upload')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1126,9 +1139,9 @@ const CartScreen: React.FC = () => {
                 {SERVICE_CATEGORIES.map((cat) => (
                   <View key={cat.id} style={styles.categoryBlock}>
                     <Text style={styles.categoryTitle}>
-                      {cat.title}
+                      {tCategoryTitle(cat.id)}
                       {cat.required ? (
-                        <Text style={styles.categoryRequired}> (필수)</Text>
+                        <Text style={styles.categoryRequired}> {t('cartOrder.serviceModal.required')}</Text>
                       ) : null}
                     </Text>
                     <View style={styles.categoryGrid}>
@@ -1162,7 +1175,7 @@ const CartScreen: React.FC = () => {
                               ]}
                               numberOfLines={2}
                             >
-                              {svc.name}
+                              {tServiceName(svc.id)}
                             </Text>
                           </TouchableOpacity>
                         );
@@ -1179,13 +1192,13 @@ const CartScreen: React.FC = () => {
                 style={[styles.modalFooterBtn, styles.modalCancelBtn]}
                 onPress={closeServiceModal}
               >
-                <Text style={styles.modalCancelText}>취소</Text>
+                <Text style={styles.modalCancelText}>{t('cartOrder.serviceModal.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalFooterBtn, styles.modalConfirmBtn]}
                 onPress={confirmServiceModal}
               >
-                <Text style={styles.modalConfirmText}>확인</Text>
+                <Text style={styles.modalConfirmText}>{t('cartOrder.serviceModal.confirm')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1195,13 +1208,29 @@ const CartScreen: React.FC = () => {
   );
 };
 
-const PRIMARY = COLORS.primary || '#FF6B35';
-const PRIMARY_SOFT = 'rgba(255, 107, 53, 0.10)';
+const PRIMARY = COLORS.red;
+const PRIMARY_SOFT = 'rgba(255, 85, 0, 0.10)';
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3F4F8',
+    backgroundColor: COLORS.background,
+  },
+  // PAGE TITLE
+  pageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 10,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray[100],
+  },
+  pageHeaderTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: COLORS.red,
+    marginLeft: 8,
   },
   // HEADER
   header: {
@@ -1731,7 +1760,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: PRIMARY_SOFT,
     borderWidth: 1,
-    borderColor: 'rgba(255, 107, 53, 0.25)',
+    borderColor: 'rgba(255, 85, 0, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
   },
