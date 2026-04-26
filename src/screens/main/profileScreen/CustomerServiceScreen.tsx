@@ -4,10 +4,10 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Image,
   Linking,
   Platform,
   SafeAreaView,
+  ScrollView,
 } from 'react-native';
 import Icon from '../../../components/Icon';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -21,15 +21,23 @@ import { inquiryApi } from '../../../services/inquiryApi';
 const CustomerServiceScreen: React.FC = () => {
   const navigation = useNavigation();
   const locale = useAppSelector((s) => s.i18n.locale) as 'en' | 'ko' | 'zh';
-  const { onMessageReceived, onUnreadCountUpdated, getUnreadCounts, unreadCount } = useSocket();
+  const { onMessageReceived, onUnreadCountUpdated, unreadCount } = useSocket();
   const [totalUnreadCount, setTotalUnreadCount] = useState<number>(0);
+  // Keep this hook to preserve stable hook ordering across fast refresh
+  // after the search input was removed from UI.
+  const [searchQuery] = useState('');
   
   // Translation function
-  const t = (key: string) => {
+  const t = (key: string, params?: Record<string, string | number>) => {
     const keys = key.split('.');
     let value: any = translations[locale as keyof typeof translations];
     for (const k of keys) {
       value = value?.[k];
+    }
+    if (typeof value === 'string' && params) {
+      Object.keys(params).forEach((paramKey) => {
+        value = value.replace(`{${paramKey}}`, String(params[paramKey]));
+      });
     }
     return value || key;
   };
@@ -50,7 +58,7 @@ const CustomerServiceScreen: React.FC = () => {
         }
       };
       fetchUnreadCounts();
-    }, [onUnreadCountUpdated])
+    }, [])
   );
 
   // Update total unread count from socket context
@@ -98,9 +106,41 @@ const CustomerServiceScreen: React.FC = () => {
   };
 
   const handleOrderInquiry = () => {
-    // Navigate to Order Inquiry screen
-    (navigation as any).navigate('OrderInquiry');
+    (navigation as any).navigate('Message', { initialTab: 'order' });
   };
+
+  const serviceItems = [
+    {
+      id: 'phone',
+      title: t('customerService.phoneCounsel'),
+      value: '070-7792-6663',
+      icon: 'call',
+      iconColor: COLORS.white,
+      containerStyle: styles.phoneButton,
+      textStyle: styles.phoneButtonText,
+      onPress: handlePhoneCall,
+    },
+    {
+      id: 'kakao',
+      title: t('customerService.kakaoTalk'),
+      icon: 'chatbubble',
+      iconColor: COLORS.red,
+      containerStyle: styles.kakaoButton,
+      textStyle: styles.kakaoButtonText,
+      onPress: handleKakaoTalk,
+    },
+    {
+      id: 'order',
+      title: t('customerService.orderInquiry'),
+      icon: 'document-text',
+      iconColor: COLORS.red,
+      containerStyle: styles.orderButton,
+      textStyle: styles.orderButtonText,
+      onPress: handleOrderInquiry,
+    },
+  ];
+
+  const filteredItems = searchQuery ? serviceItems : serviceItems;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -116,57 +156,65 @@ const CustomerServiceScreen: React.FC = () => {
         <View style={styles.placeholder} />
       </View>
 
-      {/* Banner Image */}
-      <View style={styles.bannerContainer}>
-        <View style={styles.bannerImageWrapper}>
-          <Image
-            source={require('../../../assets/images/avatar.png')}
-            style={styles.bannerImage}
-            resizeMode="cover"
-          />
-        </View>
-      </View>
-
-      {/* Online Client Center */}
-      <View style={styles.contentContainer}>
-        <Text style={styles.sectionTitle}>{t('customerService.onlineClientCenter')}</Text>
-
-        {/* Phone Button */}
-        <TouchableOpacity
-          style={[styles.contactButton, styles.phoneButton]}
-          onPress={handlePhoneCall}
-        >
-          <Icon name="call" size={24} color={COLORS.white} />
-          <Text style={styles.phoneButtonText}>070-7792-6663</Text>
-        </TouchableOpacity>
-
-        {/* Kakao Talk Button */}
-        <TouchableOpacity
-          style={[styles.contactButton, styles.kakaoButton]}
-          onPress={handleKakaoTalk}
-        >
-          <Icon name="chatbubble" size={24} color={COLORS.text.primary} />
-          <Text style={styles.kakaoButtonText}>{t('customerService.kakaoTalk')}</Text>
-        </TouchableOpacity>
-
-        {/* Order Inquiry Button */}
-        <TouchableOpacity
-          style={[styles.contactButton, styles.orderButton]}
-          onPress={handleOrderInquiry}
-        >
-          <View style={styles.orderButtonContent}>
-            <Icon name="document-text" size={24} color={COLORS.text.primary} />
-            <Text style={styles.orderButtonText}>{t('customerService.orderInquiry')}</Text>
-            {totalUnreadCount > 0 && (
-              <View style={styles.unreadBadge}>
-                <Text style={styles.unreadBadgeText}>
-                  {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
-                </Text>
-              </View>
-            )}
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        <View style={styles.scrollContent}>
+          <View style={styles.heroCard}>
+            <View style={styles.heroIconWrap}>
+              <Icon name="headset" size={22} color={COLORS.white} />
+            </View>
+            <View style={styles.heroTextWrap}>
+              <Text style={styles.heroTitle}>{t('customerService.onlineClientCenter')}</Text>
+              <Text style={styles.heroSubtitle}>{t('customerService.phoneCounsel')}</Text>
+            </View>
           </View>
-        </TouchableOpacity>
-      </View>
+
+          <View style={styles.contentContainer}>
+            <Text style={styles.sectionTitle}>{t('customerService.onlineClientCenter')}</Text>
+
+            {filteredItems.map((item) => (
+              <TouchableOpacity
+                key={item.id}
+                style={[styles.contactButton, item.containerStyle]}
+                onPress={item.onPress}
+                activeOpacity={0.85}
+              >
+                <View style={styles.contactButtonLeft}>
+                  <View style={[styles.contactIconWrap, item.id === 'phone' && styles.phoneIconWrap]}>
+                    <Icon name={item.icon} size={item.id === 'phone' ? 20 : 18} color={item.iconColor} />
+                  </View>
+                  <View style={styles.contactTextWrap}>
+                    <Text style={styles.contactTitle}>{item.title}</Text>
+                    <Text style={item.textStyle}>{item.value || item.title}</Text>
+                  </View>
+                </View>
+                <View style={styles.orderRightArea}>
+                  <Icon
+                    name="chevron-forward"
+                    size={18}
+                    color={item.id === 'phone' ? COLORS.white : COLORS.red}
+                  />
+                  {item.id === 'order' && totalUnreadCount > 0 && (
+                    <View style={styles.unreadBadge}>
+                      <Text style={styles.unreadBadgeText}>
+                        {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {totalUnreadCount > 0 && (
+            <View style={styles.tipContainer}>
+              <Icon name="notifications" size={16} color={COLORS.red} />
+              <Text style={styles.tipText}>
+                {t('customerService.searchResults', { count: totalUnreadCount })}
+              </Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -174,7 +222,7 @@ const CustomerServiceScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.background,
   },
   header: {
     flexDirection: 'row',
@@ -182,14 +230,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
-    paddingTop: SPACING['2xl'],
+    paddingTop: SPACING.md,
     backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.gray[100],
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -199,79 +248,150 @@ const styles = StyleSheet.create({
     color: COLORS.text.primary,
   },
   placeholder: {
-    width: 40,
+    width: 32,
+    height: 32,
   },
-  bannerContainer: {
+  scrollView: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  scrollContent: {
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.lg,
-    paddingBottom: SPACING.md,
+    paddingBottom: SPACING.xl,
   },
-  bannerImageWrapper: {
-    width: '100%',
-    height: 140,
+  heroCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
     borderRadius: BORDER_RADIUS.lg,
-    overflow: 'hidden',
-    backgroundColor: COLORS.gray[200],
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: COLORS.shadow,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  bannerImage: {
-    width: '100%',
-    height: '100%',
+  heroIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.red,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.sm,
+  },
+  heroTextWrap: {
+    flex: 1,
+  },
+  heroTitle: {
+    fontSize: FONTS.sizes.lg,
+    fontWeight: '600',
+    color: COLORS.text.primary,
+    marginBottom: 2,
+  },
+  heroSubtitle: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
   },
   contentContainer: {
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.md,
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: COLORS.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
   },
   sectionTitle: {
-    fontSize: FONTS.sizes.xl,
+    fontSize: FONTS.sizes.lg,
     fontWeight: '700',
     color: COLORS.text.primary,
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING.md,
   },
   contactButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.lg,
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
     borderRadius: BORDER_RADIUS.lg,
     marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  contactButtonLeft: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: SPACING.sm,
+    flex: 1,
+  },
+  contactTextWrap: {
+    flex: 1,
+  },
+  contactTitle: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.text.secondary,
+    marginBottom: 2,
+  },
+  contactIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  phoneIconWrap: {
+    backgroundColor: COLORS.primaryDark,
+    borderColor: COLORS.primaryDark,
   },
   phoneButton: {
-    backgroundColor: '#4A90E2',
+    backgroundColor: COLORS.red,
+    borderColor: COLORS.red,
   },
   phoneButtonText: {
-    fontSize: FONTS.sizes.lg,
+    fontSize: FONTS.sizes.base,
     fontWeight: '600',
     color: COLORS.white,
   },
   kakaoButton: {
-    backgroundColor: '#FEE500',
+    backgroundColor: COLORS.lightRed,
+    borderColor: COLORS.red,
   },
   kakaoButtonText: {
-    fontSize: FONTS.sizes.lg,
+    fontSize: FONTS.sizes.base,
     fontWeight: '600',
-    color: COLORS.text.primary,
+    color: COLORS.red,
   },
   orderButton: {
-    backgroundColor: '#D4F1F4',
-    position: 'relative',
+    backgroundColor: COLORS.lightRed,
+    borderColor: COLORS.red,
   },
-  orderButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  orderRightArea: {
+    minWidth: 28,
+    alignItems: 'flex-end',
     justifyContent: 'center',
-    gap: SPACING.sm,
-    position: 'relative',
   },
   orderButtonText: {
-    fontSize: FONTS.sizes.lg,
+    fontSize: FONTS.sizes.base,
     fontWeight: '600',
-    color: COLORS.text.primary,
+    color: COLORS.red,
   },
   unreadBadge: {
     position: 'absolute',
-    top: -8,
-    right: -8,
+    top: -10,
+    right: -10,
     minWidth: 20,
     height: 20,
     borderRadius: 10,
@@ -286,6 +406,23 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.xs,
     fontWeight: '700',
     color: COLORS.white,
+  },
+  tipContainer: {
+    marginTop: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.lightRed,
+    borderWidth: 1,
+    borderColor: COLORS.red,
+  },
+  tipText: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.red,
+    fontWeight: '600',
   },
 });
 

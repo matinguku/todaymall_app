@@ -13,9 +13,11 @@ import Icon from '../../../../components/Icon';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, IMAGE_CONFIG } from '../../../../constants';
 import { RootStackParamList } from '../../../../types';
 import ProductCard from '../../../../components/ProductCard';
+
+const P = IMAGE_CONFIG.PRODUCT_DISPLAY_PIXEL;
 
 type ProblemProductScreenNavigationProp = StackNavigationProp<
   RootStackParamList,
@@ -44,7 +46,7 @@ const ProblemProductScreen: React.FC = () => {
     {
       id: '1',
       productName: 'Wireless Bluetooth Headphones',
-      productImage: 'https://picsum.photos/200/200?random=1',
+      productImage: `https://picsum.photos/${P}/${P}?random=1`,
       orderNumber: 'ORD-2024-001',
       issueType: 'Defective Item',
       status: 'processing',
@@ -54,7 +56,7 @@ const ProblemProductScreen: React.FC = () => {
     {
       id: '2',
       productName: 'Smart Watch Series 5',
-      productImage: 'https://picsum.photos/200/200?random=2',
+      productImage: `https://picsum.photos/${P}/${P}?random=2`,
       orderNumber: 'ORD-2024-002',
       issueType: 'Wrong Item Received',
       status: 'pending',
@@ -64,7 +66,7 @@ const ProblemProductScreen: React.FC = () => {
     {
       id: '3',
       productName: 'USB-C Charging Cable',
-      productImage: 'https://picsum.photos/200/200?random=3',
+      productImage: `https://picsum.photos/${P}/${P}?random=3`,
       orderNumber: 'ORD-2024-003',
       issueType: 'Item Not Received',
       status: 'resolved',
@@ -83,8 +85,8 @@ const ProblemProductScreen: React.FC = () => {
       discount: 39,
       rating: 4.8,
       ratingCount: 234,
-      image: 'https://picsum.photos/seed/earbuds/400/500',
-      images: ['https://picsum.photos/seed/earbuds/400/500'],
+      image: `https://picsum.photos/seed/earbuds/${P}/${P}`,
+      images: [`https://picsum.photos/seed/earbuds/${P}/${P}`],
       company: '1688',
       category: '1688_electronics',
       subcategory: '1688_electronics_audio',
@@ -98,8 +100,8 @@ const ProblemProductScreen: React.FC = () => {
       discount: 44,
       rating: 4.6,
       ratingCount: 189,
-      image: 'https://picsum.photos/seed/tracker/400/500',
-      images: ['https://picsum.photos/seed/tracker/400/500'],
+      image: `https://picsum.photos/seed/tracker/${P}/${P}`,
+      images: [`https://picsum.photos/seed/tracker/${P}/${P}`],
       company: '1688',
       category: '1688_electronics',
       subcategory: '1688_electronics_wearables',
@@ -113,8 +115,8 @@ const ProblemProductScreen: React.FC = () => {
       discount: 42,
       rating: 4.7,
       ratingCount: 456,
-      image: 'https://picsum.photos/seed/powerbank/400/500',
-      images: ['https://picsum.photos/seed/powerbank/400/500'],
+      image: `https://picsum.photos/seed/powerbank/${P}/${P}`,
+      images: [`https://picsum.photos/seed/powerbank/${P}/${P}`],
       company: '1688',
       category: '1688_electronics',
       subcategory: '1688_electronics_accessories',
@@ -128,8 +130,8 @@ const ProblemProductScreen: React.FC = () => {
       discount: 38,
       rating: 4.5,
       ratingCount: 321,
-      image: 'https://picsum.photos/seed/charger/400/500',
-      images: ['https://picsum.photos/seed/charger/400/500'],
+      image: `https://picsum.photos/seed/charger/${P}/${P}`,
+      images: [`https://picsum.photos/seed/charger/${P}/${P}`],
       company: '1688',
       category: '1688_electronics',
       subcategory: '1688_electronics_accessories',
@@ -143,8 +145,8 @@ const ProblemProductScreen: React.FC = () => {
       discount: 33,
       rating: 4.9,
       ratingCount: 567,
-      image: 'https://picsum.photos/seed/speaker/400/500',
-      images: ['https://picsum.photos/seed/speaker/400/500'],
+      image: `https://picsum.photos/seed/speaker/${P}/${P}`,
+      images: [`https://picsum.photos/seed/speaker/${P}/${P}`],
       company: '1688',
       category: '1688_electronics',
       subcategory: '1688_electronics_audio',
@@ -158,8 +160,8 @@ const ProblemProductScreen: React.FC = () => {
       discount: 35,
       rating: 4.4,
       ratingCount: 234,
-      image: 'https://picsum.photos/seed/phonestand/400/500',
-      images: ['https://picsum.photos/seed/phonestand/400/500'],
+      image: `https://picsum.photos/seed/phonestand/${P}/${P}`,
+      images: [`https://picsum.photos/seed/phonestand/${P}/${P}`],
       company: '1688',
       category: '1688_accessories',
       subcategory: '1688_accessories_phone',
@@ -376,7 +378,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
-    paddingTop: SPACING['2xl'],
+    paddingTop: SPACING.md,
     backgroundColor: COLORS.white,
   },
   backButton: {

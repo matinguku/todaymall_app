@@ -26,6 +26,7 @@ const CARD_GAP = SPACING.smmd;
 const CARD_WIDTH = (SCREEN_WIDTH - SPACING.md * 2 - CARD_GAP) / 2;
 
 type SortOption = 'bestMatch' | 'viewers' | 'newest';
+const asArray = (value: any): any[] => (Array.isArray(value) ? value : []);
 
 // ─── Seller Card ──────────────────────────────────────────
 const SellerCard: React.FC<{
@@ -157,16 +158,20 @@ const LiveSellerSearchScreen: React.FC = () => {
     const sellers: any[] = [];
     const seenIds = new Set<string>();
 
-    const partnerSellers = liveCommerceData.pointPartnerSellers || [];
+    const partnerSellers = asArray(liveCommerceData.pointSellers).length > 0
+      ? asArray(liveCommerceData.pointSellers)
+      : asArray(liveCommerceData.pointPartnerSellers);
     partnerSellers.forEach((s: any) => {
       const id = s._id || s.id || s.userName;
       if (id && !seenIds.has(id)) {
         seenIds.add(id);
-        sellers.push({ ...s, isLive: !!s.isLive });
+        sellers.push({ ...s, isLive: (s.currentLiveStatus || '').toLowerCase() === 'live' || !!s.isLive });
       }
     });
 
-    const topSellers = liveCommerceData.top10Sellers || [];
+    const topSellers = asArray(liveCommerceData.topSellers).length > 0
+      ? asArray(liveCommerceData.topSellers)
+      : asArray(liveCommerceData.top10Sellers);
     topSellers.forEach((s: any) => {
       const id = s._id || s.id || s.userName;
       if (id && !seenIds.has(id)) {
@@ -175,7 +180,9 @@ const LiveSellerSearchScreen: React.FC = () => {
       }
     });
 
-    const schedule = liveCommerceData.schedule || [];
+    const schedule = asArray(liveCommerceData.liveStreamSchedule).length > 0
+      ? asArray(liveCommerceData.liveStreamSchedule)
+      : asArray(liveCommerceData.schedule);
     schedule.forEach((item: any) => {
       const s = item.seller || item;
       const id = s._id || s.id || s.userName || item.sellerId;

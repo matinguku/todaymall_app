@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
+import WebView from 'react-native-webview';
 import { useNavigation } from '@react-navigation/native';
 import Text from '../../components/Text';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SCREEN_WIDTH } from '../../constants';
@@ -29,6 +30,8 @@ import { formatPriceKRW } from '../../utils/i18nHelpers';
 const CAROUSEL_WIDTH = SCREEN_WIDTH - SPACING.sm * 2;
 const CAROUSEL_HEIGHT = 420;
 
+const asArray = (value: any): any[] => (Array.isArray(value) ? value : []);
+
 const getLocalizedTitle = (item: any, locale: 'en' | 'ko' | 'zh') => {
   if (!item) return '';
   if (locale === 'ko') return item.titleKo || item.title || item.liveTitle || item.product?.titleKo || item.product?.titleEn || item.product?.titleZh || item.productTitle?.ko || item.productTitle?.en || item.productTitle?.zh || '';
@@ -37,6 +40,13 @@ const getLocalizedTitle = (item: any, locale: 'en' | 'ko' | 'zh') => {
 };
 
 const getSellerData = (item: any) => {
+  // liveReels has `seller` as a plain string name (e.g. "홍길동")
+  if (typeof item?.seller === 'string') {
+    return {
+      name: item.seller,
+      avatar: item.sellerAvatar || item.sellerPicUrl || 'https://via.placeholder.com/48.png?text=S',
+    };
+  }
   const seller = item?.seller || item;
   return {
     name: seller?.nickname || seller?.userName || seller?.name || item?.sellerName || 'Live Seller',
@@ -44,8 +54,86 @@ const getSellerData = (item: any) => {
   };
 };
 
+// Build a Date from liveReels fields (date="YYYY-MM-DD", time="HH:MM") or fall back to startAt.
+const parseReelDateTime = (dateStr?: string, timeStr?: string): Date | null => {
+  if (!dateStr) return null;
+  const iso = timeStr ? `${dateStr}T${timeStr.length === 5 ? `${timeStr}:00` : timeStr}` : `${dateStr}T00:00:00`;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
+};
+
+const localeToTag = (locale: 'en' | 'ko' | 'zh') =>
+  locale === 'ko' ? 'ko-KR' : locale === 'zh' ? 'zh-CN' : 'en-US';
+
+const escapeHtmlAttr = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// Inline video player backed by a WebView HTML5 <video>.
+// Only the currently-visible carousel page mounts this so multiple videos
+// don't try to decode in parallel.
+const ReelVideoPlayer: React.FC<{ videoUrl: string; posterUrl?: string; style?: any }> = ({
+  videoUrl,
+  posterUrl,
+  style,
+}) => {
+  const src = escapeHtmlAttr(videoUrl);
+  const poster = posterUrl ? escapeHtmlAttr(posterUrl) : '';
+  // Audio-playback strategy:
+  //   1. Try unmuted autoplay (works on Android with mediaPlaybackRequiresUserAction=false).
+  //   2. If the browser blocks it (iOS is strict), fall back to muted autoplay so the
+  //      user still sees motion, and show an overlay hinting to tap.
+  //   3. Any tap inside the WebView unmutes and resumes playback, satisfying the
+  //      user-gesture requirement for sound on iOS.
+  const html = `<!DOCTYPE html><html><head>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<style>
+html,body{margin:0;padding:0;height:100%;background:#000;overflow:hidden;}
+video{width:100%;height:100%;object-fit:cover;display:block;background:#000;}
+#hint{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.35);color:#fff;font:600 14px -apple-system,system-ui,sans-serif;text-align:center;}
+#hint.show{display:flex;}
+</style></head><body>
+<video id="v" src="${src}"${poster ? ` poster="${poster}"` : ''} autoplay loop playsinline webkit-playsinline preload="auto"></video>
+<div id="hint">🔊 Tap to unmute</div>
+<script>
+(function(){
+  var v=document.getElementById('v'),h=document.getElementById('hint');
+  function tryPlay(){
+    v.muted=false;
+    var p=v.play();
+    if(p&&p.catch){p.catch(function(){
+      v.muted=true;
+      v.play().catch(function(){});
+      h.classList.add('show');
+    });}
+  }
+  tryPlay();
+  document.body.addEventListener('click',function(){
+    v.muted=false;
+    h.classList.remove('show');
+    v.play().catch(function(){});
+  });
+})();
+</script>
+</body></html>`;
+
+  return (
+    <WebView
+      source={{ html, baseUrl: 'https://todaymall.co.kr' }}
+      style={style}
+      allowsInlineMediaPlayback
+      mediaPlaybackRequiresUserAction={false}
+      scrollEnabled={false}
+      javaScriptEnabled
+      domStorageEnabled
+      androidLayerType="hardware"
+      automaticallyAdjustContentInsets={false}
+      originWhitelist={['*']}
+    />
+  );
+};
+
 const getViewerCount = (item: any) => {
-  return item?.onlineViews ?? item?.viewerCount ?? item?.watchingCount ?? item?.viewers ?? 0;
+  return item?.watchUserCount ?? item?.onlineViews ?? item?.viewerCount ?? item?.watchingCount ?? item?.viewers ?? 0;
 };
 
 // ─── Header ───────────────────────────────────────────────
@@ -126,24 +214,38 @@ const NoticeBanner: React.FC<{ text?: string }> = ({ text }) => (
 // ─── Featured Live Carousel ──────────────────────────────
 const FeaturedLiveCarousel: React.FC<{ items: any[]; locale: 'en' | 'ko' | 'zh'; t: (key: string) => string }> = ({ items, locale, t }) => {
   const [activeIndex, setActiveIndex] = useState(0);
+  // Index of the item whose video the user explicitly started via the watch
+  // button. `null` = no item is playing, thumbnails are shown everywhere.
+  const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const scrollRef = useRef<FlatList>(null);
   console.log('🎬 [FeaturedLiveCarousel] Items:', items);
   const onScroll = useCallback((event: any) => {
     const x = event.nativeEvent.contentOffset.x;
     const index = Math.round(x / CAROUSEL_WIDTH);
     setActiveIndex(index);
+    // Stop playback when the user swipes away from the playing card.
+    setPlayingIndex((prev) => (prev !== null && prev !== index ? null : prev));
   }, []);
 
   const displayItems = items.length > 0 ? items : [null]; // Show placeholder if empty
 
-  const renderItem = ({ item }: { item: any }) => {
+  const renderItem = ({ item, index }: { item: any; index: number }) => {
     const sellerData = getSellerData(item);
     const viewers = getViewerCount(item);
     const title = item ? getLocalizedTitle(item, locale) : 'Celebrate LIVE Fest 2025 winners LIVE Fest 2025 winners';
     const imageUrl = item?.imageUrl || item?.product?.imageUrl || item?.thumbnailUrl || 'https://via.placeholder.com/400x300.png?text=LIVE';
-    const startAt = item?.startAt ? new Date(item.startAt) : new Date();
-    const dateStr = startAt.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    const timeStr = `${startAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} - ${new Date(startAt.getTime() + 110 * 60000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+
+    const tag = localeToTag(locale);
+    // liveReels format: item.date + item.timeFrom/timeTo
+    const reelStart = parseReelDateTime(item?.date, item?.timeFrom);
+    const reelEnd = parseReelDateTime(item?.date, item?.timeTo);
+    // Schedule format fallback: item.startAt
+    const startAt = reelStart ?? (item?.startAt ? new Date(item.startAt) : new Date());
+    const endAt = reelEnd ?? new Date(startAt.getTime() + 110 * 60000);
+
+    const dateStr = startAt.toLocaleDateString(tag, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const timeOpts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', hour12: true };
+    const timeStr = `${startAt.toLocaleTimeString(tag, timeOpts)} - ${endAt.toLocaleTimeString(tag, timeOpts)}`;
     const status = item?.status || item?.currentLiveStatus || 'live';
 
     return (
@@ -157,8 +259,17 @@ const FeaturedLiveCarousel: React.FC<{ items: any[]; locale: 'en' | 'ko' | 'zh';
           </View>
         </View>
 
-        {/* Live image */}
-        <Image source={{ uri: imageUrl }} style={styles.carouselImage} resizeMode="cover" />
+        {/* Thumbnail by default; replaced by the video player only when the
+            user taps the watch button on this card. */}
+        {item?.videoUrl && index === playingIndex ? (
+          <ReelVideoPlayer
+            videoUrl={item.videoUrl}
+            posterUrl={imageUrl}
+            style={styles.carouselImage}
+          />
+        ) : (
+          <Image source={{ uri: imageUrl }} style={styles.carouselImage} resizeMode="cover" />
+        )}
 
         {/* LIVE NOW badge */}
         {status?.toLowerCase() === 'live' && (
@@ -175,13 +286,24 @@ const FeaturedLiveCarousel: React.FC<{ items: any[]; locale: 'en' | 'ko' | 'zh';
           <Text style={styles.carouselEventTime}>{timeStr}</Text>
         </View>
 
-        {/* Watch button */}
-        <View style={styles.carouselWatchButtonContainer}>
-          <TouchableOpacity style={styles.watchButton} activeOpacity={0.8}>
-            <Text style={styles.watchButtonEmoji}>👉</Text>
-            <Text style={styles.watchButtonText}>{t('live.watchLiveStream')}</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Watch button — toggles video playback in place.
+            Only rendered when the item has a playable videoUrl. */}
+        {item?.videoUrl && (
+          <View style={styles.carouselWatchButtonContainer}>
+            <TouchableOpacity
+              style={styles.watchButton}
+              activeOpacity={0.8}
+              onPress={() =>
+                setPlayingIndex((prev) => (prev === index ? null : index))
+              }
+            >
+              <Text style={styles.watchButtonEmoji}>{index === playingIndex ? '↩️' : '👉'}</Text>
+              <Text style={styles.watchButtonText}>
+                {index === playingIndex ? t('live.back') : t('live.watchvideo')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     );
   };
@@ -275,7 +397,7 @@ const PopularItemCard: React.FC<{ item: any; locale: 'en' | 'ko' | 'zh'; rank?: 
   const seller = getSellerData(item);
   const title = getLocalizedTitle(item, locale);
   const image = item.imageUrl || product.imageUrl || 'https://via.placeholder.com/280x350.png?text=ITEM';
-  const price = product.promotionPrice ?? product.price ?? 0;
+  const price = item.price ?? item.originalPrice ?? product.promotionPrice ?? product.price ?? 0;
   const reviewScore = item.reviewScore ?? 0;
   const reviews = item.reviewNumbers ?? 0;
   const soldCount = item.itemsSold ?? 0;
@@ -416,10 +538,28 @@ const LiveScreen: React.FC = () => {
     fetchLiveCommerce();
   }, [fetchLiveCommerce]);
 
-  const schedule = useMemo(() => liveCommerceData?.schedule || [], [liveCommerceData]);
-  const topSellers = useMemo(() => liveCommerceData?.top10Sellers || [], [liveCommerceData]);
-  const pointPartnerSellers = useMemo(() => liveCommerceData?.pointPartnerSellers || [], [liveCommerceData]);
-  const popularItems = useMemo(() => liveCommerceData?.popularItems || [], [liveCommerceData]);
+  const schedule = useMemo(
+    () => asArray(liveCommerceData?.liveStreamSchedule).length > 0
+      ? asArray(liveCommerceData?.liveStreamSchedule)
+      : asArray(liveCommerceData?.schedule),
+    [liveCommerceData]
+  );
+  const liveReels = useMemo(() => asArray(liveCommerceData?.liveReels), [liveCommerceData]);
+  const topSellers = useMemo(
+    () => asArray(liveCommerceData?.topSellers).length > 0
+      ? asArray(liveCommerceData?.topSellers)
+      : asArray(liveCommerceData?.top10Sellers),
+    [liveCommerceData]
+  );
+  const pointPartnerSellers = useMemo(
+    () => asArray(liveCommerceData?.pointSellers).length > 0
+      ? asArray(liveCommerceData?.pointSellers)
+      : asArray(liveCommerceData?.pointPartnerSellers),
+    [liveCommerceData]
+  );
+  const popularItems = useMemo(() => asArray(liveCommerceData?.popularItems), [liveCommerceData]);
+  // Featured carousel shows liveReels first; falls back to schedule when liveReels is empty.
+  const featuredItems = useMemo(() => (liveReels.length > 0 ? liveReels : schedule), [liveReels, schedule]);
 
   // Derive live sellers for chips (sellers that are currently live)
   const liveSellers = useMemo(() => {
@@ -495,8 +635,8 @@ const LiveScreen: React.FC = () => {
         )} */}
 
         {/* Featured Live Carousel */}
-        {schedule.length > 0 && (
-          <FeaturedLiveCarousel items={schedule.slice(0, 5)} locale={locale} t={t} />
+        {featuredItems.length > 0 && (
+          <FeaturedLiveCarousel items={featuredItems.slice(0, 5)} locale={locale} t={t} />
         )}
 
         {/* Error */}
@@ -507,7 +647,7 @@ const LiveScreen: React.FC = () => {
         )}
 
         {/* Live Stream Schedule */}
-        {schedule.length > 0 && (
+        {/* {schedule.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>{t('live.liveStreamSchedule')}</Text>
@@ -519,7 +659,7 @@ const LiveScreen: React.FC = () => {
               <ScheduleItem key={item.id || i} item={item} locale={locale} />
             ))}
           </View>
-        )}
+        )} */}
 
         {/* Top Seller */}
         {topSellers.length > 0 && (
@@ -527,33 +667,23 @@ const LiveScreen: React.FC = () => {
             <View style={styles.topSellerHeader}>
               <Text style={styles.sectionTitle}>{t('live.topSeller')}</Text>
             </View>
-            <View style={styles.topSellerRowsContainer}>
-              {([0, 1] as number[]).map((rowIndex) => {
-                const half = Math.ceil(topSellers.slice(0, 8).length / 2);
-                const rowSellers = topSellers.slice(0, 8).slice(rowIndex * half, rowIndex * half + half);
-                if (rowSellers.length === 0) return null;
-                return (
-                  <ScrollView
-                    key={`top-seller-row-${rowIndex}`}
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.topSellerRowContent}
-                  >
-                    {rowSellers.map((seller: any, i: number) => (
-                      <TopSellerItem
-                        key={seller._id || i}
-                        seller={seller}
-                        onPress={() => navigation.navigate('LiveSellerDetail', {
-                          sellerId: seller._id || seller.id || '',
-                          sellerName: seller.nickname || seller.userName || '',
-                          source: 'ownmall',
-                        })}
-                      />
-                    ))}
-                  </ScrollView>
-                );
-              })}
-            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.topSellerRowContent}
+            >
+              {topSellers.slice(0, 10).map((seller: any, i: number) => (
+                <TopSellerItem
+                  key={seller._id || i}
+                  seller={seller}
+                  onPress={() => navigation.navigate('LiveSellerDetail', {
+                    sellerId: seller._id || seller.id || '',
+                    sellerName: seller.nickname || seller.userName || '',
+                    source: 'ownmall',
+                  })}
+                />
+              ))}
+            </ScrollView>
           </View>
         )}
 
@@ -573,7 +703,7 @@ const LiveScreen: React.FC = () => {
                   locale={locale}
                   rank={i + 1}
                   onPress={() => {
-                    const productId = item.productId || item.product?.id || item.id || '';
+                    const productId = item.offerId || item.productNo || item.productId || item.product?.id || item.id || '';
                     if (productId) navigation.navigate('ProductDetail', { productId, source: 'ownmall' });
                   }}
                   t={t}

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text, View, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, RadialGradient as SvgRadialGradient, Stop, Rect } from 'react-native-svg';
 import { useAuth } from '../context/AuthContext';
@@ -25,9 +25,6 @@ import WishlistScreenDemo from '../screens/demo/WishlistScreen.demo';
 import ProfileScreenDemo from '../screens/demo/ProfileScreen.demo';
 
 // Import screens
-import SellerTeamInfo from '../screens/main/profileScreen/settingScreen/sellerInfoScreen/SellerTeamInfoScreen';
-import SellerPage from '../screens/main/profileScreen/settingScreen/sellerInfoScreen/SellerPageScreen';
-import SellerSalesRefundInfo from '../screens/main/profileScreen/settingScreen/sellerInfoScreen/sellerSalesRefundInfoScreen';
 import SplashScreen from '../screens/main/SplashScreen';
 import LoginScreen from '../screens/lazy/LoginScreen.lazy';
 import SignupScreen from '../screens/lazy/SignupScreen.lazy';
@@ -75,6 +72,8 @@ import MyOrdersScreen from '../screens/main/profileScreen/settingScreen/OrderHis
 import LeaveFeedbackScreen from '../screens/lazy/LeaveFeedbackScreen.lazy';
 // Settings screens
 import PrivacyPolicyScreen from '../screens/lazy/PrivacyPolicyScreen.lazy';
+import AboutUsScreen from '../screens/main/profileScreen/AboutUsScreen';
+import SecuritySettingsScreen from '../screens/main/profileScreen/myPageScreen/SecuritySettingsScreen';
 import ChangePasswordScreen from '../screens/lazy/ChangePasswordScreen.lazy';
 import AffiliateMarketingScreen from '../screens/main/profileScreen/myPageScreen/AffiliateMarketingScreen';
 import UnitSettingsScreen from '../screens/main/profileScreen/myPageScreen/UnitSettingsScreen';
@@ -92,6 +91,7 @@ import OrderDetailScreen from '../screens/main/profileScreen/settingScreen/Order
 import NoteScreen from '../screens/main/profileScreen/NoteScreen';
 import LeaveNoteScreen from '../screens/main/profileScreen/LeaveNoteScreen';
 import ShareAppScreen from '../screens/main/profileScreen/settingScreen/ShareAppScreen';
+import SellerInfoStackNavigator from '../screens/main/profileScreen/settingScreen/sellerInfoScreen/SellerInfoStackNavigator';
 import ViewedProductsScreen from '../screens/main/profileScreen/ViewedProductsScreen';
 import FollowedStoreScreen from '../screens/main/profileScreen/FollowedStoreScreen';
 // Chat screens
@@ -196,14 +196,17 @@ const MainTabNavigator = () => {
     }
   }, [shouldNavigateToProfile, navigation, clearNavigateToProfile]); // Depend on all required values
   
-  // Calculate tab bar height and padding based on safe area insets
-  const baseTabBarHeight = 70;
-  const basePaddingBottom = 20;
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
+  const isTabletDevice = Math.min(winWidth, winHeight) >= 600;
+
+  const baseTabBarHeight = isTabletDevice ? 88 : 70;
+  const basePaddingBottom = isTabletDevice ? 28 : 20;
   const tabBarHeight = baseTabBarHeight + insets.bottom;
   const paddingBottom = basePaddingBottom + insets.bottom;
   
-  const LIVE_BUTTON_SIZE = 76;
-  const LIVE_BUTTON_OVERHANG = 18;
+  const LIVE_BUTTON_SIZE = isTabletDevice ? 92 : 76;
+  const LIVE_BUTTON_OVERHANG = isTabletDevice ? 24 : 18;
+  const LIVE_ICON_SIZE = isTabletDevice ? 48 : 40;
 
   return (
     <MainTab.Navigator
@@ -213,7 +216,7 @@ const MainTabNavigator = () => {
         freezeOnBlur: true,
         tabBarIcon: ({ focused }) => {
           const iconColor = focused ? COLORS.text.red : COLORS.black;
-          const iconSize = 24;
+          const iconSize = isTabletDevice ? 28 : 24;
 
           if (route.name === 'Home') {
             return <HomeIcon width={iconSize} height={iconSize} color={iconColor} />;
@@ -269,7 +272,7 @@ const MainTabNavigator = () => {
           return (
             <Text
               style={{
-                fontSize: 12,
+                fontSize: isTabletDevice ? 14 : 12,
                 color: focused ? COLORS.text.red : COLORS.black,
                 fontWeight: focused ? '600' : '400',
               }}
@@ -284,33 +287,80 @@ const MainTabNavigator = () => {
                 <TouchableOpacity
                   activeOpacity={0.9}
                   onPress={props.onPress}
-                  style={[tabBarStyles.liveButtonTouchable, { width: LIVE_BUTTON_SIZE, height: LIVE_BUTTON_SIZE }]}
+                  style={[
+                    tabBarStyles.liveButtonTouchable,
+                    {
+                      width: LIVE_BUTTON_SIZE,
+                      height: LIVE_BUTTON_SIZE,
+                      marginTop: -LIVE_BUTTON_OVERHANG,
+                    },
+                  ]}
                 >
-                  <View style={[tabBarStyles.liveButtonOuter, { width: LIVE_BUTTON_SIZE+10, height: LIVE_BUTTON_SIZE -5 }]}>
-                    <View style={[tabBarStyles.liveButtonWhiteBg, { width: LIVE_BUTTON_SIZE + 10, height: LIVE_BUTTON_SIZE -5 }]} />
-                    <View style={[tabBarStyles.liveButtonGradientWrap, { width: LIVE_BUTTON_SIZE, height: LIVE_BUTTON_SIZE-10 }]} pointerEvents="none">
-                      <Svg width={LIVE_BUTTON_SIZE} height={LIVE_BUTTON_SIZE} style={StyleSheet.absoluteFill}>
-                        <Defs>
-                          <SvgRadialGradient id="liveTabGradient" cx="50%" cy="0%" rx="100%" ry="100%">
-                            <Stop offset="0%" stopColor="#FF0000" />
-                            <Stop offset="65.38%" stopColor="#FFEFE2" />
-                            <Stop offset="87.98%" stopColor="#FFFFFF" />
-                          </SvgRadialGradient>
-                        </Defs>
-                        <Rect x={0} y={0} width={LIVE_BUTTON_SIZE} height={LIVE_BUTTON_SIZE} rx={LIVE_BUTTON_SIZE / 2} ry={LIVE_BUTTON_SIZE / 2} fill="url(#liveTabGradient)" />
-                      </Svg>
-                    </View>
-                    <View style={tabBarStyles.liveButtonIconWrap}>
-                      <SensorsIcon width={40} height={40} color={COLORS.white} />
-                    </View>
-                    <Text style={tabBarStyles.liveButtonLabel}>{t('navigation.live')}</Text>
+                  <View
+                    style={{
+                      width: LIVE_BUTTON_SIZE,
+                      height: LIVE_BUTTON_SIZE,
+                      borderRadius: LIVE_BUTTON_SIZE / 2,
+                      overflow: 'hidden',
+                      backgroundColor: COLORS.white,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Svg
+                      width={LIVE_BUTTON_SIZE}
+                      height={LIVE_BUTTON_SIZE}
+                      style={StyleSheet.absoluteFill}
+                      pointerEvents="none"
+                    >
+                      <Defs>
+                        <SvgRadialGradient id="liveTabGradient" cx="50%" cy="0%" rx="100%" ry="100%">
+                          <Stop offset="0%" stopColor="#FF0000" />
+                          <Stop offset="65.38%" stopColor="#FFEFE2" />
+                          <Stop offset="87.98%" stopColor="#FFFFFF" />
+                        </SvgRadialGradient>
+                      </Defs>
+                      <Rect
+                        x={0}
+                        y={0}
+                        width={LIVE_BUTTON_SIZE}
+                        height={LIVE_BUTTON_SIZE}
+                        fill="url(#liveTabGradient)"
+                      />
+                    </Svg>
+                    <SensorsIcon width={LIVE_ICON_SIZE} height={LIVE_ICON_SIZE} color={COLORS.white} />
                   </View>
+                  <Text
+                    style={{
+                      position: 'absolute',
+                      bottom: -3,
+                      left: 0,
+                      right: 0,
+                      textAlign: 'center',
+                      fontSize: isTabletDevice ? 14 : 12,
+                      fontWeight: '400',
+                      color: COLORS.black,
+                    }}
+                  >
+                    {t('navigation.live')}
+                  </Text>
                 </TouchableOpacity>
               </View>
             )
           : undefined,
         tabBarActiveTintColor: COLORS.text.red,
         tabBarInactiveTintColor: COLORS.black,
+        tabBarLabelPosition: 'below-icon',
+        tabBarItemStyle: {
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          paddingVertical: 4,
+        },
+        tabBarIconStyle: {
+          marginTop: 0,
+          marginBottom: 0,
+        },
         tabBarStyle: {
           backgroundColor: COLORS.white,
           borderTopColor: COLORS.borderLight,
@@ -325,7 +375,7 @@ const MainTabNavigator = () => {
           elevation: 8,
         },
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: isTabletDevice ? 14 : 12,
           marginTop: 4,
         },
         headerShown: false,
@@ -346,53 +396,12 @@ const tabBarStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
     paddingBottom: 0,
-    backgroundColor: COLORS.white,
+    backgroundColor: 'transparent',
   },
   liveButtonTouchable: {
     alignItems: 'center',
     justifyContent: 'flex-end',
-    marginTop: -18,
     marginBottom: 4,
-  },
-  liveButtonOuter: {
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    overflow: 'visible',
-    position: 'relative',
-    backgroundColor: COLORS.white,
-    borderRadius: 60,
-  },
-  liveButtonWhiteBg: {
-    position: 'absolute',
-    width: '90%',
-    bottom: 0,
-    borderRadius: 60,
-    backgroundColor: COLORS.white,
-    padding: SPACING.sm,
-  },
-  liveButtonGradientWrap: {
-    position: 'absolute',
-    bottom: 0,
-    overflow: 'hidden',
-    borderRadius: 60,
-  },
-  liveButtonIconWrap: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-    bottom: 12,
-    left: 0,
-    right: 0,
-  },
-  liveButtonLabel: {
-    position: 'absolute',
-    bottom: -3,
-    fontSize: 12,
-    fontWeight: '400',
-    color: COLORS.black,
-    left: 0,
-    right: 0,
-    textAlign: 'center',
   },
 });
 
@@ -449,51 +458,6 @@ const RootNavigator = () => {
             options={{
               headerShown: false,
               title: 'Product Details',
-              headerStyle: {
-                backgroundColor: COLORS.white,
-              },
-              headerTintColor: COLORS.text.primary,
-              headerTitleStyle: {
-                fontWeight: '600',
-              },
-            }}
-          />
-           <RootStack.Screen 
-            name="SellerTeamInfo" 
-            component={SellerTeamInfo}
-            options={{
-              headerShown: false,
-              title: 'Seller Team Info',
-              headerStyle: {
-                backgroundColor: COLORS.white,
-              },
-              headerTintColor: COLORS.text.primary,
-              headerTitleStyle: {
-                fontWeight: '600',
-              },
-            }}
-          />
-          <RootStack.Screen 
-            name="SellerSalesRefundInfo" 
-            component={SellerSalesRefundInfo}
-            options={{
-              headerShown: false,
-              title: 'Seller SalesRefund Info',
-              headerStyle: {
-                backgroundColor: COLORS.white,
-              },
-              headerTintColor: COLORS.text.primary,
-              headerTitleStyle: {
-                fontWeight: '600',
-              },
-            }}
-          />
-          <RootStack.Screen 
-            name="SellerPage" 
-            component={SellerPage}
-            options={{
-              headerShown: false,
-              title: 'Seller Page',
               headerStyle: {
                 backgroundColor: COLORS.white,
               },
@@ -764,6 +728,21 @@ const RootNavigator = () => {
             options={{
               headerShown: false,
               title: 'Profile Settings',
+              headerStyle: {
+                backgroundColor: COLORS.white,
+              },
+              headerTintColor: COLORS.text.primary,
+              headerTitleStyle: {
+                fontWeight: '600',
+              },
+            }}
+          />
+          <RootStack.Screen
+            name="SellerStack"
+            component={SellerInfoStackNavigator}
+            options={{
+              headerShown: false,
+              title: 'Seller',
               headerStyle: {
                 backgroundColor: COLORS.white,
               },
@@ -1157,6 +1136,36 @@ const RootNavigator = () => {
             options={{
               headerShown: false,
               title: 'Privacy Policy',
+              headerStyle: {
+                backgroundColor: COLORS.white,
+              },
+              headerTintColor: COLORS.text.primary,
+              headerTitleStyle: {
+                fontWeight: '600',
+              },
+            }}
+          />
+          <RootStack.Screen
+            name="SecuritySettings"
+            component={SecuritySettingsScreen}
+            options={{
+              headerShown: false,
+              title: 'Security Settings',
+              headerStyle: {
+                backgroundColor: COLORS.white,
+              },
+              headerTintColor: COLORS.text.primary,
+              headerTitleStyle: {
+                fontWeight: '600',
+              },
+            }}
+          />
+          <RootStack.Screen
+            name="AboutUs"
+            component={AboutUsScreen}
+            options={{
+              headerShown: false,
+              title: 'About Us',
               headerStyle: {
                 backgroundColor: COLORS.white,
               },

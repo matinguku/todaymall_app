@@ -11,12 +11,12 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import Icon from '../../../../../components/Icon';
-import { RootStackParamList } from '../../../../../types';
+import type { SellerStackParamList } from '../../../../../types';
 import { useTranslation } from '../../../../../hooks/useTranslation';
 import { useSellerDashboardMutation } from '../../../../../hooks/useSellerDashboardMutation';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../../../constants';
 
-type NavigationProp = StackNavigationProp<RootStackParamList, 'SellerSalesRefundInfo'>;
+type NavigationProp = StackNavigationProp<SellerStackParamList, 'SellerSalesRefundInfo'>;
 
 type SellerDashboardMode = 'profit' | 'refund';
 
@@ -79,11 +79,11 @@ const SellerSalesRefundInfoScreen: React.FC = () => {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity onPress={() => navigation.goBack()}>
+      <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
         <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
       </TouchableOpacity>
       <Text style={styles.headerTitle}>{t('sellerInfo.SellerSalesRefundInfo')}</Text>
-      <View style={{ width: 24 }} />
+      <View style={styles.headerPlaceholder} />
     </View>
   );
 
@@ -172,11 +172,11 @@ const SellerSalesRefundInfoScreen: React.FC = () => {
 
       {isLoading && !isLoadingMore ? (
         <View style={styles.emptyBox}>
-          <Text style={styles.emptyText}>Loading...</Text>
+          <Text style={styles.emptyText}>{t('sellerInfo.orderData.loading')}</Text>
         </View>
       ) : isError ? (
         <View style={styles.emptyBox}>
-          <Text style={styles.emptyText}>{error || 'Failed to load seller data.'}</Text>
+          <Text style={styles.emptyText}>{error || t('sellerInfo.orderData.failedToLoad')}</Text>
         </View>
       ) : items.length === 0 ? (
         <View style={styles.emptyBox}>
@@ -199,7 +199,7 @@ const SellerSalesRefundInfoScreen: React.FC = () => {
               <Text style={styles.detailValue}>{item.trackingNumber || '-'}</Text>
             </View>
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Live Code:</Text>
+              <Text style={styles.detailLabel}>{t('sellerInfo.orderData.liveCode')}:</Text>
               <Text style={styles.detailValue}>{item.liveCodeSnapshot || '-'}</Text>
             </View>
           </View>
@@ -208,7 +208,7 @@ const SellerSalesRefundInfoScreen: React.FC = () => {
 
       {items.length > 0 && (
         <View style={styles.summaryRow}>
-          <Text style={styles.summaryText}>{`Total ${total} items`}</Text>
+          <Text style={styles.summaryText}>{`${t('sellerInfo.orderData.totalLabel')} ${total} ${t('sellerInfo.orderData.itemsLabel')}`}</Text>
           {currentPage * currentPageSize < total && (
             <TouchableOpacity
               style={styles.loadMoreBtn}
@@ -217,7 +217,7 @@ const SellerSalesRefundInfoScreen: React.FC = () => {
                 loadDashboard(nextPage);
               }}
             >
-              <Text style={styles.loadMoreText}>Load More</Text>
+              <Text style={styles.loadMoreText}>{t('sellerInfo.orderData.loadMore')}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -259,9 +259,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
     backgroundColor: COLORS.white,
     ...SHADOWS.small,
+  },
+  backButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerPlaceholder: {
+    width: 32,
+    height: 32,
   },
   headerTitle: {
     fontSize: FONTS.sizes.lg,

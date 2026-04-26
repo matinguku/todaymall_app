@@ -1,15 +1,18 @@
 import { translations } from '../i18n/translations';
 
-// Helper function to get translated text
-export const getTranslation = (key: string, locale: 'en' | 'ko' | 'zh') => {
+// Helper function to get translated text (invalid locale → ko, then en fallback)
+export const getTranslation = (key: string, locale?: 'en' | 'ko' | 'zh') => {
   const keys = key.split('.');
-  let value: any = translations[locale as keyof typeof translations];
-  
-  for (const k of keys) {
-    value = value?.[k];
-  }
-  
-  return value || key;
+  const walk = (loc: 'en' | 'ko' | 'zh'): string | undefined => {
+    let value: any = translations[loc];
+    for (const k of keys) {
+      value = value?.[k];
+    }
+    return typeof value === 'string' && value.length > 0 ? value : undefined;
+  };
+  const loc: 'en' | 'ko' | 'zh' =
+    locale === 'en' || locale === 'ko' || locale === 'zh' ? locale : 'ko';
+  return walk(loc) ?? walk('en') ?? key;
 };
 
 // Helper function to create translation function for a specific locale

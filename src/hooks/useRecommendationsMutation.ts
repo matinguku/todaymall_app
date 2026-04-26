@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { productsApi } from '../services/productsApi';
+import { logDevApiFailure } from '../utils/devLog';
 
 interface UseRecommendationsMutationOptions {
   onSuccess?: (data: any) => void;
@@ -23,6 +24,10 @@ export const useRecommendationsMutation = (
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
   const [isError, setIsError] = useState<boolean>(false);
+  const optionsRef = useRef(options);
+  useEffect(() => {
+    optionsRef.current = options;
+  }, [options]);
 
   const mutate = useCallback(async (
     country: string,
@@ -47,7 +52,7 @@ export const useRecommendationsMutation = (
         }
         setData(response.data);
         setIsSuccess(true);
-        options?.onSuccess?.(response.data);
+        optionsRef.current?.onSuccess?.(response.data);
       } else {
         const errorMessage = response.message || 'Failed to fetch recommendations';
         // Only log non-network errors or log network errors at debug level
@@ -63,21 +68,18 @@ export const useRecommendationsMutation = (
         }
         setError(errorMessage);
         setIsError(true);
-        options?.onError?.(errorMessage);
+        optionsRef.current?.onError?.(errorMessage);
       }
     } catch (err: any) {
       const errorMessage = err?.message || 'An unexpected error occurred. Please try again.';
-      // Only log unexpected errors (not network errors which are handled above)
-      if (__DEV__ && !errorMessage.includes('Network error') && !errorMessage.includes('connection')) {
-        console.error('[Recommendations] API call failed:', err);
-      }
+      logDevApiFailure('useRecommendationsMutation', err);
       setError(errorMessage);
       setIsError(true);
-      options?.onError?.(errorMessage);
+      optionsRef.current?.onError?.(errorMessage);
     } finally {
       setIsLoading(false);
     }
-  }, [options]);
+  }, []);
 
   return {
     mutate,

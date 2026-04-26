@@ -1,4 +1,5 @@
 import { StyleProp, ViewStyle } from "react-native";
+import type { NavigatorScreenParams } from "@react-navigation/native";
 
 // User Types
 export interface User {
@@ -312,6 +313,13 @@ export type PerformanceDataParams = {
   orderConversionRate: number;
 }
 
+/** Nested stack: settings → seller dashboard, team, orders/refunds */
+export type SellerStackParamList = {
+  SellerHome: undefined;
+  SellerTeamInfo: undefined;
+  SellerSalesRefundInfo: undefined;
+};
+
 export type RootStackParamList = {
   Splash: undefined;
   Auth: undefined;
@@ -334,16 +342,14 @@ export type RootStackParamList = {
   AddPaymentMethod: undefined;
   OrderHistory: undefined;
   Wishlist: undefined;
-  SellerTeamInfo: undefined;
-  SellerPage: undefined;
-  SellerSalesRefundInfo: undefined;
   Cart: undefined;
   FollowedStore: undefined;
   Payment: undefined;
   Settings: undefined;
   ProfileSettings: undefined;
+  SellerStack: NavigatorScreenParams<SellerStackParamList> | undefined;
   HelpCenter: undefined;
-  HelpSearch: { query: string };
+  HelpSearch: { query: string; helpCenterData?: any };
   HelpSection: { section: string; title: string };
   HelpArticle: { articleId: string; title: string; content?: string };
   HelpChapter: { guide: any };
@@ -391,6 +397,7 @@ export type RootStackParamList = {
   NotificationsSettings: undefined;
   SellerNotificationsSettings: undefined;
   PrivacyPolicy: undefined;
+  SecuritySettings: undefined;
   AboutUs: undefined;
   ChangePassword: undefined;
   AffiliateMarketing: undefined;
@@ -474,7 +481,7 @@ export type AuthStackParamList = {
 
 export type MainTabParamList = {
   Home: undefined;
-  Message: undefined;
+  Message: { initialTab?: 'order' | 'general' | 'fileDownload' } | undefined;
   Live: undefined;
   Cart: undefined;
   Profile: undefined;

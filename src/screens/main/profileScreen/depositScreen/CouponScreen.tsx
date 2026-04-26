@@ -61,7 +61,7 @@ const CouponScreen = () => {
           expired: response.data.expiredCoupons,
         });
       } else {
-        showToast(response.message || 'Failed to load coupons', 'error');
+        showToast(response.message || t('home.failedToLoadCoupons'), 'error');
       }
     } catch (error) {
       showToast(t('home.failedToLoadCoupons'), 'error');
@@ -140,7 +140,7 @@ const CouponScreen = () => {
           style={styles.mainTab}
           onPress={() => (navigation as any).navigate('PointDetail')}
         >
-          <Text style={styles.mainTabText}>{t('home.point')}</Text>
+          <Text style={styles.mainTabText}>{t('home.points')}</Text>
         </TouchableOpacity>
       </View>
 

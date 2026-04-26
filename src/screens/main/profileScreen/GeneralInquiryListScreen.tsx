@@ -309,7 +309,10 @@ const styles = StyleSheet.create({
     ...SHADOWS.small,
   },
   backButton: {
-    padding: SPACING.xs,
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
     fontSize: FONTS.sizes.lg,
@@ -317,7 +320,8 @@ const styles = StyleSheet.create({
     color: COLORS.text.primary,
   },
   headerRight: {
-    width: 40,
+    width: 32,
+    height: 32,
     alignItems: 'flex-end',
   },
   statusTabs: {

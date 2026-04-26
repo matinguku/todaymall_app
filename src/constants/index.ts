@@ -243,8 +243,12 @@ try {
 //   console.log('Loaded environment configuration:', envConfig);
 // }
 
-export const API_BASE_URL = envConfig.API_BASE_URL;
-export const SERVER_BASE_URL = envConfig.SERVER_BASE_URL;
+/** Avoid `undefined` base URLs when env.json is missing (every request would fail). */
+const DEFAULT_API_BASE_URL = 'https://api.todaymall.co.kr/v1';
+const DEFAULT_SERVER_BASE_URL = 'https://api.todaymall.co.kr';
+
+export const API_BASE_URL = envConfig.API_BASE_URL || DEFAULT_API_BASE_URL;
+export const SERVER_BASE_URL = envConfig.SERVER_BASE_URL || DEFAULT_SERVER_BASE_URL;
 
 export const API_CONFIG = {
   baseUrl: API_BASE_URL,
@@ -267,6 +271,8 @@ export const STORAGE_KEYS = {
   THEME_PREFERENCE: 'theme_preference',
   GUEST_ID: 'guest_id',
   INQUIRY_UNREAD_COUNTS: 'inquiry_unread_counts', // Store unread counts per inquiry
+  /** Display-only currency preference (Unit settings); pricing still follows server where applicable */
+  PREFERRED_DISPLAY_CURRENCY: 'preferred_display_currency',
 };
 
 // Pagination
@@ -361,14 +367,35 @@ export const SEARCH_CONFIG = {
 
 // Image Configuration
 export const IMAGE_CONFIG = {
-  QUALITY: 0.8,
+  /**
+   * JPEG-style quality for react-native-image-picker (`PhotoQuality` union).
+   * `as const` keeps literal type so it is assignable to picker options.
+   */
+  QUALITY: 0.7 as const,
   MAX_WIDTH: 800,
   MAX_HEIGHT: 600,
+  /**
+   * Square edge (px) for product thumbnails in UI mocks and remote CDN suffixes.
+   * Reduced from 300 → 200 to cut network payload and Android decode cost.
+   */
+  PRODUCT_DISPLAY_PIXEL: 200,
+  /**
+   * CDN-side JPEG quality (1–100) appended as `qNN` to Alibaba thumbnail URLs.
+   * 60 ≈ 60% of "default" Alibaba quality and gives a substantial size reduction
+   * with negligible visible loss at 200x200.
+   */
+  PRODUCT_DISPLAY_QUALITY: 60,
+  /**
+   * Smaller square for dense home rows (flash/points, today’s hot deals, best sellers, live hot).
+   * Same as PRODUCT_DISPLAY_PIXEL now; kept as a separate name in case a denser tier is needed later.
+   */
+  HOME_GRID_IMAGE_PIXEL: 200,
   THUMBNAIL_SIZE: 150,
   // API-specific settings for image search (smaller to avoid 413 errors)
   API_MAX_WIDTH: 600,
   API_MAX_HEIGHT: 400,
-  API_QUALITY: 0.4,
+  /** Same target as QUALITY; pipelines may still step down for payload limits. */
+  API_QUALITY: 0.7 as const,
 };
 
 // Validation Rules

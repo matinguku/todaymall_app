@@ -14,13 +14,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
-import { LinearGradient } from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useFocusEffect } from '@react-navigation/native';
 import { COLORS, FONTS, SPACING } from '../../../../constants';
 import { DatePickerModal, Button } from '../../../../components';
 import { depositApi } from '../../../../services/depositApi';
 import { useTranslation } from '../../../../hooks/useTranslation';
+import { logDevApiFailure } from '../../../../utils/devLog';
 
 interface Transaction {
   id: number;
@@ -78,7 +78,7 @@ const DepositScreen = () => {
         setWithdrawalDeposit(d.frozenAmount ?? d.withdrawalDeposit ?? 0);
       }
     } catch (e) {
-      console.error('[DepositScreen] Failed to fetch balance:', e);
+      logDevApiFailure('DepositScreen.fetchBalance', e);
     } finally {
       setBalanceLoading(false);
     }
@@ -109,7 +109,7 @@ const DepositScreen = () => {
         setTransactions(mapped);
       }
     } catch (e) {
-      console.error('[DepositScreen] Failed to fetch transactions:', e);
+      logDevApiFailure('DepositScreen.fetchTransactions', e);
     } finally {
       setTransactionsLoading(false);
     }
@@ -315,7 +315,7 @@ const DepositScreen = () => {
           <View style={styles.mainBalanceContainer}>
             <Text style={styles.balanceLabel}>{t('deposit.totalBalance')}</Text>
             {balanceLoading ? (
-              <ActivityIndicator size="small" color={COLORS.primary} style={{ marginTop: 8 }} />
+              <ActivityIndicator size="small" color={COLORS.red} style={{ marginTop: 8 }} />
             ) : (
               <Text style={styles.mainBalanceAmount}>₩{totalDeposit.toLocaleString()}</Text>
             )}
@@ -341,7 +341,7 @@ const DepositScreen = () => {
               <Text style={styles.actionButtonText}>{t('deposit.charge')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.actionButton, styles.actionButtonSecondary]} onPress={() => setShowWithdrawModal(true)}>
-              <Icon name="remove-circle-outline" size={18} color={COLORS.primary} />
+              <Icon name="remove-circle-outline" size={18} color={COLORS.red} />
               <Text style={[styles.actionButtonText, styles.actionButtonSecondaryText]}>{t('deposit.withdraw')}</Text>
             </TouchableOpacity>
           </View>
@@ -407,7 +407,7 @@ const DepositScreen = () => {
           {/* Transaction List */}
           {transactionsLoading ? (
             <View style={styles.emptyState}>
-              <ActivityIndicator size="large" color={COLORS.primary} />
+              <ActivityIndicator size="large" color={COLORS.red} />
             </View>
           ) : filteredTransactions.length === 0 ? (
             <View style={styles.emptyState}>
@@ -419,7 +419,11 @@ const DepositScreen = () => {
               {filteredTransactions.map((transaction) => (
                 <View key={transaction.id} style={styles.transactionCard}>
                   <View style={[styles.transactionIcon, transaction.type === 'charge' ? styles.chargeIcon : styles.dischargeIcon]}>
-                    <Icon name={transaction.type === 'charge' ? 'arrow-down' : 'arrow-up'} size={16} color={transaction.type === 'charge' ? '#22C55E' : '#EF4444'} />
+                    <Icon
+                      name={transaction.type === 'charge' ? 'arrow-down' : 'arrow-up'}
+                      size={16}
+                      color={transaction.type === 'charge' ? COLORS.red : COLORS.primaryDark}
+                    />
                   </View>
                   <View style={styles.transactionInfo}>
                     <Text style={styles.transactionDescription} numberOfLines={1}>{transaction.description}</Text>
@@ -484,7 +488,7 @@ const DepositScreen = () => {
                 <TextInput
                   style={styles.customAmountInput}
                   placeholder={t('deposit.enterAmount')}
-                  placeholderTextColor="#999"
+                  placeholderTextColor={COLORS.gray[500]}
                   value={chargeAmount}
                   onChangeText={setChargeAmount}
                   keyboardType="numeric"
@@ -497,7 +501,7 @@ const DepositScreen = () => {
               <TextInput
                 style={[styles.noteInput, styles.noteBorder]}
                 placeholder={t('deposit.enterNote')}
-                placeholderTextColor="#999"
+                placeholderTextColor={COLORS.gray[500]}
                 value={chargeNote}
                 onChangeText={setChargeNote}
                 multiline
@@ -550,7 +554,7 @@ const DepositScreen = () => {
               <TextInput
                 style={styles.modalInput}
                 placeholder={t('deposit.enterAmount')}
-                placeholderTextColor="#999"
+                placeholderTextColor={COLORS.gray[500]}
                 value={withdrawAmount}
                 onChangeText={setWithdrawAmount}
                 keyboardType="numeric"
@@ -561,7 +565,7 @@ const DepositScreen = () => {
               <TextInput
                 style={styles.modalInput}
                 placeholder={t('deposit.enterName')}
-                placeholderTextColor="#999"
+                placeholderTextColor={COLORS.gray[500]}
                 value={withdrawAccountName}
                 onChangeText={setWithdrawAccountName}
               />
@@ -571,7 +575,7 @@ const DepositScreen = () => {
               <TextInput
                 style={styles.modalInput}
                 placeholder={t('deposit.enterAccountNumber')}
-                placeholderTextColor="#999"
+                placeholderTextColor={COLORS.gray[500]}
                 value={withdrawAccountNumber}
                 onChangeText={setWithdrawAccountNumber}
                 keyboardType="numeric"
@@ -582,7 +586,7 @@ const DepositScreen = () => {
               <TextInput
                 style={[styles.noteInput, styles.noteBorder]}
                 placeholder={t('deposit.enterReason')}
-                placeholderTextColor="#999"
+                placeholderTextColor={COLORS.gray[500]}
                 value={withdrawReason}
                 onChangeText={setWithdrawReason}
                 multiline
@@ -623,18 +627,20 @@ const DepositScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: COLORS.background,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
-    paddingVertical: 12,
+    paddingVertical: SPACING.sm,
     backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
   backButton: {
-    width: 36,
-    height: 36,
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -657,6 +663,13 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     borderRadius: 12,
     padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: COLORS.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
   },
   balanceLabel: {
     fontSize: FONTS.sizes.sm,
@@ -669,7 +682,7 @@ const styles = StyleSheet.create({
   mainBalanceAmount: {
     fontSize: 32,
     fontWeight: '800',
-    color: COLORS.primary || '#FF6B35',
+    color: COLORS.red,
     marginTop: 4,
   },
   balanceTypesContainer: {
@@ -677,7 +690,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: COLORS.gray[100],
+    borderTopColor: COLORS.borderLight,
   },
   balanceTypeItem: {
     flex: 1,
@@ -710,13 +723,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 12,
     borderRadius: 8,
-    backgroundColor: COLORS.primary || '#FF6B35',
+    backgroundColor: COLORS.red,
     gap: 6,
   },
   actionButtonSecondary: {
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.lightRed,
     borderWidth: 1,
-    borderColor: COLORS.primary || '#FF6B35',
+    borderColor: COLORS.red,
   },
   actionButtonText: {
     fontSize: FONTS.sizes.sm,
@@ -724,7 +737,7 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
   actionButtonSecondaryText: {
-    color: COLORS.primary || '#FF6B35',
+    color: COLORS.red,
   },
   // Transaction Section
   sectionContainer: {
@@ -739,10 +752,12 @@ const styles = StyleSheet.create({
   },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: COLORS.gray[100],
+    backgroundColor: COLORS.white,
     borderRadius: 8,
     padding: 3,
     marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   tabButton: {
     flex: 1,
@@ -751,12 +766,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tabButtonActive: {
-    backgroundColor: COLORS.white,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 1,
+    backgroundColor: COLORS.lightRed,
   },
   tabButtonText: {
     fontSize: FONTS.sizes.sm,
@@ -764,7 +774,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   tabButtonTextActive: {
-    color: COLORS.text.primary,
+    color: COLORS.red,
   },
   filterRow: {
     marginBottom: 8,
@@ -847,10 +857,10 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   chargeIcon: {
-    backgroundColor: '#ECFDF5',
+    backgroundColor: COLORS.lightRed,
   },
   dischargeIcon: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: COLORS.lightRed,
   },
   transactionInfo: {
     flex: 1,
@@ -874,10 +884,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   chargeAmount: {
-    color: '#22C55E',
+    color: COLORS.red,
   },
   dischargeAmount: {
-    color: '#EF4444',
+    color: COLORS.primaryDark,
   },
   transactionStatus: {
     fontSize: 10,
@@ -904,7 +914,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: COLORS.borderLight,
   },
   modalTitle: {
     fontSize: FONTS.sizes.xl,
@@ -932,13 +942,13 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: COLORS.borderDark,
     backgroundColor: COLORS.white,
     alignItems: 'center',
   },
   presetAmountButtonActive: {
-    backgroundColor: '#FF6B00',
-    borderColor: '#FF6B00',
+    backgroundColor: COLORS.red,
+    borderColor: COLORS.red,
   },
   presetAmountText: {
     fontSize: FONTS.sizes.sm,
@@ -961,7 +971,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: COLORS.borderDark,
     paddingRight: SPACING.md,
   },
   customAmountInput: {
@@ -988,7 +998,7 @@ const styles = StyleSheet.create({
   },
   noteBorder: {
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: COLORS.borderDark,
   },
   modalInput: {
     backgroundColor: COLORS.white,
@@ -998,10 +1008,10 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.md,
     color: COLORS.text.primary,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: COLORS.borderDark,
   },
   modalSubmitButton: {
-    backgroundColor: '#FF6B00',
+    backgroundColor: COLORS.red,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
@@ -1013,7 +1023,7 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
   modalCancelButton: {
-    backgroundColor: '#F5F5F5',
+    backgroundColor: COLORS.gray[100],
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
@@ -1026,7 +1036,7 @@ const styles = StyleSheet.create({
   },
   warningText: {
     fontSize: FONTS.sizes.sm,
-    color: '#FF6B6B',
+    color: COLORS.red,
     lineHeight: 20,
     marginTop: SPACING.lg,
     marginBottom: SPACING.lg,

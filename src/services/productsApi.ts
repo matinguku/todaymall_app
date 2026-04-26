@@ -14,6 +14,7 @@ import { uploadToCloudinary, uploadVideoToCloudinary } from './cloudinary';
 
 import { API_BASE_URL } from '../constants';
 import { buildSignatureHeaders } from './signature';
+import { logDevApiFailure } from '../utils/devLog';
 
 // In-memory cache for category tree (clears on app restart)
 const categoryTreeCache: Record<string, CategoriesTreeResponse> = {};
@@ -1002,9 +1003,24 @@ export const productsApi = {
       const payload = response.data;
       console.log('🔍 [Live Commerce API] Response:', payload.data.popularItems);
       if (payload && payload.status === 'success' && payload.data) {
+        const raw = payload.data || {};
+        const normalizedData = {
+          ...raw,
+          // New API keys
+          liveStreamSchedule: Array.isArray(raw.liveStreamSchedule) ? raw.liveStreamSchedule : [],
+          topSellers: Array.isArray(raw.topSellers) ? raw.topSellers : [],
+          pointSellers: Array.isArray(raw.pointSellers) ? raw.pointSellers : [],
+          liveReels: Array.isArray(raw.liveReels) ? raw.liveReels : [],
+          popularItems: Array.isArray(raw.popularItems) ? raw.popularItems : [],
+          // Backward-compatible aliases
+          schedule: Array.isArray(raw.liveStreamSchedule) ? raw.liveStreamSchedule : (Array.isArray(raw.schedule) ? raw.schedule : []),
+          top10Sellers: Array.isArray(raw.topSellers) ? raw.topSellers : (Array.isArray(raw.top10Sellers) ? raw.top10Sellers : []),
+          pointPartnerSellers: Array.isArray(raw.pointSellers) ? raw.pointSellers : (Array.isArray(raw.pointPartnerSellers) ? raw.pointPartnerSellers : []),
+        };
+
         return {
           success: true,
-          data: payload.data,
+          data: normalizedData,
           message: 'Live commerce data retrieved successfully',
         };
       }
@@ -1560,15 +1576,7 @@ export const productsApi = {
         message: 'Product detail retrieved successfully',
       };
     } catch (error: any) {
-      console.error('Get product detail error:', error.response ? {
-        status: error.response.status,
-        statusText: error.response.statusText,
-        data: error.response.data
-      } : error.request ? {
-        status: error.request.status,
-        statusText: error.request.statusText,
-        data: error.request.data
-      } : error);
+      logDevApiFailure('productsApi.getProductDetail', error);
 
       if (error.response) {
         return {

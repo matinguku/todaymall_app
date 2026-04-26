@@ -2,6 +2,7 @@ import { getStoredToken } from './authApi';
 
 import { API_BASE_URL } from '../constants';
 import { buildSignatureHeaders } from './signature';
+import { logDevApiFailure } from '../utils/devLog';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -584,6 +585,52 @@ export const orderApi = {
     }
   },
 
+  /**
+   * Submit a refund request (reason + line items). Evidence images are optional local URIs for future upload support.
+   * Backend route is expected alongside GET refund-amount: POST /orders/:orderId/refund-request
+   */
+  submitRefundRequest: async (
+    orderId: string,
+    body: {
+      reason: string;
+      items: { itemId: string; quantity: number }[];
+      evidenceImageUris?: string[];
+    },
+  ): Promise<ApiResponse<any>> => {
+    try {
+      const token = await getStoredToken();
+      if (!token) return { success: false, error: 'No authentication token found.' };
+      const url = `${API_BASE_URL}/orders/${encodeURIComponent(orderId)}/refund-request`;
+      const signatureHeaders = await buildSignatureHeaders('POST', url, body);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+          ...signatureHeaders,
+        },
+        body: JSON.stringify(body),
+      });
+      const responseText = await response.text();
+      let responseData: any;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch {
+        return { success: false, error: 'Invalid response from server.' };
+      }
+      if (!response.ok) {
+        return { success: false, error: responseData?.message || `Status ${response.status}` };
+      }
+      if (responseData.status !== 'success') {
+        return { success: false, error: responseData?.message || 'Failed to submit refund request' };
+      }
+      return { success: true, data: responseData.data, message: responseData.message };
+    } catch (error: any) {
+      return { success: false, error: error.message || 'An unexpected error occurred.' };
+    }
+  },
+
   createOrder: async (request: CreateOrderRequest): Promise<ApiResponse<OrderResponse>> => {
     try {
       const token = await getStoredToken();
@@ -621,7 +668,7 @@ export const orderApi = {
         responseData = JSON.parse(responseText);
         console.log('🛒 CREATE ORDER RESPONSE DATA:', JSON.stringify(responseData, null, 2));
       } catch (parseError) {
-        console.error('🛒 CREATE ORDER PARSE ERROR:', parseError);
+        logDevApiFailure('orderApi.createOrder.parse', parseError);
         return {
           success: false,
           error: 'Invalid response from server. Please try again.',

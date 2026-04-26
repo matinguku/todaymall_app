@@ -12,7 +12,9 @@ import {
   Animated,
   SafeAreaView,
   ActivityIndicator,
-  RefreshControl
+  RefreshControl,
+  useWindowDimensions,
+  Platform,
 } from 'react-native';
 
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -44,6 +46,10 @@ type ProductDiscoveryScreenRouteProp = RouteProp<RootStackParamList, 'ProductDis
 type ProductDiscoveryScreenNavigationProp = StackNavigationProp<RootStackParamList, 'ProductDiscovery'>;
 
 const ProductDiscoveryScreen: React.FC = () => {
+  const { width: pdWinWidth, height: pdWinHeight } = useWindowDimensions();
+  const pdIsTablet = Math.min(pdWinWidth, pdWinHeight) >= 600;
+  const pdGridCols = pdIsTablet ? (pdWinWidth > pdWinHeight ? 4 : 3) : 2;
+  const pdCardWidth = (pdWinWidth - SPACING.sm * 2 - SPACING.sm * (pdGridCols - 1)) / pdGridCols;
   const route = useRoute<ProductDiscoveryScreenRouteProp>();
   const navigation = useNavigation<ProductDiscoveryScreenNavigationProp>();
   // Use wishlist status hook to check if products are liked based on external IDs
@@ -957,11 +963,12 @@ const ProductDiscoveryScreen: React.FC = () => {
     <ProductCard
       product={item}
       variant="moreToLove"
+      cardWidth={pdCardWidth}
       onPress={() => handleProductPress(item)}
       onLikePress={() => handleLikePress(item)}
       isLiked={isProductLiked(item)}
     />
-  ), [handleLikePress, handleProductPress, isProductLiked]);
+  ), [handleLikePress, handleProductPress, isProductLiked, pdCardWidth]);
 
   const productKeyExtractor = useCallback(
     (item: Product, index: number) => `product-${item.id?.toString() || index}-${index}`,
@@ -1025,20 +1032,22 @@ const ProductDiscoveryScreen: React.FC = () => {
             }
           >
             <FlatList
+              key={`discovery-grid-${pdGridCols}`}
               ref={flatListRef}
               data={memoizedProducts}
               renderItem={renderProductItem}
               keyExtractor={productKeyExtractor}
-              numColumns={2}
+              numColumns={pdGridCols}
               columnWrapperStyle={styles.productGrid}
               contentContainerStyle={styles.productListContent}
               showsVerticalScrollIndicator={false}
               scrollEnabled={false}
               nestedScrollEnabled={true}
-              removeClippedSubviews={true}
-              maxToRenderPerBatch={10}
-              windowSize={10}
-              initialNumToRender={10}
+              removeClippedSubviews={Platform.OS === 'android'}
+              maxToRenderPerBatch={6}
+              windowSize={3}
+              initialNumToRender={6}
+              updateCellsBatchingPeriod={80}
               ListFooterComponent={renderProductsFooter}
             />
           </Animated.ScrollView>

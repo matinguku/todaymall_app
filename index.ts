@@ -1,3 +1,4 @@
+import './setupLogBox';
 import { AppRegistry } from 'react-native';
 import { enableFreeze, enableScreens } from 'react-native-screens';
 import App from './App';

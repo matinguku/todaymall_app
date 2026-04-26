@@ -5,7 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import Icon from './Icon';
 
@@ -14,17 +14,11 @@ import { Product } from '../types';
 import HeartPlusIcon from '../assets/icons/HeartPlusIcon';
 import FamilyStarIcon from '../assets/icons/FamilyStarIcon';
 import { formatPriceKRW } from '../utils/i18nHelpers';
-
-const { width } = Dimensions.get('window');
-const GRID_CARD_WIDTH = (width - SPACING.sm * 2 - SPACING.sm) / 2;
-
-const getProductImageUri = (image?: string) => {
-  if (!image) {
-    return '';
-  }
-
-  return `${image}_200x200.jpg`;
-};
+import {
+  getProductCardImageUri,
+  stripThumbnailSizeSuffix,
+} from '../utils/productImage';
+import { useResponsive } from '../hooks/useResponsive';
 
 const getPlatformBadgeLabel = (product: Product) =>
   String((product as any).source || (product as any).platform || '').toUpperCase();
@@ -38,24 +32,49 @@ const ProductImage = React.memo(
     uri: string;
     style: any;
     badgeLabel: string;
-  }) => (
-    <View style={{ position: 'relative' }}>
-      {uri ? (
-        <Image
-          source={{ uri }}
-          style={style}
-          resizeMode="cover"
-          fadeDuration={0}
-        />
-      ) : null}
+  }) => {
+    const [resolvedUri, setResolvedUri] = React.useState(uri);
+    const fallbackTries = React.useRef(0);
+    React.useEffect(() => {
+      fallbackTries.current = 0;
+      setResolvedUri(uri);
+    }, [uri]);
 
-      {badgeLabel ? (
-        <View style={styles.platformBadge}>
-          <Text style={styles.platformBadgeText}>{badgeLabel}</Text>
-        </View>
-      ) : null}
-    </View>
-  ),
+    const onImageError = React.useCallback(() => {
+      if (fallbackTries.current >= 3) return;
+      fallbackTries.current += 1;
+      setResolvedUri((prev) => {
+        if (!prev) return prev;
+        const stripped = stripThumbnailSizeSuffix(prev);
+        if (stripped !== prev) return stripped;
+        if (prev.startsWith('https://')) {
+          return prev.replace(/^https:\/\//i, 'http://');
+        }
+        return prev;
+      });
+    }, []);
+
+    return (
+      <View style={{ position: 'relative' }}>
+        {resolvedUri ? (
+          <Image
+            source={{ uri: resolvedUri }}
+            style={style}
+            resizeMode="cover"
+            resizeMethod="resize"
+            fadeDuration={0}
+            onError={onImageError}
+          />
+        ) : null}
+
+        {badgeLabel ? (
+          <View style={styles.platformBadge}>
+            <Text style={styles.platformBadgeText}>{badgeLabel}</Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  },
 );
 
 interface ProductCardProps {
@@ -87,6 +106,13 @@ const ProductCard: React.FC<ProductCardProps> = ({
   cardWidth,
   onAddToCart,
 }) => {
+  const { width: windowWidth } = useWindowDimensions();
+  const GRID_CARD_WIDTH = (windowWidth - SPACING.sm * 2 - SPACING.sm) / 2;
+  const { newInCardWidth, gridCardWidth: responsiveGridCardWidth, isTablet } = useResponsive();
+  // Default grid-style width: tablets get the 3-column responsive value so
+  // cards don't stretch too wide; phones keep the original 2-column layout.
+  const DEFAULT_GRID_CARD_WIDTH = isTablet ? responsiveGridCardWidth : GRID_CARD_WIDTH;
+
   const handleLikePress = (e: any) => {
     e.stopPropagation();
     
@@ -101,15 +127,16 @@ const ProductCard: React.FC<ProductCardProps> = ({
     (product.originalPrice && product.price 
       ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
       : 0);
-  const imageUri = getProductImageUri(product.image);
+  const imageUri = getProductCardImageUri(product);
   const platformBadgeLabel = getPlatformBadgeLabel(product);
 
   // New In variant - vertical card with image, discount, like button, and product info
   if (variant === 'newIn') {
-    // Calculate width for 3 items per line: (width - padding - gaps) / 3
-    // Default calculation if cardWidth not provided
-    const defaultCardW = cardWidth || Math.floor((width - SPACING.sm * 2 - SPACING.sm ) / 3);
-    const cardW = cardWidth || defaultCardW;
+    // On tablets use the responsive 5-column calculation; phones keep the
+    // original 3-column behavior. Explicit `cardWidth` prop still wins.
+    const phoneDefault = Math.floor((windowWidth - SPACING.sm * 2 - SPACING.sm) / 3);
+    const defaultCardW = cardWidth || (isTablet ? newInCardWidth : phoneDefault);
+    const cardW = defaultCardW;
     const cardH = Math.floor(cardW * 1.55);
     
     return (
@@ -273,7 +300,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
   // More to Love variant - shows full info with reviews and sold
   if (variant === 'moreToLove') {
-    const cardW = cardWidth || GRID_CARD_WIDTH;
+    const cardW = cardWidth || DEFAULT_GRID_CARD_WIDTH;
     const imageH = cardW * 1.0;
     // console.log('More to Love Product:', product);
     return (
@@ -646,15 +673,13 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
     borderRadius: 12,
     overflow: 'hidden',
-    // paddingBottom: SPACING.sm,
+    paddingBottom: SPACING.sm,
     marginBottom: SPACING.md,
   },
   moreToLoveImage: {
-    marginBottom: SPACING.sm,
-    borderRadius: 12,
+    marginBottom: SPACING.md,
+    borderRadius: 18,
     // borderBottomRightRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
   },
   moreToLoveInfo: {
     flex: 1,
@@ -790,6 +815,20 @@ const styles = StyleSheet.create({
     color: COLORS.text.secondary,
     fontWeight: '500',
   },
+  imagePlaceholder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    backgroundColor: COLORS.gray[100],
+  },
+  imagePlaceholderLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+  },
+  imagePlaceholderOverlay: {
+    backgroundColor: 'transparent',
+  },
   platformBadge: {
     position: 'absolute',
     top: 8,
@@ -824,11 +863,11 @@ const styles = StyleSheet.create({
 // Memoize ProductCard to prevent unnecessary re-renders
 // Only re-render when props actually change
 export default React.memo(ProductCard, (prevProps, nextProps) => {
-  // Custom comparison function for better performance
   return (
     prevProps.product?.id === nextProps.product?.id &&
     prevProps.isLiked === nextProps.isLiked &&
     prevProps.variant === nextProps.variant &&
+    prevProps.cardWidth === nextProps.cardWidth &&
     prevProps.showLikeButton === nextProps.showLikeButton &&
     prevProps.showDiscountBadge === nextProps.showDiscountBadge &&
     prevProps.showRating === nextProps.showRating &&

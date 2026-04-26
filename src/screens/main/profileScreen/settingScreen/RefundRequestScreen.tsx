@@ -3,12 +3,14 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Image, SafeAreaView, ActivityIndicator, Alert,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import Icon from '../../../../components/Icon';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../../../../constants';
 import { formatPriceKRW } from '../../../../utils/i18nHelpers';
 import { useToast } from '../../../../context/ToastContext';
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
+import { orderApi } from '../../../../services/orderApi';
 
 const REFUND_REASONS = [
   'Overpaid/Discount Not Applied',
@@ -23,6 +25,7 @@ const REFUND_REASONS = [
 const RefundRequestScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const insets = useSafeAreaInsets();
   const { orderId, orderNumber, items, refundData } = route.params || {};
   const { showToast } = useToast();
 
@@ -57,10 +60,28 @@ const RefundRequestScreen: React.FC = () => {
       showToast('Please select a refund reason', 'warning');
       return;
     }
+    if (!orderId) {
+      showToast('Missing order', 'error');
+      return;
+    }
     setIsSubmitting(true);
     try {
-      // TODO: call submit refund API
-      showToast('Refund request submitted', 'success');
+      const lineItems = (items || []).map((item: any) => ({
+        itemId: String(item.itemId ?? item.offerId ?? item._id ?? ''),
+        quantity: Number(item.quantity) || 1,
+      })).filter((row) => row.itemId.length > 0);
+
+      const res = await orderApi.submitRefundRequest(String(orderId), {
+        reason: selectedReason,
+        items: lineItems,
+        evidenceImageUris: images.length > 0 ? images : undefined,
+      });
+
+      if (!res.success) {
+        showToast(res.error || 'Failed to submit refund', 'error');
+        return;
+      }
+      showToast(res.message || 'Refund request submitted', 'success');
       navigation.goBack();
     } catch {
       showToast('Failed to submit refund', 'error');
@@ -170,7 +191,7 @@ const RefundRequestScreen: React.FC = () => {
       </ScrollView>
 
       {/* Submit button */}
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: SPACING.md + insets.bottom }]}>
         <TouchableOpacity
           style={[styles.submitBtn, (!selectedReason || isSubmitting) && { opacity: 0.5 }]}
           disabled={!selectedReason || isSubmitting}

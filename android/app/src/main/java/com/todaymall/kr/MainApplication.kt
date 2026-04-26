@@ -21,6 +21,8 @@ class MainApplication : Application(), ReactApplication {
         context = applicationContext,
         packageList = packages,
         jsMainModulePath = "index",
+        // Must match react { bundleAssetName } in app/build.gradle if Metro is unreachable.
+        jsBundleAssetPath = "index.android.bundle",
         isHermesEnabled = true,
         useDevSupport = true,
       )

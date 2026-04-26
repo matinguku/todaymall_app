@@ -337,7 +337,7 @@ const PaymentScreen: React.FC = () => {
         >
           <Icon name="arrow-back" size={20} color={COLORS.black} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Order Confirmation</Text>
+        <Text style={styles.headerTitle}>{t('payment.orderConfirmation')}</Text>
       </View>
       <NotificationBadge
         customIcon={<HeadsetMicIcon width={24} height={24} color={COLORS.text.primary} />}
@@ -692,7 +692,7 @@ const PaymentScreen: React.FC = () => {
             onPress={() => navigation.navigate('AddressBook')}
           >
             <Icon name="location-outline" size={24} color={COLORS.black} />
-            <Text style={styles.addressText}>Add address</Text>
+            <Text style={styles.addressText}>{t('payment.addAddress')}</Text>
             <View style={styles.addressActions}>
               <Icon name="create-outline" size={20} color={COLORS.gray[600]} />
               <Icon name="chevron-forward" size={20} color={COLORS.gray[600]} />
@@ -777,13 +777,19 @@ const PaymentScreen: React.FC = () => {
     ];
     return (
       <View style={styles.transportationSection}>
-        <Text style={styles.transportationTitle}>Transportation method</Text>
+        <Text style={styles.transportationTitle}>{t('payment.transportationMethod')}</Text>
         {/* <Text style={styles.transportationSubtitle}>Shipping Method</Text> */}
         {methods.map((method) => {
           const key = method.deliveryName;
           const isSelected = selectedTransportType === key;
           const price = method.defaultPrice;
           const time = method.shippingTimeRequired;
+          const methodLabel =
+            key === 'ship'
+              ? t('payment.shipMethod')
+              : key === 'air'
+                ? t('payment.airMethod')
+                : key.charAt(0).toUpperCase() + key.slice(1);
           return (
             <TouchableOpacity
               key={key}
@@ -795,7 +801,7 @@ const PaymentScreen: React.FC = () => {
                   styles.transportationOptionText,
                   isSelected && styles.transportationOptionTextSelected,
                 ]}>
-                  {key.charAt(0).toUpperCase() + key.slice(1)}
+                  {methodLabel}
                 </Text>
                 {/* {(price != null || time) ? (
                   <Text style={{ fontSize: FONTS.sizes.xs, color: COLORS.gray[500] }}> */}
@@ -829,11 +835,11 @@ const PaymentScreen: React.FC = () => {
 
   const renderPriceBreakdown = () => (
     <View style={styles.priceSection}>
-      <Text style={styles.priceBreakdownTitle}>Price breakdown</Text>
+      <Text style={styles.priceBreakdownTitle}>{t('payment.priceBreakdown')}</Text>
 
       {/* Items total */}
       <View style={styles.priceRow}>
-        <Text style={styles.priceRowLabel}>Items total</Text>
+        <Text style={styles.priceRowLabel}>{t('payment.itemsTotal')}</Text>
         <Text style={[styles.priceRowValue, { fontSize: FONTS.sizes.md }]}>{formatPriceKRW(subtotal)}</Text>
       </View>
 
@@ -842,7 +848,7 @@ const PaymentScreen: React.FC = () => {
         <View style={styles.couponSelectorBlock}>
           <View style={styles.couponSelectorRow}>
             <Icon name="ticket-outline" size={14} color={COLORS.red} />
-            <Text style={styles.couponSelectorLabel}>Product coupon</Text>
+            <Text style={styles.couponSelectorLabel}>{t('payment.productCoupon')}</Text>
             {selectedProductCoupon && (
               <Text style={styles.couponDiscountText}>-{formatPriceKRW(productCouponDiscount)}</Text>
             )}
@@ -871,7 +877,7 @@ const PaymentScreen: React.FC = () => {
 
       {/* Shipping */}
       <View style={styles.priceRow}>
-        <Text style={styles.priceRowLabelGray}>Shipping</Text>
+        <Text style={styles.priceRowLabelGray}>{t('payment.shipping')}</Text>
         <Text style={styles.priceRowValue}>{formatPriceKRW(shippingTotalKRW)}</Text>
       </View>
 
@@ -880,7 +886,7 @@ const PaymentScreen: React.FC = () => {
         <View style={styles.couponSelectorBlock}>
           <View style={styles.couponSelectorRow}>
             <Icon name="ticket-outline" size={14} color={COLORS.red} />
-            <Text style={styles.couponSelectorLabel}>Shipping coupon</Text>
+            <Text style={styles.couponSelectorLabel}>{t('payment.shippingCoupon')}</Text>
             {selectedShippingCoupon && (
               <Text style={styles.couponDiscountText}>-{formatPriceKRW(shippingCouponDiscount)}</Text>
             )}
@@ -912,9 +918,11 @@ const PaymentScreen: React.FC = () => {
         <View style={styles.couponSelectorBlock}>
           <View style={styles.couponSelectorRow}>
             <Icon name="star-outline" size={14} color={COLORS.red} />
-            <Text style={styles.couponSelectorLabel}>Points</Text>
+            <Text style={styles.couponSelectorLabel}>{t('payment.points')}</Text>
             <Text style={styles.availablePointsText}>
-              {availablePointsAmount.toLocaleString()}P available (= {formatPriceKRW(maxPointsKRW)})
+              {t('payment.pointsAvailable')
+                .replace('{points}', availablePointsAmount.toLocaleString())
+                .replace('{amount}', formatPriceKRW(maxPointsKRW))}
             </Text>
           </View>
           <View style={styles.pointsInputRow}>
@@ -938,7 +946,7 @@ const PaymentScreen: React.FC = () => {
               style={styles.paymentUseAllButton}
               onPress={() => setPointsInput(String(availablePointsAmount))}
             >
-              <Text style={styles.paymentUseAllText}>Use all</Text>
+              <Text style={styles.paymentUseAllText}>{t('payment.useAll')}</Text>
             </TouchableOpacity>
             {pointsDiscount > 0 && (
               <Text style={styles.couponDiscountText}>-{formatPriceKRW(pointsDiscount)}</Text>
@@ -950,14 +958,14 @@ const PaymentScreen: React.FC = () => {
       {/* Extra discounts */}
       {(couponDiscount + pointsDiscount) > 0 && (
         <View style={styles.priceRow}>
-          <Text style={styles.priceRowLabelGray}>Extra discounts</Text>
+          <Text style={styles.priceRowLabelGray}>{t('payment.extraDiscounts')}</Text>
           <Text style={styles.priceRowValueRed}>-{formatPriceKRW(couponDiscount + pointsDiscount)}</Text>
         </View>
       )}
 
       {/* Estimated total */}
       <View style={styles.estimatedTotalRow}>
-        <Text style={styles.estimatedTotalLabel}>Estimated total</Text>
+        <Text style={styles.estimatedTotalLabel}>{t('payment.estimatedTotal')}</Text>
         <Text style={styles.estimatedTotalValue}>{formatPriceKRW(finalTotal)}</Text>
       </View>
     </View>
@@ -1096,11 +1104,13 @@ const PaymentScreen: React.FC = () => {
         <View style={styles.bottomBarContent}>
           <View style={styles.bottomBarLeft}>
             <Text style={styles.bottomBarBreakdown}>
-              <Text style={styles.bottomBarBreakdownBold}>Breakdown</Text>
-              <Text style={styles.bottomBarBreakdownLight}> {itemCount} item{itemCount > 1 ? 's' : ''} in total</Text>
+              <Text style={styles.bottomBarBreakdownBold}>{t('payment.breakdown')}</Text>
+              <Text style={styles.bottomBarBreakdownLight}> {t('payment.itemsInTotal').replace('{count}', String(itemCount))}</Text>
             </Text>
             {totalDiscount > 0 && (
-              <Text style={styles.bottomBarDiscount}>¥{totalDiscount.toFixed(0)} off in total</Text>
+              <Text style={styles.bottomBarDiscount}>
+                {t('payment.offInTotal').replace('{amount}', `¥${totalDiscount.toFixed(0)}`)}
+              </Text>
             )}
           </View>
           <TouchableOpacity 
@@ -1112,7 +1122,7 @@ const PaymentScreen: React.FC = () => {
               <ActivityIndicator size="small" color={COLORS.white} />
             ) : (
               <Text style={styles.confirmButtonText}>
-                Amount paid: {formatPriceKRW(finalTotal)}
+                {t('payment.amountPaid')}: {formatPriceKRW(finalTotal)}
               </Text>
             )}
           </TouchableOpacity>
@@ -1452,7 +1462,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
-    paddingTop: SPACING['2xl'],
+    paddingTop: SPACING.md,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.gray[200],
   },

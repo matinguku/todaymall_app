@@ -16,7 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../components/Icon';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { COLORS, FONTS, SPACING, SHADOWS } from '../../../constants';
+import { COLORS, FONTS, SPACING, SHADOWS, IMAGE_CONFIG } from '../../../constants';
 import { ProductCard } from '../../../components';
 import { productsApi } from '../../../services/productsApi';
 import { useToast } from '../../../context/ToastContext';
@@ -60,7 +60,7 @@ const SellerProfileScreen: React.FC = () => {
   const storeData = {
     id: sellerId,
     name: sellerName || 'Store',
-    image: 'https://via.placeholder.com/100',
+    image: `https://via.placeholder.com/${IMAGE_CONFIG.PRODUCT_DISPLAY_PIXEL}`,
     rating: 5.0,
     reviewCount: '1.3K+',
     soldCount: '1.3K+',

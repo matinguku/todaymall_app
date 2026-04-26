@@ -19,7 +19,7 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import ViewShot from 'react-native-view-shot';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
-import { COLORS, FONTS, SPACING, SERVER_BASE_URL } from '../../../../constants';
+import { COLORS, FONTS, SPACING, SERVER_BASE_URL, IMAGE_CONFIG } from '../../../../constants';
 import { useAuth } from '../../../../context/AuthContext';
 import { useAppSelector } from '../../../../store/hooks';
 import { translations } from '../../../../i18n/translations';
@@ -229,7 +229,7 @@ const AffiliateMarketingScreen = () => {
             <Text style={styles.cardDesc}>{t('profile.shareQrCodeDesc')}</Text>
             <ViewShot
               ref={viewShotRef}
-              options={{ format: 'png', quality: 1.0 }}
+              options={{ format: 'png', quality: IMAGE_CONFIG.QUALITY }}
             >
               <View style={styles.qrCodeWrapper}>
                 <QRCode
@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
-    paddingTop: SPACING['2xl'],
+    paddingTop: SPACING.md,
     backgroundColor: COLORS.white,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,

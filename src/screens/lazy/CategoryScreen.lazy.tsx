@@ -3,8 +3,8 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import { useAppSelector } from '../../store/hooks';
 import { translations } from '../../i18n/translations';
 
-// Lazy load the CategoryScreen component
-const LazyCategoryScreen = lazy(() => import('../main/CategoryScreen'));
+// Lazy load the Category screen component
+const LazyCategoryScreen = lazy(() => import('../main/CategoryTabScreen'));
 
 // Export a component that wraps the lazy-loaded component with Suspense
 const CategoryScreenWithSuspense = (props: any) => {

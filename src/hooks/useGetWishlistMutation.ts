@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { wishlistApi, WishlistResponse, GetWishlistParams } from '../services/wishlistApi';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../constants';
@@ -17,6 +17,25 @@ interface UseGetWishlistMutationResult {
   isError: boolean;
 }
 
+function collectWishlistExternalIds(data: WishlistResponse): string[] {
+  const ids: string[] = [];
+  if (Array.isArray(data.wishlist)) {
+    for (const item of data.wishlist) {
+      const id = item.externalId?.toString();
+      if (id) ids.push(id);
+    }
+  }
+  if (Array.isArray(data.wishlistByStore)) {
+    for (const group of data.wishlistByStore) {
+      for (const item of group.items || []) {
+        const id = item.externalId?.toString();
+        if (id) ids.push(id);
+      }
+    }
+  }
+  return [...new Set(ids)];
+}
+
 export const useGetWishlistMutation = (
   options?: UseGetWishlistMutationOptions
 ): UseGetWishlistMutationResult => {
@@ -25,8 +44,12 @@ export const useGetWishlistMutation = (
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
   const [isError, setIsError] = useState<boolean>(false);
+  const latestRequestId = useRef(0);
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
   const mutate = useCallback(async (params?: GetWishlistParams) => {
+    const reqId = ++latestRequestId.current;
     setIsLoading(true);
     setIsSuccess(false);
     setIsError(false);
@@ -34,33 +57,41 @@ export const useGetWishlistMutation = (
 
     try {
       const response = await wishlistApi.getWishlist(params);
+      if (reqId !== latestRequestId.current) {
+        return;
+      }
 
       if (response.success && response.data) {
         setData(response.data);
         setIsSuccess(true);
-        
-        // Update external IDs in AsyncStorage
-        if (response.data.wishlist && Array.isArray(response.data.wishlist)) {
-          const externalIds = response.data.wishlist.map((item: any) => item.externalId?.toString() || '').filter(Boolean);
-          await AsyncStorage.setItem(STORAGE_KEYS.WISHLIST_EXTERNAL_IDS, JSON.stringify(externalIds));
-        }
-        
-        options?.onSuccess?.(response.data);
+
+        const externalIds = collectWishlistExternalIds(response.data);
+        await AsyncStorage.setItem(
+          STORAGE_KEYS.WISHLIST_EXTERNAL_IDS,
+          JSON.stringify(externalIds)
+        );
+
+        optionsRef.current?.onSuccess?.(response.data);
       } else {
         const errorMessage = response.message || 'Failed to fetch wishlist';
         setError(errorMessage);
         setIsError(true);
-        options?.onError?.(errorMessage);
+        optionsRef.current?.onError?.(errorMessage);
       }
     } catch (err: any) {
+      if (reqId !== latestRequestId.current) {
+        return;
+      }
       const errorMessage = 'An unexpected error occurred. Please try again.';
       setError(errorMessage);
       setIsError(true);
-      options?.onError?.(errorMessage);
+      optionsRef.current?.onError?.(errorMessage);
     } finally {
-      setIsLoading(false);
+      if (reqId === latestRequestId.current) {
+        setIsLoading(false);
+      }
     }
-  }, [options]);
+  }, []);
 
   return {
     mutate,

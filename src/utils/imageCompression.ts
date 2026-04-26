@@ -1,7 +1,26 @@
 import ImagePicker from 'react-native-image-crop-picker';
 import RNFS from 'react-native-fs';
+import { IMAGE_CONFIG } from '../constants';
 
 const MAX_BASE64_SIZE = 1_200_000; // ~900KB raw file
+
+/**
+ * Quality steps when base64 must stay under ~1.2MB: start at app default (0.7), then lower.
+ */
+export function getImageSearchQualityLadder(): number[] {
+  const q = IMAGE_CONFIG.QUALITY;
+  return [
+    q,
+    Math.max(0.08, q * 0.78),
+    Math.max(0.08, q * 0.57),
+    Math.max(0.08, q * 0.4),
+    0.25,
+    0.18,
+    0.12,
+    0.08,
+    0.05,
+  ];
+}
 
 /**
  * Compress and resize an image for image search.
@@ -11,7 +30,7 @@ const MAX_BASE64_SIZE = 1_200_000; // ~900KB raw file
 export const compressImageForSearch = async (
   imageUri: string,
   _fileSizeMB?: number,
-  quality: number = 0.3
+  quality: number = IMAGE_CONFIG.QUALITY
 ): Promise<string | null> => {
   // Normalise URI for RNFS / cropper
   const fileUri = imageUri.startsWith('file://') || imageUri.startsWith('content://') || imageUri.startsWith('ph://')
@@ -21,7 +40,8 @@ export const compressImageForSearch = async (
   // Pick target dimensions based on quality hint
   // Lower quality → smaller target size
   let targetSize: number;
-  if (quality <= 0.1)       targetSize = 400;
+  if (quality > 0.65)      targetSize = 720;
+  else if (quality <= 0.1) targetSize = 400;
   else if (quality <= 0.15) targetSize = 500;
   else if (quality <= 0.2)  targetSize = 600;
   else if (quality <= 0.25) targetSize = 700;

@@ -3,6 +3,7 @@ import { getStoredToken } from './authApi';
 
 import { API_BASE_URL } from '../constants';
 import { buildSignatureHeaders } from './signature';
+import { logDevApiFailure } from '../utils/devLog';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -218,9 +219,15 @@ export const cartApi = {
         message: 'Cart retrieved successfully',
       };
     } catch (error: any) {
-      console.error('🛒 GET CART ERROR:', error);
-      console.error('🛒 GET CART ERROR RESPONSE:', error.response?.data);
-      const errorMessage = error.response?.data?.message || error.message || 'Failed to get cart';
+      // Network failures have no response; avoid console.error so RN LogBox does not full-screen spam.
+      const errorMessage =
+        error?.response?.data?.message || error?.message || 'Failed to get cart';
+      const responseBody = axios.isAxiosError(error) ? error.response?.data : undefined;
+      console.warn(
+        '[cartApi.getCart]',
+        errorMessage,
+        responseBody !== undefined ? responseBody : '(no response — likely offline or wrong API URL)',
+      );
       return {
         success: false,
         message: errorMessage,
@@ -261,7 +268,7 @@ export const cartApi = {
         message: response.data.message || 'Product added to cart successfully',
       };
     } catch (error: any) {
-      console.error('Add to cart error:', error, error.response?.data?.message || error.message);
+      logDevApiFailure('cartApi.addToCart', error);
       const errorMessage = error.response?.data?.message || error.message || 'Failed to add product to cart';
       return {
         success: false,

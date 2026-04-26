@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,15 +10,16 @@ import {
   Dimensions,
   ActivityIndicator,
   Modal,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG } from '../../constants';
 import { RootStackParamList } from '../../types';
-import { useAppSelector } from '../../store/hooks';
 import { usePlatformStore } from '../../store/platformStore';
-import { translations } from '../../i18n/translations';
+import { useTranslation } from '../../hooks/useTranslation';
 import { ProductCard } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -42,8 +43,10 @@ import HeartIcon from '../../assets/icons/HeartIcon';
 import DeleteIcon from '../../assets/icons/DeleteIcon';
 import PlusIcon from '../../assets/icons/PlusIcon';
 import MinusIcon from '../../assets/icons/MinusIcon';
+import { useResponsive } from '../../hooks/useResponsive';
 
 const { width } = Dimensions.get('window');
+const PRODUCT_IMG_PX = IMAGE_CONFIG.PRODUCT_DISPLAY_PIXEL;
 
 // Mock cart data
 const mockCartData = [
@@ -61,7 +64,7 @@ const mockCartData = [
         price: 5.99,
         originalPrice: 7.00,
         quantity: 1,
-        image: 'https://picsum.photos/seed/shoes1/300/300',
+        image: `https://picsum.photos/seed/shoes1/${PRODUCT_IMG_PX}/${PRODUCT_IMG_PX}`,
         selected: true,
       }
     ]
@@ -73,6 +76,18 @@ type CartScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Main'>;
 
 const CartScreen: React.FC = () => {
   const navigation = useNavigation<CartScreenNavigationProp>();
+  const insets = useSafeAreaInsets();
+  const { screenWidth: dynScreenWidth, moreToLoveColumns } = useResponsive();
+  // Compute cardWidth locally to match the actual MoreToLove grid layout in
+  // this screen (moreToLoveSection horizontal padding + productsGridRow gap).
+  // The default useResponsive.gridCardWidth assumes smaller padding/gap, which
+  // made the 3rd column overflow on tablets.
+  const MORE_TO_LOVE_H_PADDING = SPACING.lg; // per side
+  const MORE_TO_LOVE_COL_GAP = SPACING.lg; // between columns
+  const dynGridCardWidth = Math.floor(
+    (dynScreenWidth - MORE_TO_LOVE_H_PADDING * 2 - MORE_TO_LOVE_COL_GAP * (moreToLoveColumns - 1)) /
+      moreToLoveColumns,
+  );
   const { isAuthenticated, user } = useAuth();
   // Use wishlist status hook to check if products are liked based on external IDs
   const { isProductLiked, refreshExternalIds, addExternalId, removeExternalId } = useWishlistStatus();
@@ -154,17 +169,8 @@ const CartScreen: React.FC = () => {
     estimatedShippingCostBySeller?: Record<string, number>;
   }>({ items: [], totalAmount: 0, totalItems: 0, currency: 'CNY' });
   const { showToast } = useToast();
-  
-  // i18n - define t function early so it can be used in callbacks
-  const locale = useAppSelector((s) => s.i18n.locale) as 'en' | 'ko' | 'zh';
-  const t = useCallback((key: string) => {
-    const keys = key.split('.');
-    let value: any = translations[locale as keyof typeof translations];
-    for (const k of keys) {
-      value = value?.[k];
-    }
-    return value || key;
-  }, [locale]);
+  const { t, locale: appLocale } = useTranslation();
+  const locale = appLocale as 'en' | 'ko' | 'zh';
   
   // Resolve multilingual object or string to string for current locale
   const resolveText = useCallback((value: unknown): string => {
@@ -561,12 +567,12 @@ const CartScreen: React.FC = () => {
       <Text style={styles.headerTitle}>
         {t('cart.title')} { selectedCount > 0 ? `(${selectedCount})` : '(0)' }
       </Text>
-      <TouchableOpacity 
+      {/* <TouchableOpacity 
         style={styles.backButton}
         // onPress={() => navigation.goBack()}
       >
-        {/* <Ionicons name="ar row-back" size={24} color={COLORS.black} /> */}
-      </TouchableOpacity>
+        <Ionicons name="ar row-back" size={24} color={COLORS.black} />
+      </TouchableOpacity> */}
       
       
       <View style={styles.headerActions}>
@@ -595,9 +601,9 @@ const CartScreen: React.FC = () => {
       counts[p] = cart.items.filter(item => (item.source || '1688').toLowerCase() === p.toLowerCase()).length;
     });
     const tabs = [
-      { label: `All (${counts.All})`, value: 'All' },
-      { label: `1688 (${counts['1688'] ?? 0})`, value: '1688' },
-      { label: `Taobao (${counts['taobao'] ?? 0})`, value: 'taobao' },
+      { label: `${t('cart.all')} (${counts.All})`, value: 'All' },
+      { label: `${t('home.platforms.1688')} (${counts['1688'] ?? 0})`, value: '1688' },
+      { label: `${t('home.platforms.taobao')} (${counts['taobao'] ?? 0})`, value: 'taobao' },
     ];
     return (
       <View style={styles.platformFilterBar}>
@@ -654,44 +660,74 @@ const CartScreen: React.FC = () => {
     </Modal>
   );
 
-  const renderMoreToLoveItem = ({ item: product, index }: { item: Product; index: number }) => {
-    if (!product || !product.id) {
-      return null;
-    }
-    const handleLike = async () => {
-      if (!isAuthenticated) {
-        // showToast(t('home.pleaseLogin'));
-        return;
-      }
-      try {
-        await toggleWishlist(product);
-      } catch (error) {
-        // Error toggling wishlist
-      }
-    };
+  // Stable wrapper style — memoized so it's the SAME object reference across
+  // renders, otherwise every parent re-render makes the inline `[...]` array
+  // a new value and ProductCard's memo wrapper sees `style` as changed.
+  const productCardWrapperStyle = useMemo(
+    () => [styles.productCardWrapper, { width: dynGridCardWidth }],
+    [dynGridCardWidth],
+  );
 
-    const handlePress = () => {
-      const productIdToUse = (product as any).offerId || product.id;
-      const source = '1688'; // Default source
-      navigateToProductDetail(productIdToUse, source, 'en');
-    };
-    
-    return (
-      <View style={styles.productCardWrapper}>
-        <ProductCard
-          key={`moretolove-${product.id || product.offerId || index}-${index}`}
-          product={product}
-          variant="moreToLove"
-          onPress={handlePress}
-          onLikePress={handleLike}
-          isLiked={isProductLiked(product)}
-          showLikeButton={true}
-          showDiscountBadge={true}
-          showRating={true}
-        />
-      </View>
-    );
-  };
+  const renderMoreToLoveItem = useCallback(
+    ({ item: product, index }: { item: Product; index: number }) => {
+      if (!product || !product.id) {
+        return null;
+      }
+
+      const handleLike = async () => {
+        if (!isAuthenticated) {
+          return;
+        }
+        try {
+          await toggleWishlist(product);
+        } catch (error) {
+          // Error toggling wishlist
+        }
+      };
+
+      const handlePress = () => {
+        const productIdToUse = (product as any).offerId || product.id;
+        const source = (product as any).source || selectedPlatform || '1688';
+        const country = locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en';
+        navigateToProductDetail(productIdToUse, source, country);
+      };
+
+      return (
+        <View style={productCardWrapperStyle}>
+          <ProductCard
+            key={`moretolove-${product.id || product.offerId || index}-${index}`}
+            product={product}
+            variant="moreToLove"
+            cardWidth={dynGridCardWidth}
+            onPress={handlePress}
+            onLikePress={handleLike}
+            isLiked={isProductLiked(product)}
+            showLikeButton={true}
+            showDiscountBadge={true}
+            showRating={true}
+          />
+        </View>
+      );
+    },
+    [
+      isAuthenticated,
+      dynGridCardWidth,
+      productCardWrapperStyle,
+      isProductLiked,
+      selectedPlatform,
+      locale,
+      toggleWishlist,
+      navigateToProductDetail,
+    ],
+  );
+
+  // Stable keyExtractor — defined once via useCallback to avoid passing a new
+  // function reference to FlatList every render.
+  const keyExtractorMoreToLove = useCallback(
+    (item: Product, index: number) =>
+      `moretolove-${item.id?.toString() || index}-${index}`,
+    [],
+  );
 
   const renderMoreToLove = () => {
     const productsToDisplay = recommendationsProducts;
@@ -730,18 +766,19 @@ const CartScreen: React.FC = () => {
       <View style={styles.moreToLoveSection}>
         <Text style={styles.sectionTitle}>{t('home.moreToLove')}</Text>
         <FlatList
+          key={`cart-moretolove-cols-${moreToLoveColumns}`}
           data={productsToDisplay}
           renderItem={renderMoreToLoveItem}
-          keyExtractor={(item, index) => `moretolove-${item.id?.toString() || index}-${index}`}
-          numColumns={2}
+          keyExtractor={keyExtractorMoreToLove}
+          numColumns={moreToLoveColumns}
           scrollEnabled={false}
           nestedScrollEnabled={true}
           columnWrapperStyle={styles.productsGridRow}
-          removeClippedSubviews={true}
-          maxToRenderPerBatch={10}
-          windowSize={5}
-          initialNumToRender={10}
-          updateCellsBatchingPeriod={50}
+          removeClippedSubviews={Platform.OS === 'android'}
+          maxToRenderPerBatch={6}
+          windowSize={3}
+          initialNumToRender={6}
+          updateCellsBatchingPeriod={80}
           onEndReached={() => {
             // For nested FlatList with scrollEnabled={false}, onEndReached may not fire reliably
             // Rely on parent ScrollView scroll detection instead
@@ -1016,10 +1053,10 @@ const CartScreen: React.FC = () => {
           >
             <Image 
               source={{ 
-                uri: itemImage || 'https://via.placeholder.com/80x80/f0f0f0/999999?text=No+Image'
+                uri: itemImage || `https://via.placeholder.com/${PRODUCT_IMG_PX}x${PRODUCT_IMG_PX}/f0f0f0/999999?text=No+Image`
               }}
               style={styles.productImage}
-              defaultSource={{ uri: 'https://via.placeholder.com/80x80/f0f0f0/999999?text=Loading' }}
+              defaultSource={{ uri: `https://via.placeholder.com/${PRODUCT_IMG_PX}x${PRODUCT_IMG_PX}/f0f0f0/999999?text=Loading` }}
               onError={(error) => {
                 console.log('🖼️ CartScreen: Image failed to load:', {
                   itemId: item.id,
@@ -1152,7 +1189,7 @@ const CartScreen: React.FC = () => {
 
 
   const renderBottomBar = () => (
-    <View style={styles.bottomBar}>
+    <View style={[styles.bottomBar, { paddingBottom: insets.bottom }]}>
       <View style={styles.bottomContent}>
         <TouchableOpacity 
           style={styles.allCheckbox}
@@ -1268,13 +1305,6 @@ const CartScreen: React.FC = () => {
           <View style={styles.helpCenter} >
             <View style={styles.helpCenterItem} >
               <View style={styles.helpCenterItemHeader} >
-                <PackageIcon />
-                <Text style={styles.helpCenterTitle}>{t('cart.helpCenter')}</Text>
-              </View>
-              <Text style={styles.helpCenterSubTitle}>{t('cart.helpCenterSubTitle')}</Text>
-            </View>
-            <View style={styles.helpCenterItem} >
-              <View style={styles.helpCenterItemHeader} >
                 <PrivacyIcon />
                 <Text style={styles.helpCenterTitle}>{t('cart.helpCenter2')}</Text>
               </View>
@@ -1339,7 +1369,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
-    paddingTop: SPACING['2xl'],
+    paddingTop: SPACING.lg,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.gray[200],
     backgroundColor: COLORS.white,
@@ -1536,6 +1566,7 @@ const styles = StyleSheet.create({
   },
   moreToLoveSection: {
     margin: SPACING.sm,
+    paddingHorizontal: SPACING.md,
   },
   sectionTitle: {
     fontSize: FONTS.sizes.lg,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   TextInput,
   Platform,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
@@ -24,7 +25,8 @@ import { useNavigation } from '@react-navigation/native';
 import { requestCameraPermission, requestPhotoLibraryPermission } from '../../utils/permissions';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG } from '../../constants';
+import { getProductCardImageUri } from '../../utils/productImage';
 import { RootStackParamList, Product } from '../../types';
 import { SearchButton, NotificationBadge, ProductCard, ImagePickerModal } from '../../components';
 import NotificationIcon from '../../assets/icons/NotificationIcon';
@@ -40,18 +42,26 @@ import { useSearchProductsMutation } from '../../hooks/useSearchProductsMutation
 import { useWishlistStatus } from '../../hooks/useWishlistStatus';
 import { useAddToWishlistMutation } from '../../hooks/useAddToWishlistMutation';
 import { useDeleteFromWishlistMutation } from '../../hooks/useDeleteFromWishlistMutation';
+import { productsApi } from '../../services/productsApi';
 
-const { width } = Dimensions.get('window');
+const { width: _staticWidth } = Dimensions.get('window');
 
 type CategoryTabScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Category'>;
 
-// Calculate card width for right column (accounting for left column width of 90)
 const LEFT_COLUMN_WIDTH = 90;
-const RIGHT_COLUMN_WIDTH = width - LEFT_COLUMN_WIDTH - SPACING.md * 3; // 3 spacings: left, middle, right
-const FOR_YOU_CARD_WIDTH = (RIGHT_COLUMN_WIDTH - SPACING.sm * 3) / 2; // 2 cards per row with spacing
 
 const CategoryTabScreen: React.FC = () => {
   const navigation = useNavigation<CategoryTabScreenNavigationProp>();
+  const { width: dynWidth } = useWindowDimensions();
+  const RIGHT_COLUMN_WIDTH = dynWidth - LEFT_COLUMN_WIDTH - SPACING.md * 2;
+  // Match the actual forYou layout:
+  //   forYouSection.paddingHorizontal = SPACING.md  → 2 * SPACING.md outer
+  //   forYouGrid.gap = SPACING.sm                   → 1 * SPACING.sm between 2 cols
+  // Using the wrong spacing here made the two cards overflow the container,
+  // which triggered flexWrap and broke image layout.
+  const FOR_YOU_CARD_WIDTH = Math.floor(
+    (RIGHT_COLUMN_WIDTH - SPACING.md * 2 - SPACING.sm) / 2,
+  );
   const { user, isGuest } = useAuth();
   // Use wishlist status hook to check if products are liked based on external IDs
   const { isProductLiked, refreshExternalIds, addExternalId, removeExternalId } = useWishlistStatus();
@@ -112,7 +122,7 @@ const CategoryTabScreen: React.FC = () => {
       deleteFromWishlist(externalId);
     } else {
       // Add to wishlist - extract required fields from product
-      const imageUrl = product.image || product.images?.[0] || '';
+      const imageUrl = getProductCardImageUri(product) || '';
       const price = product.price || 0;
       const title = product.name || product.title || '';
 
@@ -159,6 +169,30 @@ const CategoryTabScreen: React.FC = () => {
     }
     return value || key;
   };
+
+  const getCategoryImage = useCallback((category: any): string => {
+    if (!category) return '';
+    return (
+      category.imageUrl ||
+      category.image ||
+      category.mainImage ||
+      category.main_image_url ||
+      category.thumbnail ||
+      category.thumbnailUrl ||
+      category.thumbUrl ||
+      category.iconUrl ||
+      category.icon ||
+      ''
+    );
+  }, []);
+
+  const getLocalizedCategoryName = useCallback((category: any): string => {
+    if (!category) return '';
+    if (typeof category.name === 'object') {
+      return category.name?.[locale] || category.name?.en || category.name?.zh || '';
+    }
+    return category.name || '';
+  }, [locale]);
   
   // Map company name to platform/source parameter
   const getPlatformFromCompany = (company: string): string => {
@@ -186,6 +220,13 @@ const CategoryTabScreen: React.FC = () => {
   const hasFetchedRef = useRef<string | null>(null); // Track which platform we've fetched
   const hasFetchedForYouRef = useRef<string | null>(null); // Track which category we've fetched for "For You"
   const lastPlatformForCategoryRef = useRef<string | null>(null); // Track which platform we last set category for
+  const childCategoryCacheRef = useRef<Record<string, any[]>>({});
+  const previewImageCacheRef = useRef<Record<string, string>>({});
+  const activeChildRequestKeyRef = useRef<string | null>(null);
+
+  const getChildCategoryCacheKey = useCallback((platform: string, categoryId: string) => {
+    return `${platform}-${categoryId}-${locale || 'en'}`;
+  }, [locale]);
 
   // Top categories mutation
   const { mutate: fetchTopCategories, isLoading: isLoadingTopCategories } = useTopCategoriesMutation({
@@ -214,7 +255,114 @@ const CategoryTabScreen: React.FC = () => {
     onSuccess: (data) => {
       // console.log('Child categories fetched successfully:', data);
       const childCatsTree = data.tree || [];
-      setChildCategories(childCatsTree);
+      const platformSource = getPlatformFromCompany(selectedCompany);
+      const countryCode = locale === 'zh' ? 'en' : locale;
+      const searchFilter = platformSource === 'taobao' ? undefined : 'isQqyx';
+      const requestKey = selectedCategory ? getChildCategoryCacheKey(platformSource, selectedCategory) : null;
+
+      if (!requestKey || activeChildRequestKeyRef.current !== requestKey) {
+        return;
+      }
+
+      const fetchPreviewImage = async (keyword: string): Promise<string> => {
+        if (!keyword) return '';
+
+        const cacheKey = `${platformSource}-${countryCode}-${keyword}`;
+        if (previewImageCacheRef.current[cacheKey] !== undefined) {
+          return previewImageCacheRef.current[cacheKey];
+        }
+
+        try {
+          const response = await productsApi.searchProductsByKeyword(
+            keyword,
+            platformSource,
+            countryCode,
+            1,
+            1,
+            '',
+            undefined,
+            undefined,
+            searchFilter,
+            false
+          );
+          const firstProduct = response?.data?.data?.products?.[0];
+          const previewImage = (
+            firstProduct?.image ||
+            firstProduct?.imageUrl ||
+            firstProduct?.mainImage ||
+            firstProduct?.main_image_url ||
+            firstProduct?.images?.[0] ||
+            ''
+          );
+          previewImageCacheRef.current[cacheKey] = previewImage;
+          return previewImage;
+        } catch {
+          previewImageCacheRef.current[cacheKey] = '';
+          return '';
+        }
+      };
+
+      // First paint quickly with existing category tree data.
+      const baseTree = childCatsTree.map((level2: any) => {
+        const level3Children = Array.isArray(level2.children) ? level2.children : [];
+        const firstChildImage = level3Children
+          .map((child: any) => getCategoryImage(child))
+          .find((img: string) => !!img);
+
+        return {
+          ...level2,
+          imageUrl: getCategoryImage(level2) || firstChildImage || level2.imageUrl || '',
+          children: level3Children,
+        };
+      });
+
+      setChildCategories(baseTree);
+
+      if (requestKey) {
+        childCategoryCacheRef.current[requestKey] = baseTree;
+      }
+
+      // Enrich missing images in background.
+      (async () => {
+        const enrichedTree = await Promise.all(
+          childCatsTree.map(async (level2: any) => {
+            const level2Name = getLocalizedCategoryName(level2);
+            const level3Children = Array.isArray(level2.children) ? level2.children : [];
+
+            const enrichedChildren = await Promise.all(
+              level3Children.map(async (level3: any) => {
+                const level3Image = getCategoryImage(level3);
+                if (level3Image) return level3;
+
+                const level3Name = getLocalizedCategoryName(level3);
+                const previewImage = await fetchPreviewImage(level3Name);
+                return previewImage ? { ...level3, imageUrl: previewImage } : level3;
+              })
+            );
+
+            const firstChildImage = enrichedChildren
+              .map((child: any) => getCategoryImage(child))
+              .find((img: string) => !!img);
+
+            const level2Image = getCategoryImage(level2) || firstChildImage || await fetchPreviewImage(level2Name);
+            return {
+              ...level2,
+              imageUrl: level2Image || level2.imageUrl || '',
+              children: enrichedChildren,
+            };
+          })
+        );
+
+        if (activeChildRequestKeyRef.current !== requestKey) {
+          return;
+        }
+
+        setChildCategories(enrichedTree);
+
+        if (requestKey) {
+          childCategoryCacheRef.current[requestKey] = enrichedTree;
+        }
+      })();
     },
     onError: (error) => {
       // console.error('Failed to fetch child categories:', error);
@@ -246,10 +394,19 @@ const CategoryTabScreen: React.FC = () => {
   useEffect(() => {
     if (selectedCategory && selectedCompany) {
       const platformForCompany = getPlatformFromCompany(selectedCompany);
+      const cacheKey = getChildCategoryCacheKey(platformForCompany, selectedCategory);
+      const cachedChildCategories = childCategoryCacheRef.current[cacheKey];
+      activeChildRequestKeyRef.current = cacheKey;
+
+      if (cachedChildCategories) {
+        setChildCategories(cachedChildCategories);
+        return;
+      }
+
       fetchChildCategories(platformForCompany, selectedCategory);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCategory, selectedCompany]);
+  }, [selectedCategory, selectedCompany, locale]);
 
   // Search products mutation for "For You" section
   const { mutate: searchForYouProducts, isLoading: isLoadingForYou } = useSearchProductsMutation({
@@ -263,15 +420,15 @@ const CategoryTabScreen: React.FC = () => {
           const discount = originalPrice > price && originalPrice > 0
             ? Math.round(((originalPrice - price) / originalPrice) * 100)
             : 0;
-          
-          return {
+
+          const row = {
             id: item.id?.toString() || item.externalId?.toString() || '',
             externalId: item.externalId?.toString() || item.id?.toString() || '',
             offerId: item.offerId?.toString() || item.externalId?.toString() || item.id?.toString() || '',
             name: locale === 'zh' 
               ? (item.subject || item.title || item.titleOriginal || '')
               : (item.title || item.titleOriginal || item.subject || ''),
-            image: item.image || '',
+            image: '',
             price: price,
             originalPrice: originalPrice,
             discount: discount,
@@ -305,6 +462,30 @@ const CategoryTabScreen: React.FC = () => {
             orderCount: item.sales || 0,
             repurchaseRate: item.repurchaseRate || '',
           } as Product;
+          Object.assign(row as any, {
+            // `image` comes first — productsApi normalizes the search response
+            // to `item.image` (mapped from `main_image_url` / similar), and
+            // without copying it here `getProductCardImageUri` has nothing to
+            // resolve, causing the For You cards to show empty placeholders.
+            image: item.image,
+            imageUrl: item.imageUrl || item.image,
+            mainImage: item.mainImage || item.main_image_url,
+            picUrl: item.picUrl,
+            pictUrl: item.pictUrl,
+            picture: item.picture,
+            images: item.images,
+            imageList: item.imageList,
+            offerDetail: item.offerDetail,
+            offer: item.offer,
+            skuInfos: item.skuInfos,
+            skuList: item.skuList,
+            priceInfo: item.priceInfo,
+          });
+          // VERIFICATION: pass quality=60 so this single screen exercises the
+          // `_NxNqQ.jpg` Alibaba CDN suffix. If For-You images load correctly
+          // here, the quality parameter is safe to roll out to other screens.
+          (row as Product).image = getProductCardImageUri(row, undefined, 60) || '';
+          return row;
         });
         setForYouProducts(mappedProducts);
         
@@ -450,7 +631,7 @@ const CategoryTabScreen: React.FC = () => {
 
     const options: CameraOptions = {
       mediaType: 'photo' as MediaType,
-      quality: 0.1, // Very low quality to ensure <1.2MB for large images
+      quality: IMAGE_CONFIG.QUALITY,
       saveToPhotos: false,
       includeBase64: true,
     };
@@ -467,7 +648,7 @@ const CategoryTabScreen: React.FC = () => {
         setImagePickerModalVisible(false);
         let base64Data = response.assets[0].base64;
         
-        // Image is already compressed with quality: 0.5 in camera options
+        // Then compressImageForSearch uses IMAGE_CONFIG.QUALITY (may step down for size)
         // Only compress if base64 is not available (fallback case)
         if (!base64Data && response.assets[0].uri) {
           const { compressImageForSearch } = require('../../utils/imageCompression');
@@ -503,7 +684,7 @@ const CategoryTabScreen: React.FC = () => {
 
     const options: ImageLibraryOptions = {
       mediaType: 'photo' as MediaType,
-      quality: 0.1, // Very low quality to ensure <1.2MB for large images
+      quality: IMAGE_CONFIG.QUALITY,
       selectionLimit: 1,
       includeBase64: true,
     };
@@ -520,7 +701,7 @@ const CategoryTabScreen: React.FC = () => {
         setImagePickerModalVisible(false);
         let base64Data = response.assets[0].base64;
         
-        // Image is already compressed with quality: 0.5 in camera options
+        // Then compressImageForSearch uses IMAGE_CONFIG.QUALITY (may step down for size)
         // Only compress if base64 is not available (fallback case)
         if (!base64Data && response.assets[0].uri) {
           const { compressImageForSearch } = require('../../utils/imageCompression');
@@ -619,8 +800,7 @@ const CategoryTabScreen: React.FC = () => {
           customIcon={<NotificationIcon width={28} height={28} color={COLORS.text.primary} />}
           count={unreadCount}
           onPress={() => {
-            // Navigate to notifications or customer service
-            // navigation.navigate('CustomerService' as never);
+            navigation.navigate('Message' as never);
           }}
         />
       </View>
@@ -649,11 +829,12 @@ const CategoryTabScreen: React.FC = () => {
   };
 
   const renderRecommendedItem = ({ item }: { item: any }) => {
+    const displayImage = item.image;
+
     return (
       <TouchableOpacity
-        style={styles.recommendedItem}
+        style={[styles.recommendedItem, { width: (dynWidth - 120 - SPACING.sm * 5) / 3 }]}
         onPress={() => {
-          // Get the selected category to pass along
           const selectedCategoryData = categoriesToDisplay.find(cat => cat.id === selectedCategory);
           
           // Convert subsubcategories to correct locale if they exist
@@ -687,15 +868,15 @@ const CategoryTabScreen: React.FC = () => {
         }}
       >
         <View style={styles.recommendedImageContainer}>
-          {item.image ? (
-            <Image 
-              source={{ uri: item.image }} 
+          {displayImage ? (
+            <Image
+              source={{ uri: displayImage }}
               style={styles.recommendedImage}
               resizeMode="cover"
             />
           ) : (
-            <Image 
-              source={require('../../assets/icons/logo.png')} 
+            <Image
+              source={require('../../assets/icons/logo.png')}
               style={styles.recommendedLogo}
               resizeMode="contain"
             />
@@ -769,17 +950,21 @@ const CategoryTabScreen: React.FC = () => {
   };
 
   // Use top categories for left column (from API)
-  const categoriesToDisplay = topCategories.map((cat: any) => ({
+  const categoriesToDisplay = useMemo(() => topCategories.map((cat: any) => ({
     id: cat._id,
-    name: typeof cat.name === 'object' 
+    name: typeof cat.name === 'object'
       ? (cat.name[locale] || cat.name.en || cat.name.zh || 'Category')
       : cat.name,
     image: cat.imageUrl || '',
-  }));
+  })), [topCategories, locale]);
 
   // Transform child categories to recommended items format (from API)
-  const allRecommendedItems = childCategories.flatMap((level2: any) => {
+  const allRecommendedItems = useMemo(() => childCategories.flatMap((level2: any) => {
     const items: any[] = [];
+    const level3Children = Array.isArray(level2.children) ? level2.children : [];
+    const firstChildImage = level3Children
+      .map((child: any) => getCategoryImage(child))
+      .find((img: string) => !!img) || '';
     
     // Add level 2 category as an item
     items.push({
@@ -787,25 +972,28 @@ const CategoryTabScreen: React.FC = () => {
       name: typeof level2.name === 'object'
         ? (level2.name[locale] || level2.name.en || level2.name.zh || 'Category')
         : level2.name,
-      image: level2.imageUrl || '',
-      subsubcategories: (level2.children || []).map((level3: any) => ({
+      // Prefer the first image from the list that appears after tapping this item.
+      image: firstChildImage || getCategoryImage(level2) || '',
+      subsubcategories: level3Children.map((level3: any) => ({
         id: level3._id,
         name: typeof level3.name === 'object'
           ? (level3.name[locale] || level3.name.en || level3.name.zh || 'Category')
           : level3.name,
         externalId: level3.externalId,
+        image: getCategoryImage(level3) || '',
       })),
     });
 
     // Add level 3 categories as separate items
-    if (level2.children && Array.isArray(level2.children)) {
-      level2.children.forEach((level3: any) => {
+    if (level3Children.length > 0) {
+      level3Children.forEach((level3: any, index: number) => {
         items.push({
           id: level3._id,
           name: typeof level3.name === 'object'
             ? (level3.name[locale] || level3.name.en || level3.name.zh || 'Category')
             : level3.name,
-          image: level3.imageUrl || '',
+          // If this item has no own image, use the first image from the shown list.
+          image: getCategoryImage(level3) || (index === 0 ? firstChildImage : '') || '',
           isLevel3: true,
           parentId: level2._id,
         });
@@ -813,14 +1001,11 @@ const CategoryTabScreen: React.FC = () => {
     }
 
     return items;
-  });
+  }), [childCategories, locale, getCategoryImage]);
   
   // Show only first 9 subcategories as recommended
-  const recommendedItems = allRecommendedItems.slice(0, 9);
+  const recommendedItems = useMemo(() => allRecommendedItems.slice(0, 9), [allRecommendedItems]);
   
-  // Check if there are more than 9 subcategories to show the "Show more" button
-  const hasMoreSubcategories = allRecommendedItems.length > 9;
-
   return (
     <SafeAreaView style={styles.container}>
       {renderHeader()}
@@ -879,43 +1064,6 @@ const CategoryTabScreen: React.FC = () => {
                       </View>
                     ))}
                   </View>
-                  {hasMoreSubcategories && (
-                    <TouchableOpacity
-                      style={styles.showMoreButton}
-                      onPress={() => {
-                        // Get the selected category to pass along
-                        const selectedCategoryData = categoriesToDisplay.find(cat => cat.id === selectedCategory);
-                        
-                        // Get all subcategories for the selected category
-                        const allSubcategories = allRecommendedItems;
-                        
-                        // Navigate to SubCategory screen to show all subcategories
-                        // Convert categoryId to number if it's a valid number string, otherwise keep as string or pass as is
-                        let categoryIdToPass: number | undefined;
-                        if (selectedCategory) {
-                          if (typeof selectedCategory === 'string') {
-                            const numValue = Number(selectedCategory);
-                            categoryIdToPass = isNaN(numValue) ? undefined : numValue;
-                          } else if (typeof selectedCategory === 'number') {
-                            categoryIdToPass = selectedCategory;
-                          }
-                        }
-                        
-                        navigation.navigate('SubCategory', { 
-                          categoryName: selectedCategoryData?.name || 'All Subcategories',
-                          categoryId: categoryIdToPass,
-                          subcategories: allSubcategories,
-                        });
-                      }}
-                    >
-                      <Text style={styles.showMoreText}>{t('category.showMore')}</Text>
-                      <Icon 
-                        name="chevron-forward" 
-                        size={16} 
-                        color={COLORS.primary} 
-                      />
-                    </TouchableOpacity>
-                  )}
                 </>
               )}
             </View>
@@ -996,7 +1144,7 @@ const styles = StyleSheet.create({
   recommendedSection: {
     flex: 1,
     backgroundColor: COLORS.white,
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.xl,
     borderBottomWidth: 5,
     paddingHorizontal: SPACING.sm,
     paddingBottom: SPACING.lg,
@@ -1020,7 +1168,7 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.lg,
   },
   recommendedItem: {
-    width: (width - 120 - SPACING.sm * 5) / 3,
+    width: (_staticWidth - 120 - SPACING.sm * 5) / 3,
     alignItems: 'center',
     padding: SPACING.sm,
   },
@@ -1082,20 +1230,6 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     fontSize: FONTS.sizes.sm,
     color: COLORS.text.secondary,
-  },
-  showMoreButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    marginTop: SPACING.sm,
-    gap: SPACING.xs,
-  },
-  showMoreText: {
-    fontSize: FONTS.sizes.md,
-    color: COLORS.primary,
-    fontWeight: '600',
   },
   companyTabsContainer: {
     backgroundColor: COLORS.white,

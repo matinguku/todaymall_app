@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,8 @@ import {
 import Icon from '../../../../components/Icon';
 import { LinearGradient } from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
-import { COLORS, FONTS, SPACING } from '../../../../constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { COLORS, FONTS, SPACING, STORAGE_KEYS } from '../../../../constants';
 import { useAppSelector } from '../../../../store/hooks';
 import { translations } from '../../../../i18n/translations';
 
@@ -25,7 +26,24 @@ const UnitSettingsScreen = () => {
   const navigation = useNavigation();
   const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
   const [selectedCurrency, setSelectedCurrency] = useState('KRW');
-  
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem(STORAGE_KEYS.PREFERRED_DISPLAY_CURRENCY);
+        if (!cancelled && stored && ['KRW', 'CNY', 'USD'].includes(stored)) {
+          setSelectedCurrency(stored);
+        }
+      } catch {
+        /* keep default */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Translation function
   const t = (key: string) => {
     const keys = key.split('.');
@@ -44,7 +62,7 @@ const UnitSettingsScreen = () => {
 
   const handleSelectCurrency = (currencyId: string) => {
     setSelectedCurrency(currencyId);
-    // TODO: Save to AsyncStorage or context
+    void AsyncStorage.setItem(STORAGE_KEYS.PREFERRED_DISPLAY_CURRENCY, currencyId);
   };
 
   return (
@@ -148,7 +166,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.lg,
     marginBottom: SPACING.md,    
-    paddingTop: SPACING['2xl'],
+    paddingTop: SPACING.md,
   },
   backButton: {
     width: 40,

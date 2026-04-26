@@ -38,7 +38,6 @@ export const useProductDetailMutation = (
     setIsError(false);
     setError(null);
 
-    console.log("This is test log");
     try {
       const response = await productsApi.getProductDetail(productId, source, country);
       
@@ -48,12 +47,14 @@ export const useProductDetailMutation = (
         options?.onSuccess?.(response.data);
       } else {
         const errorMessage = response.message || 'Failed to fetch product detail';
+        console.log('Product detail error:', errorMessage);
         setError(errorMessage);
         setIsError(true);
         options?.onError?.(errorMessage);
       }
     } catch (err: any) {
       const errorMessage = 'An unexpected error occurred. Please try again.';
+      console.error('Product detail error2:', err);
       setError(errorMessage);
       setIsError(true);
       options?.onError?.(errorMessage);

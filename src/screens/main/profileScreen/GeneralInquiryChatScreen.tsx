@@ -19,7 +19,7 @@ import { useRoute, useNavigation, RouteProp, useFocusEffect } from '@react-navig
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../../components/Icon';
-import { COLORS, FONTS, SHADOWS, SPACING, BORDER_RADIUS } from '../../../constants';
+import { COLORS, FONTS, SHADOWS, SPACING, BORDER_RADIUS, IMAGE_CONFIG } from '../../../constants';
 import { RootStackParamList } from '../../../types';
 import { launchCamera, launchImageLibrary, MediaType, ImagePickerResponse, CameraOptions, ImageLibraryOptions } from 'react-native-image-picker';
 import { requestCameraPermission, requestPhotoLibraryPermission } from '../../../utils/permissions';
@@ -345,7 +345,7 @@ const GeneralInquiryChatScreen: React.FC = () => {
       }
       const options: ImageLibraryOptions = {
         mediaType: 'photo' as MediaType,
-        quality: 0.7,
+        quality: IMAGE_CONFIG.QUALITY,
         selectionLimit: 5,
       };
       launchImageLibrary(options, (response: ImagePickerResponse) => {
@@ -378,7 +378,7 @@ const GeneralInquiryChatScreen: React.FC = () => {
       }
       const options: CameraOptions = {
         mediaType: 'photo' as MediaType,
-        quality: 0.7,
+        quality: IMAGE_CONFIG.QUALITY,
         saveToPhotos: false,
       };
       launchCamera(options, (response: ImagePickerResponse) => {

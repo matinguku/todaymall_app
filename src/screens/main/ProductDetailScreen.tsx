@@ -14,6 +14,7 @@ import {
   Share,
   Platform,
   Animated,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Clipboard from '@react-native-clipboard/clipboard';
@@ -69,6 +70,11 @@ const { width } = Dimensions.get('window');
 const IMAGE_HEIGHT = 400;
 
 const ProductDetailScreen: React.FC = () => {
+  const { width: dynWidth, height: dynHeight } = useWindowDimensions();
+  const pdpIsTablet = Math.min(dynWidth, dynHeight) >= 600;
+  const pdpIsLandscape = dynWidth > dynHeight;
+  const pdpGridCols = pdpIsTablet ? (pdpIsLandscape ? 4 : 3) : 2;
+  const pdpGridCardWidth = (dynWidth - SPACING.sm * 2 - SPACING.sm * (pdpGridCols - 1)) / pdpGridCols;
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { productId, offerId, productData: initialProductData, source: routeSource, country: routeCountry } = route.params || {};
@@ -598,7 +604,7 @@ const ProductDetailScreen: React.FC = () => {
       );
     },
     onError: (error) => {
-      showToast(error || t('product.failedToLoadRelatedProducts'), 'error');
+      // showToast(error || t('product.failedToLoadRelatedProducts'), 'error');
     },
   });
 
@@ -948,7 +954,7 @@ const ProductDetailScreen: React.FC = () => {
 
   // Fetch related products when productId is available
   useEffect(() => {
-    const currentProductId = productId?.toString() || offerId?.toString() || '';
+    const currentProductId = productId || offerId;
     if (currentProductId && product) {
       // Map locale to language code
       const language = locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en';
@@ -1249,7 +1255,7 @@ const ProductDetailScreen: React.FC = () => {
     if (selectedPlatform === 'taobao') {
       return (
         <TouchableOpacity
-          style={styles.similarProductItem}
+          style={[styles.similarProductItem, { width: pdpGridCardWidth }]}
           onPress={() => handleRelatedProductPress(item)}
         >
           <View style={styles.simpleTaobaoCard}>
@@ -1270,17 +1276,18 @@ const ProductDetailScreen: React.FC = () => {
     }
 
     return (
-      <View style={styles.similarProductItem}>
+      <View style={[styles.similarProductItem, { width: pdpGridCardWidth }]}>
         <ProductCard
           product={item}
           variant="moreToLove"
+          cardWidth={pdpGridCardWidth}
           onPress={() => handleRelatedProductPress(item)}
           onLikePress={() => toggleWishlist(item)}
           isLiked={isProductLiked(item)}
         />
       </View>
     );
-  }, [handleRelatedProductPress, isProductLiked, selectedPlatform, toggleWishlist]);
+  }, [handleRelatedProductPress, isProductLiked, selectedPlatform, toggleWishlist, pdpGridCardWidth]);
 
   const relatedProductsKeyExtractor = useCallback(
     (item: Product | any, index: number) =>
@@ -1289,16 +1296,17 @@ const ProductDetailScreen: React.FC = () => {
   );
 
   const renderSimilarProductItem = useCallback(({ item }: { item: Product }) => (
-    <View style={styles.similarProductItem}>
+    <View style={[styles.similarProductItem, { width: pdpGridCardWidth }]}>
       <ProductCard
         product={item}
         variant="moreToLove"
+        cardWidth={pdpGridCardWidth}
         onPress={() => navigation.push('ProductDetail', { productId: item.id })}
         onLikePress={() => toggleWishlist(item)}
         isLiked={isProductLiked(item)}
       />
     </View>
-  ), [isProductLiked, navigation, toggleWishlist]);
+  ), [isProductLiked, navigation, toggleWishlist, pdpGridCardWidth]);
 
   const similarProductsKeyExtractor = useCallback(
     (item: Product, index: number) => `similar-${item.id?.toString() || index}-${index}`,
@@ -1712,12 +1720,13 @@ const ProductDetailScreen: React.FC = () => {
     }
   };
 
+  const headerBg = scrollY.interpolate({
+    inputRange: [0, HEADER_SCROLL_THRESHOLD],
+    outputRange: ['rgba(255,255,255,0)', 'rgba(255,255,255,1)'],
+    extrapolate: 'clamp',
+  });
+
   const renderHeader = () => {
-    const headerBg = scrollY.interpolate({
-      inputRange: [0, HEADER_SCROLL_THRESHOLD],
-      outputRange: ['rgba(255,255,255,0)', 'rgba(255,255,255,1)'],
-      extrapolate: 'clamp',
-    });
     const searchBarOpacity = scrollY.interpolate({
       inputRange: [HEADER_SCROLL_THRESHOLD * 0.5, HEADER_SCROLL_THRESHOLD],
       outputRange: [0, 1],
@@ -1731,6 +1740,7 @@ const ProductDetailScreen: React.FC = () => {
 
     return (
       <Animated.View style={[styles.header, { backgroundColor: headerBg }]}>
+        {/* <StatusBar backgroundColor={headerBg}/> */}
         <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
           <ArrowBackIcon width={12} height={20} color={COLORS.text.primary} />
         </TouchableOpacity>
@@ -1773,6 +1783,7 @@ const ProductDetailScreen: React.FC = () => {
     const apiImages = getApiProductImages(product);
     const totalImages = apiImages.length;
     const currentStat = liveStats[currentStatIndex];
+    console.log('apiImages', apiImages);
     
     if (totalImages === 0) {
       return null;
@@ -1785,7 +1796,7 @@ const ProductDetailScreen: React.FC = () => {
           pagingEnabled
           showsHorizontalScrollIndicator={false}
           onScroll={(e) => {
-            const index = Math.round(e.nativeEvent.contentOffset.x / width);
+            const index = Math.round(e.nativeEvent.contentOffset.x / dynWidth);
             setSelectedImageIndex(index);
           }}
           scrollEventThrottle={16}
@@ -1801,7 +1812,7 @@ const ProductDetailScreen: React.FC = () => {
             >
               <Image
                 source={{ uri: img }}
-                style={styles.productImage as any}
+                style={[styles.productImage as any, { width: dynWidth }]}
                 resizeMode="cover"
                 fadeDuration={300}
               />
@@ -1942,7 +1953,7 @@ const ProductDetailScreen: React.FC = () => {
           )}
           {productCode && (
             <View style={styles.productCodeBadge}>
-              <Text style={styles.productCodeBadgeText}>{t('product.productCodeLabel')} {productCode}</Text>
+              <Text style={styles.productCodeBadgeText}>{t('product.productCode')} {productCode}</Text>
               <TouchableOpacity
                 onPress={handleCopyProductCode}
                 style={styles.copyIconButton}
@@ -1995,7 +2006,7 @@ const ProductDetailScreen: React.FC = () => {
       {/* Product Code with Copy Button */}
       {product.productCode && (
         <View style={styles.productCodeContainer}>
-          <Text style={styles.productCodeLabel}>{t('product.productCodeLabel')} </Text>
+          <Text style={styles.productCodeLabel}>{t('product.productCode')} </Text>
           <Text style={styles.productCodeText}>{product.productCode}</Text>
           <TouchableOpacity
             style={styles.copyButton}
@@ -2454,13 +2465,13 @@ const ProductDetailScreen: React.FC = () => {
 
               // Default (1688 etc.) uses existing ProductCard
               return (
-                <View style={styles.similarProductItem}>
+                <View style={[styles.similarProductItem, { width: pdpGridCardWidth }]}>
                   <ProductCard
                     product={item}
                     variant="moreToLove"
+                    cardWidth={pdpGridCardWidth}
                     onPress={() => {
                       const productIdToUse = (item as any).offerId || item.id;
-                      // Get source from product data, fallback to selectedPlatform
                       const source = (item as any).source || selectedPlatform || '1688';
                       const country =
                         locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en';
@@ -2478,7 +2489,8 @@ const ProductDetailScreen: React.FC = () => {
               );
             }}
             keyExtractor={(item, index) => `related-${item.id?.toString() || (item as any).offerId?.toString() || index}-${index}`}
-            numColumns={2}
+            key={`pdp-related-${pdpGridCols}`}
+            numColumns={pdpGridCols}
             scrollEnabled={false}
             nestedScrollEnabled={true}
             columnWrapperStyle={styles.similarProductsGrid}
@@ -2503,10 +2515,11 @@ const ProductDetailScreen: React.FC = () => {
     <View style={styles.similarProductsContainer}>
         <Text style={styles.similarProductsTitle}>{t('home.moretolove')}</Text>
         <FlatList
+          key={`pdp-similar-${pdpGridCols}`}
           data={similarProducts}
           renderItem={renderSimilarProductItem}
           keyExtractor={similarProductsKeyExtractor}
-          numColumns={2}
+          numColumns={pdpGridCols}
           scrollEnabled={false}
           nestedScrollEnabled={true}
           columnWrapperStyle={styles.similarProductsGrid}
@@ -2689,17 +2702,17 @@ const ProductDetailScreen: React.FC = () => {
             pagingEnabled
             showsHorizontalScrollIndicator={false}
             onScroll={(e) => {
-              const index = Math.round(e.nativeEvent.contentOffset.x / width);
+              const index = Math.round(e.nativeEvent.contentOffset.x / dynWidth);
               setViewerImageIndex(index);
             }}
             scrollEventThrottle={16}
-            contentOffset={{ x: viewerImageIndex * width, y: 0 }}
+            contentOffset={{ x: viewerImageIndex * dynWidth, y: 0 }}
           >
             {images.map((img: string, index: number) => (
-              <View key={`fullscreen-${img}-${index}`} style={styles.fullScreenImageContainer}>
+              <View key={`fullscreen-${img}-${index}`} style={[styles.fullScreenImageContainer, { width: dynWidth }]}>
                 <Image
                   source={{ uri: img }}
-                  style={styles.fullScreenImage as any}
+                  style={[styles.fullScreenImage as any, { width: dynWidth }]}
                   resizeMode="contain"
                 />
               </View>
@@ -2714,6 +2727,18 @@ const ProductDetailScreen: React.FC = () => {
     <View style={styles.container}>
       {/* Absolutely positioned header overlays the image */}
       <SafeAreaView style={[styles.safeArea, { paddingTop: insets.top }]} pointerEvents="box-none">
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: insets.top,
+            backgroundColor: headerBg,
+            zIndex: 1,
+          }}
+        />
         {renderHeader()}
       </SafeAreaView>
 
@@ -2822,7 +2847,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: SPACING.sm,
-    paddingTop: SPACING['2xl'],
+    paddingTop: SPACING.md,
   },
   headerButton: {
     width: 40,

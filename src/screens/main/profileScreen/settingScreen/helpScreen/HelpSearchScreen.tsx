@@ -25,7 +25,27 @@ interface SearchResult {
   title: string;
   description: string;
   category: string;
+  body?: string;
+  // Fields used when navigating to HelpArticle
+  articleContent?: string;
 }
+
+// Strip HTML tags and collapse whitespace for searching / preview.
+const stripHtml = (html: string): string => {
+  if (!html) return '';
+  return html
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/?(p|div|li|ul|ol|h[1-6]|tr|td|th)[^>]*>/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+};
 
 const HelpSearchScreen: React.FC = () => {
   const navigation = useNavigation<HelpSearchScreenNavigationProp>();
@@ -45,62 +65,116 @@ const HelpSearchScreen: React.FC = () => {
     return value || key;
   };
 
-  // Mock search results - replace with actual search API
-  const mockResults: SearchResult[] = [
-    {
-      id: '1',
-      title: 'How to place an order',
-      description: 'Learn how to browse products and place your first order on our platform.',
-      category: 'User Guide',
-    },
-    {
-      id: '2',
-      title: 'Payment methods',
-      description: 'Information about accepted payment methods and how to add payment cards.',
-      category: 'FAQ',
-    },
-    {
-      id: '3',
-      title: 'Shipping and delivery',
-      description: 'Everything you need to know about shipping options and delivery times.',
-      category: 'Must Read',
-    },
-    {
-      id: '4',
-      title: 'Return policy',
-      description: 'Our return and refund policy for damaged or unsatisfactory items.',
-      category: 'Other Guide',
-    },
-    {
-      id: '5',
-      title: 'Account security',
-      description: 'Tips to keep your account secure and protect your personal information.',
-      category: 'Must Read',
-    },
-  ];
+  const helpCenterData = route.params?.helpCenterData;
+
+  const getLocalizedText = (obj: any): string => {
+    if (!obj) return '';
+    if (typeof obj === 'string') return obj;
+    return obj[locale] || obj.en || obj.ko || obj.zh || '';
+  };
+
+  // Flatten guides + FAQs from the real backend data into searchable items.
+  // Each item keeps its full `body` so searching reaches the article content,
+  // not just titles and descriptions.
+  const buildResultsFromBackend = (): SearchResult[] => {
+    if (!helpCenterData) return [];
+    const results: SearchResult[] = [];
+
+    // Guides → subchapters
+    const guides = Array.isArray(helpCenterData.guides) ? helpCenterData.guides : [];
+    guides.forEach((guide: any, gi: number) => {
+      const chapterTitle = getLocalizedText(guide.chapterTitle);
+      const subchapters = Array.isArray(guide.subchapters) ? guide.subchapters : [];
+      subchapters.forEach((sub: any, si: number) => {
+        const title = getLocalizedText(sub.subchapterTitle);
+        const rawContent = getLocalizedText(sub.subchapterContent);
+        const body = stripHtml(rawContent);
+        if (!title && !body) return;
+        results.push({
+          id: sub._id || `guide-${gi}-${si}`,
+          title: title || chapterTitle,
+          description: body.slice(0, 140),
+          category: chapterTitle || t('helpCenter.guides'),
+          body,
+          articleContent: rawContent,
+        });
+      });
+    });
+
+    // FAQs
+    const categories = Array.isArray(helpCenterData.faqsByCategory) ? helpCenterData.faqsByCategory : [];
+    categories.forEach((cat: any, ci: number) => {
+      const categoryName = getLocalizedText(cat.name);
+      const faqs = Array.isArray(cat.faqs) ? cat.faqs : [];
+      faqs.forEach((faq: any, fi: number) => {
+        const question = getLocalizedText(faq.question);
+        const rawAnswer = getLocalizedText(faq.answer);
+        const answer = stripHtml(rawAnswer);
+        if (!question && !answer) return;
+        results.push({
+          id: faq._id || `faq-${ci}-${fi}`,
+          title: question,
+          description: answer.slice(0, 140),
+          category: categoryName || t('helpCenter.faq'),
+          body: answer,
+          articleContent: rawAnswer,
+        });
+      });
+    });
+
+    return results;
+  };
+
+  // Mock search results per language - used as fallback when backend data is unavailable
+  const mockResultsByLocale: Record<'en' | 'ko' | 'zh', SearchResult[]> = {
+    en: [
+      { id: '1', title: 'How to place an order', description: 'Learn how to browse products and place your first order on our platform.', category: 'User Guide' },
+      { id: '2', title: 'Payment methods', description: 'Information about accepted payment methods and how to add payment cards.', category: 'FAQ' },
+      { id: '3', title: 'Shipping and delivery', description: 'Everything you need to know about shipping options and delivery times.', category: 'Must Read' },
+      { id: '4', title: 'Return policy', description: 'Our return and refund policy for damaged or unsatisfactory items.', category: 'Other Guide' },
+      { id: '5', title: 'Account security', description: 'Tips to keep your account secure and protect your personal information.', category: 'Must Read' },
+    ],
+    ko: [
+      { id: '1', title: '주문하는 방법', description: '상품을 둘러보고 첫 주문을 완료하는 방법을 알아보세요.', category: '사용 가이드' },
+      { id: '2', title: '결제 수단', description: '이용 가능한 결제 수단과 카드 등록 방법에 대한 안내입니다.', category: '자주 묻는 질문' },
+      { id: '3', title: '배송 안내', description: '배송 옵션과 배송 기간에 대한 모든 정보입니다.', category: '필독' },
+      { id: '4', title: '반품 정책', description: '손상되거나 만족스럽지 않은 상품에 대한 반품·환불 정책입니다.', category: '기타 가이드' },
+      { id: '5', title: '계정 보안', description: '계정을 안전하게 지키고 개인정보를 보호하는 팁입니다.', category: '필독' },
+    ],
+    zh: [
+      { id: '1', title: '如何下单', description: '了解如何浏览商品并在我们的平台上完成首次下单。', category: '用户指南' },
+      { id: '2', title: '支付方式', description: '关于支持的支付方式以及如何添加支付卡的信息。', category: '常见问题' },
+      { id: '3', title: '配送与物流', description: '关于配送选项和配送时间的所有须知。', category: '必读' },
+      { id: '4', title: '退货政策', description: '关于损坏或不满意商品的退货与退款政策。', category: '其他指南' },
+      { id: '5', title: '账户安全', description: '保护账户安全和个人信息的小贴士。', category: '必读' },
+    ],
+  };
+
+  // Results always follow the app locale, regardless of what language the user types.
+  const resultsLocale: 'en' | 'ko' | 'zh' =
+    (locale === 'ko' || locale === 'zh' || locale === 'en' ? locale : 'en');
+
+  // Prefer real backend data; fall back to the locale-specific mock list.
+  const backendResults = buildResultsFromBackend();
+  const activeResults: SearchResult[] =
+    backendResults.length > 0 ? backendResults : mockResultsByLocale[resultsLocale];
+
+  const filterResults = (query: string): SearchResult[] => {
+    const q = query.trim().toLowerCase();
+    if (!q) return activeResults;
+    return activeResults.filter((r) => {
+      const haystack = `${r.title} ${r.description} ${r.body || ''} ${r.category}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  };
 
   useEffect(() => {
-    // Simulate search - replace with actual search logic
-    if (searchQuery.trim()) {
-      const filtered = mockResults.filter(
-        result =>
-          result.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          result.description.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      setSearchResults(filtered);
-    } else {
-      setSearchResults(mockResults);
-    }
-  }, [searchQuery]);
+    setSearchResults(filterResults(searchQuery));
+    // activeResults is derived from helpCenterData + locale, so those are the real deps
+  }, [searchQuery, resultsLocale, helpCenterData]);
 
   const handleSearch = () => {
-    // Trigger search with current query
-    const filtered = mockResults.filter(
-      result =>
-        result.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        result.description.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-    setSearchResults(filtered);
+    setSearchResults(filterResults(searchQuery));
   };
 
   const handleSubmitEditing = () => {
@@ -153,9 +227,10 @@ const HelpSearchScreen: React.FC = () => {
         <TouchableOpacity
           key={result.id}
           style={styles.resultItem}
-          onPress={() => navigation.navigate('HelpArticle', { 
-            articleId: result.id, 
-            title: result.title 
+          onPress={() => navigation.navigate('HelpArticle', {
+            articleId: result.id,
+            title: result.title,
+            content: result.articleContent,
           })}
         >
           <View style={styles.resultContent}>
@@ -201,14 +276,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
-    paddingTop: SPACING['2xl'],
+    paddingTop: SPACING.md,
     backgroundColor: COLORS.white,
   },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: COLORS.gray[100],
+    backgroundColor: COLORS.white,
     justifyContent: 'center',
     alignItems: 'center',
   },

@@ -66,6 +66,8 @@ const ImageSearchScreen: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]); // Store all products for sorting/filtering
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+  const PAGE_SIZE = 40;
   const [imageError, setImageError] = useState<boolean>(false);
   const [priceFilterModalVisible, setPriceFilterModalVisible] = useState<boolean>(false);
   const [minPrice, setMinPrice] = useState<string>('');
@@ -86,6 +88,9 @@ const ImageSearchScreen: React.FC = () => {
   const { showToast } = useToast();
   
   const isFetchingRef = useRef(false);
+  const isLoadingMoreRef = useRef(false);
+  const currentPageRef = useRef<number>(1);
+  const hasMoreRef = useRef<boolean>(true);
   const loadedPagesRef = useRef<Set<number>>(new Set());
   const [imageBase64, setImageBase64] = useState<string | null>(route.params?.imageBase64 || null);
   const [imageUri, setImageUri] = useState<string | null>(route.params?.imageUri || null);
@@ -116,21 +121,21 @@ const ImageSearchScreen: React.FC = () => {
 
   const loadProducts = useCallback(
     async (page: number = 1, append: boolean = false) => {
-      if (isFetchingRef.current) return;
+      if (page === 1 && isFetchingRef.current) return;
+      if (page > 1 && isLoadingMoreRef.current) return;
       // Check if we have any image data (either URI or base64)
       if (!route.params?.imageUri && !imageBase64 && !route.params?.imageBase64) {
         return;
       }
 
-      // Image search API returns all results at once, so we only fetch once
-      // Client-side pagination will handle displaying products in chunks
-      if (page > 1 && !append) {
-        return;
-      }
-
       try {
-        isFetchingRef.current = true;
-        setIsLoading(true);
+        if (page === 1) {
+          isFetchingRef.current = true;
+          setIsLoading(true);
+        } else {
+          isLoadingMoreRef.current = true;
+          setIsLoadingMore(true);
+        }
 
         // Check image size and compress if needed
         let base64: string | null = null;
@@ -160,78 +165,27 @@ const ImageSearchScreen: React.FC = () => {
             }
             
             try {
-              const { compressImageForSearch } = require('../../../utils/imageCompression');
-              
-              // Automatically calculate and apply compression based on image size
-              // The function will automatically determine target dimensions (e.g., 2000x1500 for 6MB images)
+              const {
+                compressImageForSearch,
+                getImageSearchQualityLadder,
+              } = require('../../../utils/imageCompression');
+
               let compressedBase64: string | null = null;
-              
-              // Try with automatic dimension calculation based on file size
-              compressedBase64 = await compressImageForSearch(
-                imageUriForCompression,
-                sizeMB, // Pass file size in MB for automatic dimension calculation
-                0.3      // Start with quality 0.3
-              );
-              
-              // If still >1.2MB, reduce quality further
-              if (compressedBase64 && compressedBase64.length > 1200000) {
+              for (const stepQ of getImageSearchQualityLadder()) {
                 compressedBase64 = await compressImageForSearch(
                   imageUriForCompression,
                   sizeMB,
-                  0.25  // Lower quality
+                  stepQ,
                 );
+                if (compressedBase64 && compressedBase64.length <= 1200000) {
+                  break;
+                }
               }
-              
-              // If still >1.2MB, reduce quality even more
-              if (compressedBase64 && compressedBase64.length > 1200000) {
-                compressedBase64 = await compressImageForSearch(
-                  imageUriForCompression,
-                  sizeMB,
-                  0.2   // Lower quality
-                );
-              }
-              
-              // If still >1.2MB, reduce quality more
-              if (compressedBase64 && compressedBase64.length > 1200000) {
-                compressedBase64 = await compressImageForSearch(
-                  imageUriForCompression,
-                  sizeMB,
-                  0.15  // Very low quality
-                );
-              }
-              
-              // If still >1.2MB, try minimum quality
-              if (compressedBase64 && compressedBase64.length > 1200000) {
-                compressedBase64 = await compressImageForSearch(
-                  imageUriForCompression,
-                  sizeMB,
-                  0.1   // Minimum quality
-                );
-              }
-              
+
               if (compressedBase64 && compressedBase64.length <= 1200000) {
                 base64 = compressedBase64;
                 setImageBase64(base64);
-              } else if (compressedBase64) {
-                // Compression succeeded but still >1.2MB - try one more aggressive compression
-                compressedBase64 = await compressImageForSearch(
-                  imageUriForCompression,
-                  sizeMB,
-                  0.08  // Minimum quality
-                );
-                
-                if (compressedBase64 && compressedBase64.length <= 1200000) {
-                  base64 = compressedBase64;
-                  setImageBase64(base64);
-                } else {
-                  // Still too large after all attempts
-                  setIsLoading(false);
-                  isFetchingRef.current = false;
-                  showToast('Image size is too big.', 'error');
-                  return;
-                }
               } else {
-                // Compression failed - show error
                 setIsLoading(false);
                 isFetchingRef.current = false;
                 showToast('Image size is too big.', 'error');
@@ -286,7 +240,7 @@ const ImageSearchScreen: React.FC = () => {
             locale === 'ko' ? 'ko' :
             'en';
           
-          response = await productsApi.imageSearch1688(base64, language);
+          response = await productsApi.imageSearch1688(base64, language, page, PAGE_SIZE);
           
           // console.log('🔍 [ImageSearchScreen] 1688 API Response:', {
           //   success: response.success,
@@ -312,7 +266,7 @@ const ImageSearchScreen: React.FC = () => {
             locale === 'ko' ? 'ko' :
             'en';
 
-          response = await productsApi.imageSearchTaobao(language, base64);
+          response = await productsApi.imageSearchTaobao(language, base64, page, PAGE_SIZE);
         } else {
           // Other platforms not yet supported
           setIsLoading(false);
@@ -323,26 +277,31 @@ const ImageSearchScreen: React.FC = () => {
 
 
         if (!response.success || !response.data || !Array.isArray(response.data.products)) {
-          setProducts([]);
-          setAllProducts([]);
-          setIsLoading(false);
-          isFetchingRef.current = false;
-          if (response.message) {
-            showToast(response.message, 'error');
-          } else {
-            showToast(t('imageSearch.searchError') || 'Failed to search by image. Please try again.', 'error');
+          if (page === 1) {
+            setProducts([]);
+            setAllProducts([]);
+            if (response.message) {
+              showToast(response.message, 'error');
+            } else {
+              showToast(t('imageSearch.searchError') || 'Failed to search by image. Please try again.', 'error');
+            }
           }
+          hasMoreRef.current = false;
           return;
         }
 
         if (response.data.products.length === 0) {
-          setProducts([]);
-          setAllProducts([]);
-          setIsLoading(false);
-          isFetchingRef.current = false;
-          showToast(t('imageSearch.noResults') || 'No products found', 'info');
+          if (page === 1) {
+            setProducts([]);
+            setAllProducts([]);
+            showToast(t('imageSearch.noResults') || 'No products found', 'info');
+          }
+          hasMoreRef.current = false;
           return;
         }
+
+        // Keep paginating as long as we get any results back
+        hasMoreRef.current = response.data.products.length > 0;
 
 
         const mappedProducts: Product[] = response.data.products.map((item: any): Product => {
@@ -418,17 +377,12 @@ const ImageSearchScreen: React.FC = () => {
           return mappedProduct;
         });
 
-        // Store all products and apply sorting/filtering
-        setAllProducts(mappedProducts);
-        
-        // Apply current sort and filter
-        let filteredProducts = mappedProducts;
-        
         // Apply price filter if set
+        let filteredProducts = mappedProducts;
         if (minPrice || maxPrice) {
           const priceStart = minPrice ? convertFromKRW(parseFloat(minPrice)) : undefined;
           const priceEnd = maxPrice ? convertFromKRW(parseFloat(maxPrice)) : undefined;
-          
+
           filteredProducts = filteredProducts.filter((product) => {
             const productPrice = product.price || 0;
             if (priceStart !== undefined && productPrice < priceStart) return false;
@@ -436,26 +390,47 @@ const ImageSearchScreen: React.FC = () => {
             return true;
           });
         }
-        
-        // Apply sorting
+
         const sortedProducts = sortProducts(filteredProducts, selectedSort);
-        setProducts(sortedProducts);
-        
+
+        if (page === 1) {
+          setAllProducts(mappedProducts);
+          setProducts(sortedProducts);
+        } else {
+          setAllProducts(prev => {
+            const seen = new Set(prev.map(p => p.id));
+            const fresh = mappedProducts.filter(p => !seen.has(p.id));
+            return [...prev, ...fresh];
+          });
+          setProducts(prev => {
+            const seen = new Set(prev.map(p => p.id));
+            const fresh = sortedProducts.filter(p => !seen.has(p.id));
+            return [...prev, ...fresh];
+          });
+        }
+
+        currentPageRef.current = page;
+
       } catch (error: any) {
-        setProducts([]);
-        setAllProducts([]);
-        setIsLoading(false);
-        isFetchingRef.current = false;
+        if (page === 1) {
+          setProducts([]);
+          setAllProducts([]);
+        }
         showToast(error?.message || t('imageSearch.searchError') || 'Failed to search products', 'error');
       } finally {
-        if (isFetchingRef.current) {
-          setIsLoading(false);
-          isFetchingRef.current = false;
-        }
+        isFetchingRef.current = false;
+        isLoadingMoreRef.current = false;
+        setIsLoading(false);
+        setIsLoadingMore(false);
       }
     },
     [route.params?.imageUri, locale, selectedCompany, imageBase64, selectedSort, minPrice, maxPrice]
   );
+
+  const handleEndReached = useCallback(() => {
+    if (isLoadingMoreRef.current || isFetchingRef.current || !hasMoreRef.current) return;
+    loadProducts(currentPageRef.current + 1, true);
+  }, [loadProducts]);
 
   // Set imageUri from route params
   useEffect(() => {
@@ -474,6 +449,10 @@ const ImageSearchScreen: React.FC = () => {
       setProducts([]);
       setAllProducts([]);
       loadedPagesRef.current.clear();
+      currentPageRef.current = 1;
+      hasMoreRef.current = true;
+      isFetchingRef.current = false;
+      isLoadingMoreRef.current = false;
       loadProducts(1, false);
     }
   }, [route.params?.imageUri, route.params?.imageBase64, selectedCompany, loadProducts, imageBase64]);
@@ -696,6 +675,16 @@ const ImageSearchScreen: React.FC = () => {
           windowSize={10}
           initialNumToRender={10}
           updateCellsBatchingPeriod={50}
+          onEndReached={handleEndReached}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            isLoadingMore ? (
+              <View style={styles.footerLoader}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+                <Text style={styles.loadingMoreText}>{t('home.loadingMore')}</Text>
+              </View>
+            ) : null
+          }
         />
       )}
     </SafeAreaView>

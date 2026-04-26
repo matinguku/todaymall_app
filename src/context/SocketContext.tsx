@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import { InteractionManager } from 'react-native';
 import { socketService, GeneralInquiry, SocketMessage, BroadcastNote } from '../services/socketService';
 import { useAuth } from './AuthContext';
 import { getStoredToken } from '../services/authApi';
@@ -59,6 +60,8 @@ const SocketContext = createContext<SocketContextType | undefined>(undefined);
 
 export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { isAuthenticated, user } = useAuth();
+  /** Stable key so profile updates (`user` new object same id) do not retrigger socket connect. */
+  const socketUserId = user?.id ?? '';
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [inquiries, setInquiries] = useState<GeneralInquiry[]>([]);
@@ -91,7 +94,7 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   // Connect socket when authenticated
   const connect = useCallback(async () => {
-    if (!isAuthenticated || !user) {
+    if (!isAuthenticated || !socketUserId) {
       console.log('[Socket] Not authenticated, skipping socket connection');
       return;
     }
@@ -127,11 +130,11 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       // Set up event listeners (even if not connected yet, for auto-reconnect)
       setupEventListeners();
     } catch (error) {
-      console.error('[Socket] Failed to connect:', error);
+      console.warn('[Socket] Failed to connect:', error);
       setIsConnecting(false);
       setIsConnected(false);
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, socketUserId]);
 
   // Disconnect socket
   const disconnect = useCallback(() => {
@@ -615,7 +618,7 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     // Error events
     socket.on('user:inquiry:create:error', (data: { message: string; code: string }) => {
-      console.error('[Socket][OrderInquiry] Create error:', data);
+      console.warn('[Socket][OrderInquiry] Create error:', data);
     });
 
     socket.on('user:general-inquiry:create:error', (data: { message: string; code: string }) => {
@@ -680,21 +683,28 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     socket.removeAllListeners('note:deleted');
   }, []);
 
-  // Connect on mount and when auth state changes
+  // Connect on mount and when auth state changes.
+  // Defer the initial socket handshake to runAfterInteractions so it does not
+  // contend with first-paint network/CPU. Disconnects still run immediately.
   useEffect(() => {
-    if (isAuthenticated && user) {
-      connect();
+    let interactionHandle: { cancel: () => void } | null = null;
+
+    if (isAuthenticated && socketUserId) {
+      interactionHandle = InteractionManager.runAfterInteractions(() => {
+        connect();
+      });
     } else {
       disconnect();
     }
 
     return () => {
+      interactionHandle?.cancel?.();
       if (!isAuthenticated) {
         disconnect();
         removeListeners();
       }
     };
-  }, [isAuthenticated, user, connect, disconnect, removeListeners]);
+  }, [isAuthenticated, socketUserId, connect, disconnect, removeListeners]);
 
 
   // Event handler registration (for custom callbacks)

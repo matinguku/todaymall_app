@@ -274,9 +274,6 @@ const LoginScreen: React.FC = () => {
 
     if (!formData.email) {
       newErrors.email = ERROR_MESSAGES.REQUIRED_FIELD;
-    } else if (!VALIDATION_RULES.EMAIL_REGEX.test(formData.email) && !/^[0-9+\-\s()]+$/.test(formData.email.replace(/\s/g, ''))) {
-      // Allow email or phone number format
-      newErrors.email = ERROR_MESSAGES.INVALID_EMAIL;
     }
 
     setErrors(newErrors);
@@ -403,7 +400,9 @@ const LoginScreen: React.FC = () => {
           </View>
 
           <View style={styles.form}>
+            {/* Toy illustration below logo and behind input fields */}
             <View style={styles.toyContainer}>
+              {/* <View style={styles.toyShadow} /> */}
               <Image
                 source={require('../../assets/icons/logo.png')}
                 style={styles.headerImage}
@@ -416,6 +415,7 @@ const LoginScreen: React.FC = () => {
               />
             </View>
             <View style={styles.formInputs}>
+              {/* Security message in green border area */}
               <View style={styles.securityMessageContainer}>
                 <ShieldCheckIcon width={16} height={16} color="#34A853" />
                 <Text style={styles.securityMessageText}>
@@ -434,14 +434,14 @@ const LoginScreen: React.FC = () => {
                   ]}>
                     {formData.email.length > 0 && (
                       <Text style={styles.floatingLabel}>
-                        {t('auth.email') || 'Email'}
+                        {t('auth.emailOrUserID') || 'Email/User ID'}
                       </Text>
                     )}
                     <View style={styles.inputRow}>
                       <RNTextInput
                         placeholder={formData.email.length > 0 
                           ? '' 
-                          : (t('auth.enterEmail') || 'Enter email')
+                          : (t('auth.enterEmailOrUserID') || 'Enter email')
                         }
                         placeholderTextColor={'#999999'}
                         value={formData.email}
@@ -509,6 +509,7 @@ const LoginScreen: React.FC = () => {
                   )}
                 </View>
                 
+                {/* Email Suggestions Dropdown */}
                 {showEmailSuggestions && emailSuggestions.length > 0 && (
                   <View style={styles.emailSuggestionsWrapper}>
                     <View style={styles.emailSuggestionsContainer}>
@@ -542,6 +543,7 @@ const LoginScreen: React.FC = () => {
                 )}
               </View>
               
+              {/* Password Input */}
               <View style={styles.inputContainer}>
                   <View style={[
                     styles.unifiedInputContainer,
@@ -592,6 +594,7 @@ const LoginScreen: React.FC = () => {
                     </View>
                   </View>
                   
+                  {/* Error text below password input */}
                   {errors.password && (
                     <View style={styles.errorMessageContainer}>
                       <Text style={styles.errorText}>{errors.password}</Text>
@@ -599,6 +602,7 @@ const LoginScreen: React.FC = () => {
                   )}
               </View>
               
+              {/* Country Code Selection Modal */}
               <Modal
                 visible={showCountryCodeModal}
                 transparent={true}
@@ -675,9 +679,21 @@ const LoginScreen: React.FC = () => {
                 </TouchableOpacity>
               </View>
             </View>
+            {/* Demo Login Button 
+            <TouchableOpacity
+              style={styles.demoButton}
+              onPress={handleDemoLogin}
+              disabled={isLoading}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.demoButtonText}>
+                {isLoading ? 'Signing In...' : 'Demo Login'}
+              </Text>
+            </TouchableOpacity> */}
             <Text style={styles.dividerText}>{t('auth.orContinueWith')}</Text>
 
             <View style={styles.socialButtons}>
+              {/* 1. Google */}
               <TouchableOpacity
                 style={styles.socialButton}
                 onPress={() => handleSocialLogin('google')}
@@ -691,6 +707,7 @@ const LoginScreen: React.FC = () => {
                 <Text style={styles.socialButtonText}>google</Text>
               </TouchableOpacity>
 
+              {/* 2. Kakao */}
               <TouchableOpacity
                 style={styles.socialButton}
                 onPress={() => handleSocialLogin('kakao')}
@@ -704,6 +721,7 @@ const LoginScreen: React.FC = () => {
                 <Text style={styles.socialButtonText}>kakao</Text>
               </TouchableOpacity>
 
+              {/* 3. Naver */}
               <TouchableOpacity
                 style={styles.socialButton}
                 onPress={() => handleSocialLogin('naver')}
@@ -717,6 +735,7 @@ const LoginScreen: React.FC = () => {
                 <Text style={styles.socialButtonText}>naver</Text>
               </TouchableOpacity>
 
+              {/* 4. Facebook */}
               <TouchableOpacity
                 style={styles.socialButton}
                 onPress={() => handleSocialLogin('facebook')}
@@ -730,6 +749,7 @@ const LoginScreen: React.FC = () => {
                 <Text style={styles.socialButtonText}>facebook</Text>
               </TouchableOpacity>
 
+              {/* 5. Apple */}
               <TouchableOpacity
                 style={styles.socialButton}
                 onPress={() => handleSocialLogin('apple')}
@@ -744,6 +764,7 @@ const LoginScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
 
+            {/* Arrow down indicator below social icons */}
 
             <View style={styles.loginContainer}>
               <Text style={styles.loginText}>{t('auth.dontHaveAccount')} </Text>
@@ -751,13 +772,27 @@ const LoginScreen: React.FC = () => {
                 <Text style={styles.loginLink}>{t('auth.signup')}</Text>
               </TouchableOpacity>
             </View>
+            {/* <TouchableOpacity style={styles.arrowDownContainer} onPress={handleSignup}>
+              <ArrowDownIcon width={24} height={24} color={COLORS.text.primary} />
+            </TouchableOpacity> */}
+
+            {/* <View style={styles.signupContainer}>
+              <Text style={styles.signupText}>{t('auth.dontHaveAccount')} </Text>
+              <TouchableOpacity onPress={handleSignup}>
+                <Text style={styles.signupLink}>{t('auth.signUp')}</Text>
+              </TouchableOpacity>
+            </View> */}
             
+            {/* Footer bar - Inside ScrollView after social buttons */}
             <View style={styles.footerContainer}>
+              {/* 1. Support text */}
               <Text style={styles.footerSupportText}>
                 <Text style={styles.footerSupportGray}>
                   {t('auth.supportText') || '주식회사:투데이몰 /대표 유두성 주소: 경기도 의정부시 녹양로34번길 47, 101동 305호(가능동, e편한세상 녹양역) 사업자번호: 661-12-03163 전화: 07077926663 서비스 이메일: taoexpress_1@163.com '}
                 </Text>
               </Text>
+
+              {/* 2. Copyright */}
               <Text style={styles.footerCopyright}>
                 {t('auth.copyright') || '© 2025 TodayMall. All Rights Reserved.'}
               </Text>
@@ -1018,12 +1053,10 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   emailSuggestionsWrapper: {
-    position: 'absolute',
-    top: '100%',
-    left: SPACING.md, // Match inputContainer padding
-    right: SPACING.md, // Match inputContainer padding
-    zIndex: 2000, // Higher than formInputs
     marginTop: SPACING.xs,
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+    zIndex: 10,
   },
   emailSuggestionsContainer: {
     backgroundColor: COLORS.white,
@@ -1035,7 +1068,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 10,
+    elevation: 6,
   },
   emailSuggestionItem: {
     paddingHorizontal: SPACING.md,

@@ -152,16 +152,40 @@ export const login = async (email: string, password: string): Promise<{ success:
     // console.log("Login Request Body", requestBody);
     
     const url = `${API_BASE_URL}/auth/login`;
+    console.log("Login URL", url);
     const signatureHeaders = await buildSignatureHeaders('POST', url, requestBody);
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...signatureHeaders,
-      },
-      body: JSON.stringify(requestBody),
-    });
+    // 15s timeout so the spinner cannot get stuck forever when the server is
+    // unreachable. Without this, fetch() never resolves on dropped connections.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true', // Skip ngrok browser warning
+          ...signatureHeaders,
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      });
+    } catch (fetchErr: any) {
+      clearTimeout(timeoutId);
+      if (fetchErr?.name === 'AbortError') {
+        return {
+          success: false,
+          error: 'Login request timed out. Please check your network and try again.',
+        };
+      }
+      return {
+        success: false,
+        error: 'Cannot reach the server. Please check your network connection.',
+      };
+    }
+    clearTimeout(timeoutId);
 
     console.log("Login Response Status:", response);
     

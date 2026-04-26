@@ -13,10 +13,11 @@ import {
   TextInput,
   Modal,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG } from '../../../../constants';
 import { RootStackParamList, Product } from '../../../../types';
 import { ProductCard, SearchButton } from '../../../../components';
 import TuneIcon from '../../../../assets/icons/TuneIcon';
@@ -41,6 +42,7 @@ import { usePlatformStore } from '../../../../store/platformStore';
 import { useAppSelector } from '../../../../store/hooks';
 import { formatPriceKRW, getLocalizedText } from '../../../../utils/i18nHelpers';
 import { translations } from '../../../../i18n/translations';
+import { logDevApiFailure } from '../../../../utils/devLog';
 import { useCancelOrderMutation } from '../../../../hooks/useCancelOrderMutation';
 import { useAddToCartMutation } from '../../../../hooks/useAddToCartMutation';
 import { useProductDetailMutation } from '../../../../hooks/useProductDetailMutation';
@@ -255,6 +257,7 @@ const mapOrderStatusMeta = (order: ApiOrder): Pick<Order, 'status' | 'statusGrou
 const BuyListScreen = () => {
   const navigation = useNavigation<BuyListScreenNavigationProp>();
   const route = useRoute<BuyListScreenRouteProp>();
+  const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { user, isGuest } = useAuth();
   const locale = useAppSelector((s) => s.i18n.locale) as 'en' | 'ko' | 'zh';
@@ -812,7 +815,7 @@ const BuyListScreen = () => {
       }
     },
     onError: (error: string) => {
-      console.error('🛒 BuyListScreen: Failed to fetch orders:', error);
+      logDevApiFailure('BuyListScreen.fetchOrders', error);
       showToast(error || 'Failed to fetch orders', 'error');
       setOrders([]);
     },
@@ -845,13 +848,14 @@ const BuyListScreen = () => {
       datePeriod: 'last_6_months',
       platform: filterPlatform || undefined,
       viewFilter: 'all',
-      progressStatus: selectedProgressStatus || undefined,
+      // progressStatus intentionally omitted — sub-status filtering is done client-side
+      // so that group tab counts (e.g. "발주관리 (3)") stay stable when sub-status changes.
       hasSimplifiedClearance,
       transferMethod: transferMethod as 'air' | 'ship' | undefined,
       periodFrom: selectedStartDate ? formatDate(selectedStartDate) : undefined,
       periodTo: selectedEndDate ? formatDate(selectedEndDate) : undefined,
     });
-  }, [filters.orderNumber, filterPlatform, selectedProgressStatus, selectedCustomsMethod, selectedTransportMethod, selectedStartDate, selectedEndDate]);
+  }, [filters.orderNumber, filterPlatform, selectedCustomsMethod, selectedTransportMethod, selectedStartDate, selectedEndDate]);
 
   const fetchOrdersRef = useRef(fetchOrders);
   fetchOrdersRef.current = fetchOrders;
@@ -1061,6 +1065,7 @@ const BuyListScreen = () => {
   };
 
   // Sample products for "More to love" section
+  const mockPx = IMAGE_CONFIG.PRODUCT_DISPLAY_PIXEL;
   const recommendedProducts: Partial<Product>[] = [
     {
       id: '1',
@@ -1070,7 +1075,7 @@ const BuyListScreen = () => {
       discount: 30,
       rating: 4.5,
       rating_count: 128,
-      image: 'https://picsum.photos/seed/dress1/400/500',
+      image: `https://picsum.photos/seed/dress1/${mockPx}/${mockPx}`,
       orderCount: 456,
     },
     {
@@ -1081,7 +1086,7 @@ const BuyListScreen = () => {
       discount: 31,
       rating: 4.8,
       rating_count: 256,
-      image: 'https://picsum.photos/seed/headphones/400/500',
+      image: `https://picsum.photos/seed/headphones/${mockPx}/${mockPx}`,
       orderCount: 789,
     },
     {
@@ -1092,7 +1097,7 @@ const BuyListScreen = () => {
       discount: 33,
       rating: 4.7,
       rating_count: 512,
-      image: 'https://picsum.photos/seed/watch/400/500',
+      image: `https://picsum.photos/seed/watch/${mockPx}/${mockPx}`,
       orderCount: 1234,
     },
     {
@@ -1103,7 +1108,7 @@ const BuyListScreen = () => {
       discount: 28,
       rating: 4.6,
       rating_count: 89,
-      image: 'https://picsum.photos/seed/stand/400/500',
+      image: `https://picsum.photos/seed/stand/${mockPx}/${mockPx}`,
       orderCount: 345,
     },
     {
@@ -1114,7 +1119,7 @@ const BuyListScreen = () => {
       discount: 36,
       rating: 4.9,
       rating_count: 678,
-      image: 'https://picsum.photos/seed/case/400/500',
+      image: `https://picsum.photos/seed/case/${mockPx}/${mockPx}`,
       orderCount: 2345,
     },
     {
@@ -1125,7 +1130,7 @@ const BuyListScreen = () => {
       discount: 35,
       rating: 4.4,
       rating_count: 234,
-      image: 'https://picsum.photos/seed/cable/400/500',
+      image: `https://picsum.photos/seed/cable/${mockPx}/${mockPx}`,
       orderCount: 567,
     },
   ];
@@ -1398,11 +1403,15 @@ const BuyListScreen = () => {
     );
   };
 
-  // Helper function to count orders in a status group by filtering filteredOrders
+  // Count orders in a status group from the unfiltered `orders` snapshot so the
+  // group tab badge (e.g. "발주관리 (3)") stays stable regardless of which
+  // sub-status or active tab is currently selected. Top-level filters
+  // (date/platform/customs/transport/search) still affect this count because
+  // they're applied at the API layer.
   const getGroupOrderCount = (groupKey: string): number => {
     const group = STATUS_GROUPS.find(g => g.key === groupKey);
     if (!group) return 0;
-    return filteredOrders.filter(order => {
+    return orders.filter(order => {
       for (const status of group.statuses) {
         if (status === order.progressStatus) return true;
       }
@@ -1702,7 +1711,7 @@ const BuyListScreen = () => {
           {isLoading && orders.length === 0 ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={COLORS.primary} />
-              <Text style={styles.loadingText}>Loading orders...</Text>
+              <Text style={styles.loadingText}>{t('home.buyListLoadingOrders')}</Text>
             </View>
           ) : (
             <>
@@ -1710,8 +1719,8 @@ const BuyListScreen = () => {
               {filteredOrders.length === 0 && groupedOrdersForCategory.length === 0 ? (
                 <View style={styles.emptyState}>
                   <Icon name="basket-outline" size={80} color="#CCC" />
-                  <Text style={styles.emptyTitle}>No orders</Text>
-                  <Text style={styles.emptySubtitle}>You don't have any orders in this category</Text>
+                  <Text style={styles.emptyTitle}>{t('home.buyListNoOrders')}</Text>
+                  <Text style={styles.emptySubtitle}>{t('home.buyListNoOrdersInCategory')}</Text>
                 </View>
               ) : (
                 <View style={styles.ordersContainer}>
@@ -2122,12 +2131,16 @@ const BuyListScreen = () => {
                       quantity: item.quantity,
                     }));
                     const res = await orderApi.getRefundAmount(refundModalOrder.id, refundItems);
+                    if (!res.success) {
+                      showToast(res.error || t('home.failedToGetRefundAmount'), 'error');
+                      return;
+                    }
                     setRefundModalOrder(null);
                     navigation.navigate('RefundRequest', {
                       orderId: refundModalOrder.id,
                       orderNumber: refundModalOrder.orderNumber,
                       items: allItems.map(({ item }) => item),
-                      refundData: res.success ? res.data : null,
+                      refundData: res.data ?? null,
                     });
                   } catch {
                     showToast(t('home.failedToGetRefundAmount'), 'error');
@@ -2235,7 +2248,7 @@ const BuyListScreen = () => {
                 { icon: <ViewedIcon width={28} height={28} color={COLORS.text.primary} />, label: 'Viewed Products', onPress: () => navigation.navigate('ViewedProducts' as never) },
                 { icon: <HeartIcon width={28} height={28} color={COLORS.text.primary} />, label: 'WishList', onPress: () => navigation.navigate('Wishlist' as never) },
                 { icon: <OfficialSupportIcon width={28} height={28} color={COLORS.text.primary} />, label: 'Official Support', onPress: () => navigation.navigate('HelpCenter' as never) },
-                { icon: <FeedbackIcon width={28} height={28} color={COLORS.text.primary} />, label: 'Feedback', onPress: () => navigation.navigate('Note' as never) },
+                { icon: <FeedbackIcon width={28} height={28} color={COLORS.text.primary} />, label: 'Feedback', onPress: () => (navigation as any).navigate('Message', { initialTab: 'general' }) },
                 { icon: <CustomerSupportIcon width={28} height={28} color={COLORS.text.primary} />, label: 'After-sales', onPress: () => navigation.navigate('CustomerService' as never) },
               ].map((item) => (
                 <TouchableOpacity
@@ -2454,7 +2467,7 @@ const BuyListScreen = () => {
 
       {/* Selection bottom bar */}
       {selectedOrderIds.size > 0 && (
-        <View style={styles.selectionBar}>
+        <View style={[styles.selectionBar, { paddingBottom: SPACING.md + insets.bottom }]}>
           <Text style={styles.selectionBarText}>
             {selectedOrderIds.size}개 선택됨
           </Text>
@@ -2599,7 +2612,7 @@ const BuyListScreen = () => {
                       showToast(res.error || t('buyList.failedToUpdateAddress'), 'error');
                     }
                   } catch (error: any) {
-                    console.error('Address update error:', error);
+                    logDevApiFailure('BuyListScreen.updateAddress', error);
                     showToast(error?.message || t('buyList.failedToUpdateAddress'), 'error');
                   } finally {
                     setIsSavingAddress(false);

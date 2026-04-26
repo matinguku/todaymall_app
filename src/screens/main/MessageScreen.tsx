@@ -22,8 +22,8 @@ import { inquiryApi } from '../../services/inquiryApi';
 import { useAppSelector } from '../../store/hooks';
 import { translations } from '../../i18n/translations';
 import SearchIcon from '../../assets/icons/SearchIcon';
-import ChatBubbleIcon from '../../assets/icons/ChatBubbleIcon';
 import { API_BASE_URL } from '../../constants';
+import { logDevApiFailure } from '../../utils/devLog';
 import { getStoredToken } from '../../services/authApi';
 import { buildSignatureHeaders } from '../../services/signature';
 
@@ -135,7 +135,7 @@ const MessageScreen: React.FC = () => {
         console.warn('[MessageScreen] Order inquiries failed or empty:', response.error);
       }
     } catch (e) {
-      console.error('[MessageScreen] fetchOrderInquiries error:', e);
+      logDevApiFailure('MessageScreen.fetchOrderInquiries', e);
     } finally {
       setOrderLoading(false);
     }
@@ -157,7 +157,7 @@ const MessageScreen: React.FC = () => {
         console.warn('[MessageScreen] General inquiries failed or empty:', response.error);
       }
     } catch (e) {
-      console.error('[MessageScreen] fetchGeneralInquiries error:', e);
+      logDevApiFailure('MessageScreen.fetchGeneralInquiries', e);
     } finally {
       setGeneralLoading(false);
     }
@@ -192,6 +192,11 @@ const MessageScreen: React.FC = () => {
 
   useFocusEffect(
     useCallback(() => {
+      const requestedTab = route.params?.initialTab;
+      if (requestedTab === 'order' || requestedTab === 'general' || requestedTab === 'fileDownload') {
+        setActiveTab(requestedTab);
+      }
+
       if (isAuthenticated) {
         fetchOrderInquiries();
         fetchGeneralInquiries();
@@ -202,7 +207,16 @@ const MessageScreen: React.FC = () => {
         }
       }
       fetchFormFiles();
-    }, [isAuthenticated, isConnected])
+    }, [
+      route.params?.initialTab,
+      isAuthenticated,
+      isConnected,
+      fetchOrderInquiries,
+      fetchGeneralInquiries,
+      fetchFormFiles,
+      getUnreadCounts,
+      getGeneralInquiryUnreadCounts,
+    ])
   );
 
   // Listen for real-time order inquiry messages and update per-item unread count
@@ -307,13 +321,14 @@ const MessageScreen: React.FC = () => {
   // ═══════════════════════════════════════════════════════
   const renderHeader = () => (
     <View style={[styles.header, { paddingTop: insets.top + SPACING.xs }]}>
-      <Text style={styles.headerTitle}>{t('message')}</Text>
+      <Text style={styles.headerTitle}>문의</Text>
       <View style={styles.headerRight}>
-        <TouchableOpacity style={styles.headerIcon}>
+        <TouchableOpacity
+          style={styles.headerIcon}
+          onPress={() => navigation.navigate('Search')}
+          activeOpacity={0.7}
+        >
           <SearchIcon width={22} height={22} color={COLORS.black} />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.headerIcon}>
-          <ChatBubbleIcon width={22} height={22} color={COLORS.black} />
         </TouchableOpacity>
       </View>
     </View>

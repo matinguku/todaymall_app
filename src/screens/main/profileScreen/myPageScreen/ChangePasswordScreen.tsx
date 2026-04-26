@@ -276,7 +276,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.lg,
     marginBottom: SPACING.md,
-    paddingTop: SPACING['2xl']
+    paddingTop: SPACING.md
   },
   backButton: {
     width: 40,

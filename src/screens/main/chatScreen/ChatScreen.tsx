@@ -20,7 +20,7 @@ import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../../components/Icon';
-import { COLORS, FONTS, SHADOWS, SPACING } from '../../../constants';
+import { COLORS, FONTS, SHADOWS, SPACING, IMAGE_CONFIG } from '../../../constants';
 import { RootStackParamList } from '../../../types';
 import { launchCamera, launchImageLibrary, MediaType, ImagePickerResponse, CameraOptions, ImageLibraryOptions } from 'react-native-image-picker';
 import { useAppSelector } from '../../../store/hooks';
@@ -513,7 +513,7 @@ const ChatScreen: React.FC = () => {
 
       const options: ImageLibraryOptions = {
         mediaType: 'photo' as MediaType,
-        quality: 0.7,
+        quality: IMAGE_CONFIG.QUALITY,
         selectionLimit: 5,
       };
 
@@ -548,7 +548,7 @@ const ChatScreen: React.FC = () => {
 
       const options: CameraOptions = {
         mediaType: 'photo' as MediaType,
-        quality: 0.7,
+        quality: IMAGE_CONFIG.QUALITY,
         saveToPhotos: false,
       };
 

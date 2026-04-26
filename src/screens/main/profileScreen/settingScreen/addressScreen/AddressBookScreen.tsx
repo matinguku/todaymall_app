@@ -25,6 +25,9 @@ import { useAddAddressMutation } from '../../../../../hooks/useAddAddressMutatio
 import { useUpdateAddressMutation } from '../../../../../hooks/useUpdateAddressMutation';
 import { addressApi } from '../../../../../services/addressApi';
 import { useToast } from '../../../../../context/ToastContext';
+import { useAppSelector } from '../../../../../store/hooks';
+import { translations } from '../../../../../i18n/translations';
+import { logDevApiFailure } from '../../../../../utils/devLog';
 
 type AddressBookScreenNavigationProp = StackNavigationProp<RootStackParamList, 'AddressBook'>;
 type AddressBookScreenRouteProp = RouteProp<RootStackParamList, 'AddressBook'>;
@@ -34,6 +37,20 @@ const AddressBookScreen: React.FC = () => {
   const route = useRoute<AddressBookScreenRouteProp>();
   const { user, updateUser } = useAuth();
   const { showToast } = useToast();
+  const locale = useAppSelector((state) => state.i18n.locale);
+
+  const t = (key: string, params?: Record<string, string | number>) => {
+    const keys = key.split('.');
+    let value: any = translations[locale as keyof typeof translations];
+    for (const k of keys) {
+      value = value?.[k];
+    }
+    const text = value || key;
+    if (!params || typeof text !== 'string') return text;
+    return Object.keys(params).reduce((acc, paramKey) => {
+      return acc.replace(`{${paramKey}}`, String(params[paramKey]));
+    }, text);
+  };
   
   const [selectedAddressIds, setSelectedAddressIds] = useState<Set<string>>(new Set());
   const [isManagementMode, setIsManagementMode] = useState(false);
@@ -99,7 +116,7 @@ const AddressBookScreen: React.FC = () => {
   // Add address mutation
   const { mutate: addAddress, isLoading: isAdding } = useAddAddressMutation({
     onSuccess: (data) => {
-      showToast('Address added successfully', 'success');
+      showToast(t('profile.addressAddedSuccessfully'), 'success');
       setAddressModalVisible(false);
       resetForm();
       // Update user context with new addresses
@@ -123,14 +140,14 @@ const AddressBookScreen: React.FC = () => {
       }
     },
     onError: (error) => {
-      showToast(error || 'Failed to add address', 'error');
+      showToast(error || t('profile.failedToAddAddress'), 'error');
     },
   });
 
   // Update address mutation
   const { mutate: updateAddress, isLoading: isUpdating } = useUpdateAddressMutation({
     onSuccess: (data) => {
-      showToast('Address updated successfully', 'success');
+      showToast(t('profile.addressUpdatedSuccessfully'), 'success');
       setAddressModalVisible(false);
       resetForm();
       // Update user context with new addresses
@@ -154,7 +171,7 @@ const AddressBookScreen: React.FC = () => {
       }
     },
     onError: (error) => {
-      showToast(error || 'Failed to update address', 'error');
+      showToast(error || t('profile.failedToUpdateAddress'), 'error');
     },
   });
 
@@ -192,19 +209,19 @@ const AddressBookScreen: React.FC = () => {
   const handleSaveAddress = () => {
     // Validation
     if (!recipient.trim()) {
-      showToast('Please enter recipient name', 'error');
+      showToast(t('profile.addressRecipientRequired'), 'error');
       return;
     }
     if (!contact.trim()) {
-      showToast('Please enter contact number', 'error');
+      showToast(t('profile.addressContactRequired'), 'error');
       return;
     }
     if (!detailedAddress.trim()) {
-      showToast('Please enter detailed address', 'error');
+      showToast(t('profile.addressDetailRequired'), 'error');
       return;
     }
     if (!zipCode.trim()) {
-      showToast('Please enter postal code', 'error');
+      showToast(t('profile.addressZipRequired'), 'error');
       return;
     }
 
@@ -230,27 +247,27 @@ const AddressBookScreen: React.FC = () => {
 
   const handleDeleteAddress = async (addressId: string) => {
     Alert.alert(
-      'Delete Address',
-      'Are you sure you want to delete this address?',
+      t('profile.deleteAddress'),
+      t('profile.addressDeleteConfirmSingle'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Delete',
+          text: t('common.delete'),
           style: 'destructive',
           onPress: async () => {
             try {
               const response = await addressApi.deleteAddress(addressId);
               if (response.success) {
-                showToast('Address deleted successfully', 'success');
+                showToast(t('profile.addressDeletedSuccessfully'), 'success');
                 // Update user context by removing the deleted address
                 const remainingAddresses = addresses.filter(addr => addr.id !== addressId);
                 updateUser({ addresses: remainingAddresses });
               } else {
-                showToast(response.error || 'Failed to delete address', 'error');
+                showToast(response.error || t('profile.failedToDeleteAddress'), 'error');
               }
             } catch (error) {
-              console.error('Delete address error:', error);
-              showToast('Failed to delete address', 'error');
+              logDevApiFailure('AddressBookScreen.deleteAddress', error);
+              showToast(t('profile.failedToDeleteAddress'), 'error');
             }
           },
         },
@@ -280,17 +297,17 @@ const AddressBookScreen: React.FC = () => {
 
   const handleDeleteSelected = async () => {
     if (selectedAddressIds.size === 0) {
-      Alert.alert('No Selection', 'Please select addresses to delete');
+      Alert.alert(t('profile.addressNoSelectionTitle'), t('profile.addressNoSelectionMessage'));
       return;
     }
 
     Alert.alert(
-      'Delete Addresses',
-      `Are you sure you want to delete ${selectedAddressIds.size} address${selectedAddressIds.size > 1 ? 'es' : ''}?`,
+      t('profile.deleteAddress'),
+      t('profile.addressDeleteConfirmMultiple', { count: selectedAddressIds.size }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Delete',
+          text: t('common.delete'),
           style: 'destructive',
           onPress: async () => {
             try {
@@ -304,9 +321,9 @@ const AddressBookScreen: React.FC = () => {
               // Check if all deletions were successful
               const failedDeletes = results.filter(result => !result.success);
               if (failedDeletes.length > 0) {
-                showToast(`Failed to delete ${failedDeletes.length} address(es)`, 'error');
+                showToast(t('profile.addressDeleteFailedCount', { count: failedDeletes.length }), 'error');
               } else {
-                showToast(`${selectedAddressIds.size} address(es) deleted successfully`, 'success');
+                showToast(t('profile.addressDeletedCount', { count: selectedAddressIds.size }), 'success');
               }
 
               // Update user context by removing deleted addresses
@@ -315,8 +332,8 @@ const AddressBookScreen: React.FC = () => {
 
               setSelectedAddressIds(new Set());
             } catch (error) {
-              console.error('Batch delete error:', error);
-              showToast('Failed to delete addresses', 'error');
+              logDevApiFailure('AddressBookScreen.batchDelete', error);
+              showToast(t('profile.failedToDeleteAddress'), 'error');
             }
           },
         },
@@ -332,14 +349,14 @@ const AddressBookScreen: React.FC = () => {
       >
         <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
       </TouchableOpacity>
-      <Text style={styles.headerTitle}>Shipping address</Text>
+      <Text style={styles.headerTitle}>{t('profile.shippingAddress')}</Text>
       <View style={styles.headerRight}>
         <TouchableOpacity style={styles.headerIconButton}>
           {/* <Icon name="search" size={24} color={COLORS.text.primary} /> */}
         </TouchableOpacity>
         <TouchableOpacity onPress={() => setIsManagementMode(!isManagementMode)}>
           <Text style={styles.managementText}>
-            {isManagementMode ? 'Exit' : 'Management'}
+            {isManagementMode ? t('profile.done') : t('profile.management')}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity 
@@ -376,18 +393,18 @@ const AddressBookScreen: React.FC = () => {
               {item.street || ''}{item.zipCode ? `, ${item.zipCode}` : ''}{item.city ? `, ${item.city}` : ''}
             </Text>
             <Text style={styles.addressContactText}>
-              {item.name || user?.name || 'Unnamed'} {item.phone || ''}
+              {item.name || user?.name || t('profile.unnamed')} {item.phone || ''}
             </Text>
             {isDefault ? (
               <View style={styles.defaultBadgeContainer}>
                 {isManagementMode && (<Icon name="checkmark-circle" size={16} color={COLORS.red} />)}
-                <Text style={styles.defaultBadge}>Default</Text>
+                <Text style={styles.defaultBadge}>{t('profile.defaultAddressLabel')}</Text>
               </View>
             ) : (
               isManagementMode && (
                 <View style={styles.defaultBadgeContainer}>
                   <View style={styles.defaultCheckboxEmpty} />
-                  <Text style={styles.defaultBadgeGray}>Default</Text>
+                  <Text style={styles.defaultBadgeGray}>{t('profile.defaultAddressLabel')}</Text>
                 </View>
               )
             )}
@@ -406,7 +423,7 @@ const AddressBookScreen: React.FC = () => {
             onPress={() => handleDeleteAddress(item.id)}
             activeOpacity={0.7}
           >
-            <Text style={styles.deleteButtonText}>Delete</Text>
+            <Text style={styles.deleteButtonText}>{t('common.delete')}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -423,62 +440,62 @@ const AddressBookScreen: React.FC = () => {
       <View style={styles.modalOverlay}>
         <View style={styles.addressModalContent}>
           <View style={styles.addressModalHeader}>
-            <Text style={styles.addressModalTitle}>{editingAddress ? 'Edit address' : 'New address'}</Text>
+            <Text style={styles.addressModalTitle}>{editingAddress ? t('profile.editAddress') : t('profile.addAddress')}</Text>
             <TouchableOpacity onPress={() => setAddressModalVisible(false)}>
               <Icon name="close" size={24} color={COLORS.text.primary} />
             </TouchableOpacity>
           </View>
           <ScrollView showsVerticalScrollIndicator={false}>
-            <Text style={styles.addressModalLabel}>Currently delivering to:</Text>
+            <Text style={styles.addressModalLabel}>{t('profile.addressCurrentlyDeliveringTo')}</Text>
             <View style={styles.addressModalRow}>
               <View style={styles.addressModalDropdown}>
                 <Text style={styles.addressModalDropdownText}>한국</Text>
                 <Icon name="chevron-down" size={20} color={COLORS.gray[600]} />
               </View>
               <TouchableOpacity style={styles.defaultCheckboxRow} onPress={() => setIsDefaultAddress(!isDefaultAddress)}>
-                <Text style={styles.defaultText}>Default</Text>
+                <Text style={styles.defaultText}>{t('profile.defaultAddressLabel')}</Text>
                 <View style={[styles.checkboxSquare, isDefaultAddress && styles.checkboxSquareChecked]}>
                   {isDefaultAddress && <Icon name="checkmark" size={16} color={COLORS.white} />}
                 </View>
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>Address information:</Text>
+            <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>{t('profile.addressInformation')}</Text>
             <TouchableOpacity style={styles.addressSearchBtn} onPress={() => setShowKakaoAddress(true)}>
               <Icon name="search" size={16} color={COLORS.white} />
-              <Text style={styles.addressSearchBtnText}>Search Address (Kakao)</Text>
+              <Text style={styles.addressSearchBtnText}>{t('profile.addressSearchKakao')}</Text>
             </TouchableOpacity>
 
-            <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>Postal code:</Text>
+            <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>{t('profile.zipCode')}</Text>
             <TextInput
               style={styles.addressModalInput}
-              placeholder="e.g. 06000"
+              placeholder={t('profile.addressPostalCodePlaceholder')}
               placeholderTextColor={COLORS.gray[400]}
               value={zipCode}
               onChangeText={setZipCode}
               keyboardType="number-pad"
             />
 
-            <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>Detail address:</Text>
+            <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>{t('profile.addressDetailLabel')}</Text>
             <TextInput
               style={styles.addressModalInput}
-              placeholder="Search address above or enter manually"
+              placeholder={t('profile.searchAddress')}
               placeholderTextColor={COLORS.gray[400]}
               value={detailedAddress}
               onChangeText={setDetailedAddress}
             />
 
-            <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>Recipient name:</Text>
+            <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>{t('profile.recipient')}</Text>
             <TextInput
               style={styles.addressModalInput}
-              placeholder="Up to 25 characters"
+              placeholder={t('profile.addressRecipientPlaceholder')}
               placeholderTextColor={COLORS.gray[400]}
               value={recipient}
               onChangeText={setRecipient}
               maxLength={25}
             />
 
-            <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>Mobile number:</Text>
+            <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>{t('profile.addressMobileNumber')}</Text>
             <View style={styles.addressModalPhoneRow}>
               <View style={styles.addressModalPhoneCode}>
                 <Text style={{ fontSize: FONTS.sizes.sm, color: COLORS.text.primary }}>한국 +82</Text>
@@ -492,10 +509,10 @@ const AddressBookScreen: React.FC = () => {
               />
             </View>
 
-            <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>Customs clearance code:</Text>
+            <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>{t('profile.personalCustomsCode')}</Text>
             <TextInput
               style={styles.addressModalInput}
-              placeholder="Please enter the customs clearance code"
+              placeholder={t('profile.addressCustomsCodePlaceholder')}
               placeholderTextColor={COLORS.gray[400]}
               value={personalCustomsCode}
               onChangeText={setPersonalCustomsCode}
@@ -508,7 +525,7 @@ const AddressBookScreen: React.FC = () => {
               {(isAdding || isUpdating) ? (
                 <ActivityIndicator size="small" color={COLORS.white} />
               ) : (
-                <Text style={styles.addressModalSaveButtonText}>Save</Text>
+                <Text style={styles.addressModalSaveButtonText}>{t('profile.saveAddress')}</Text>
               )}
             </TouchableOpacity>
           </ScrollView>
@@ -530,8 +547,8 @@ const AddressBookScreen: React.FC = () => {
           contentContainerStyle={styles.addressListContent}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No addresses found</Text>
-              <Text style={styles.emptySubtext}>Add a new address to get started</Text>
+              <Text style={styles.emptyText}>{t('profile.addressNoAddressesFound')}</Text>
+              <Text style={styles.emptySubtext}>{t('profile.addressAddNewToStart')}</Text>
             </View>
           }
         />
@@ -549,14 +566,14 @@ const AddressBookScreen: React.FC = () => {
                 <Icon name="checkmark" size={16} color={COLORS.white} />
               )}
             </View>
-            <Text style={styles.selectAllText}>All</Text>
+            <Text style={styles.selectAllText}>{t('common.all')}</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.deleteAllButton}
             onPress={handleDeleteSelected}
             activeOpacity={0.7}
           >
-            <Text style={styles.deleteAllButtonText}>Delete</Text>
+            <Text style={styles.deleteAllButtonText}>{t('common.delete')}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -568,7 +585,7 @@ const AddressBookScreen: React.FC = () => {
         <View style={styles.kakaoModalOverlay}>
           <View style={styles.kakaoModalContent}>
             <View style={styles.kakaoModalHeader}>
-              <Text style={styles.kakaoModalTitle}>Search Address</Text>
+              <Text style={styles.kakaoModalTitle}>{t('profile.addressSearchTitle')}</Text>
               <TouchableOpacity onPress={() => setShowKakaoAddress(false)}>
                 <Icon name="close" size={22} color={COLORS.text.primary} />
               </TouchableOpacity>
@@ -587,7 +604,7 @@ const AddressBookScreen: React.FC = () => {
                       setZipCode(data.zonecode);
                       setDetailedAddress(data.roadAddress);
                       
-                      showToast('Address selected successfully', 'success');
+                      showToast(t('profile.addressSelectedSuccessfully'), 'success');
                       
                       // Close modal with a small delay to ensure state updates
                       setTimeout(() => {
@@ -595,11 +612,11 @@ const AddressBookScreen: React.FC = () => {
                       }, 200);
                     } else {
                       console.warn('Incomplete address data:', data);
-                      showToast('Please select a complete address', 'error');
+                      showToast(t('profile.addressPleaseSelectComplete'), 'error');
                     }
                   } catch (err) {
-                    console.error('Error parsing Kakao address data:', err);
-                    showToast('Failed to parse address data', 'error');
+                    logDevApiFailure('AddressBookScreen.parseKakaoAddress', err);
+                    showToast(t('profile.addressFailedToParseData'), 'error');
                   }
                 }}
                 javaScriptEnabled
@@ -627,7 +644,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
-    paddingTop: SPACING['2xl'],
+    paddingTop: SPACING.md,
     backgroundColor: COLORS.white,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.gray[200],

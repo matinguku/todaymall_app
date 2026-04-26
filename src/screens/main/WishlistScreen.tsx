@@ -13,6 +13,7 @@ import {
   ScrollView,
   Modal,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
 import { useNavigation } from '@react-navigation/native';
 import TuneIcon from '../../assets/icons/TuneIcon';
@@ -34,8 +35,29 @@ import { getLocalizedText } from '../../utils/i18nHelpers';
 
 const { width } = Dimensions.get('window');
 
+const WISHLIST_TIME_FILTER_KEYS = ['7d', '30d', '90d', '180d', '365d'] as const;
+type WishlistTimeFilterKey = (typeof WISHLIST_TIME_FILTER_KEYS)[number];
+
+const WISHLIST_TIME_FILTER_I18N: Record<WishlistTimeFilterKey, string> = {
+  '7d': 'profile.wishlistTime7d',
+  '30d': 'profile.wishlistTime30d',
+  '90d': 'profile.wishlistTime90d',
+  '180d': 'profile.wishlistTime180d',
+  '365d': 'profile.wishlistTime365d',
+};
+
+const WISHLIST_ITEM_STATUS_KEYS = ['purchased', 'low_stock', 'expired'] as const;
+type WishlistItemStatusKey = (typeof WISHLIST_ITEM_STATUS_KEYS)[number];
+
+const WISHLIST_ITEM_STATUS_I18N: Record<WishlistItemStatusKey, string> = {
+  purchased: 'profile.wishlistItemPurchased',
+  low_stock: 'profile.wishlistItemLowStock',
+  expired: 'profile.wishlistItemExpired',
+};
+
 const WishlistScreen: React.FC = () => {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const { user, isAuthenticated } = useAuth();
   
   // ALL HOOKS MUST BE CALLED BEFORE ANY CONDITIONAL RETURNS
@@ -44,7 +66,6 @@ const WishlistScreen: React.FC = () => {
   const [storeGroups, setStoreGroups] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [hasProcessedProductDetail, setHasProcessedProductDetail] = useState(false);
-  const hasFetchedRef = useRef(false);
   const [selectedPlatformTab, setSelectedPlatformTab] = useState('All');
   const [showItemStatusModal, setShowItemStatusModal] = useState(false);
   const itemStatusButtonRef = useRef<View>(null);
@@ -78,11 +99,16 @@ const WishlistScreen: React.FC = () => {
   const locale = useAppSelector((s) => s.i18n.locale) as 'en' | 'ko' | 'zh';
   
   // Translation function (defined early so it can be used in callbacks)
-  const t = useCallback((key: string) => {
-    const keys = key.split('.');
+  const t = useCallback((key: string, params?: Record<string, string | number>) => {
+    const keyParts = key.split('.');
     let value: any = translations[locale as keyof typeof translations];
-    for (const k of keys) {
+    for (const k of keyParts) {
       value = value?.[k];
+    }
+    if (typeof value === 'string' && params) {
+      Object.keys(params).forEach((paramKey) => {
+        value = value.replace(`{${paramKey}}`, String(params[paramKey]));
+      });
     }
     return value || key;
   }, [locale]);
@@ -134,7 +160,32 @@ const WishlistScreen: React.FC = () => {
       originalData: item,
     };
   }, [resolveText]);
-  
+
+  const buildWishlistParams = (grouped = false) => ({
+    discounted: false,
+    sort: sortBy === 'newest' ? 'recently_saved' : 'earliest',
+    timeFilter:
+      tempFilters.collectionTime.length > 0 &&
+      WISHLIST_TIME_FILTER_KEYS.includes(tempFilters.collectionTime[0] as WishlistTimeFilterKey)
+        ? tempFilters.collectionTime[0]
+        : '90d',
+    ...(grouped ? { groupByStore: true } : {}),
+  });
+
+  const collectionTimeLabel = (key: string) => {
+    if (WISHLIST_TIME_FILTER_KEYS.includes(key as WishlistTimeFilterKey)) {
+      return t(WISHLIST_TIME_FILTER_I18N[key as WishlistTimeFilterKey]);
+    }
+    return key;
+  };
+
+  const itemStatusLabel = (key: string) => {
+    if (WISHLIST_ITEM_STATUS_KEYS.includes(key as WishlistItemStatusKey)) {
+      return t(WISHLIST_ITEM_STATUS_I18N[key as WishlistItemStatusKey]);
+    }
+    return key;
+  };
+
   // Add to cart mutation (calls cart API)
   const { mutate: addToCartApi, isLoading: isAddToCartLoading } = useAddToCartMutation({
     onSuccess: () => {
@@ -202,18 +253,19 @@ const WishlistScreen: React.FC = () => {
   // Get wishlist mutation
   const { mutate: fetchWishlist, isLoading: wishlistLoading } = useGetWishlistMutation({
     onSuccess: (data) => {
-      // Handle grouped response
-      if (data?.wishlistByStore && Array.isArray(data.wishlistByStore)) {
-        const mappedGroups = data.wishlistByStore.map((group: any) => ({
+      const grouped = data?.wishlistByStore;
+      if (Array.isArray(grouped) && grouped.length > 0) {
+        const mappedGroups = grouped.map((group: any) => ({
           storeId: group.storeId,
           storeName: resolveText(group.storeNameMultiLang ?? group.storeName) || group.storeName,
-          items: group.items.map((item: any) => mapWishlistItem(item)),
+          items: (group.items || []).map((item: any) => mapWishlistItem(item)),
         }));
         setStoreGroups(mappedGroups);
+        setWishlistItems(mappedGroups.flatMap((g: { items: any[] }) => g.items));
         return;
       }
-      // Handle flat response
-      if (data?.wishlist) {
+      setStoreGroups([]);
+      if (data?.wishlist && Array.isArray(data.wishlist)) {
         setWishlistItems(data.wishlist.map((item: any) => mapWishlistItem(item)));
       } else {
         setWishlistItems([]);
@@ -224,12 +276,36 @@ const WishlistScreen: React.FC = () => {
     },
   });
 
+  const refetchWishlist = useCallback(() => {
+    if (!isAuthenticated) {
+      return Promise.resolve();
+    }
+    return fetchWishlist(buildWishlistParams(groupByStore));
+  }, [
+    isAuthenticated,
+    fetchWishlist,
+    groupByStore,
+    sortBy,
+    tempFilters.collectionTime,
+  ]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    fetchWishlist(buildWishlistParams(groupByStore));
+  }, [
+    isAuthenticated,
+    sortBy,
+    tempFilters.collectionTime,
+    groupByStore,
+    fetchWishlist,
+  ]);
+
   // Delete from wishlist mutation
   const { mutate: deleteFromWishlist } = useDeleteFromWishlistMutation({
     onSuccess: () => {
       showToast(t('product.productRemovedFromWishlist'), 'success');
       refreshExternalIds();
-      fetchWishlist();
+      refetchWishlist();
     },
     onError: (error) => {
       showToast(error || t('product.failedToRemoveFromWishlist'), 'error');
@@ -241,7 +317,7 @@ const WishlistScreen: React.FC = () => {
     onSuccess: () => {
       showToast(t('product.productRemovedFromWishlist'), 'success');
       refreshExternalIds();
-      fetchWishlist();
+      refetchWishlist();
       setSelectedItems([]);
     },
     onError: (error) => {
@@ -250,9 +326,7 @@ const WishlistScreen: React.FC = () => {
   });
 
   const refreshWishlist = () => {
-    if (isAuthenticated) {
-      fetchWishlist();
-    }
+    refetchWishlist();
   };
 
   const toggleWishlist = async (product: any) => {
@@ -293,17 +367,6 @@ const WishlistScreen: React.FC = () => {
     });
   };
 
-  // Fetch wishlist only once when component mounts
-  useEffect(() => {
-    if (isAuthenticated && !hasFetchedRef.current) {
-      fetchWishlist();
-      hasFetchedRef.current = true;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated]);
-
-  // Re-fetch with groupByStore param when toggle changes — handled by the combined effect above
-
   // If not authenticated, show login prompt
   if (!isAuthenticated) {
     return (
@@ -341,7 +404,7 @@ const WishlistScreen: React.FC = () => {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchWishlist(buildWishlistParams(groupByStore));
+    await refetchWishlist();
     setRefreshing(false);
   };
 
@@ -435,8 +498,8 @@ const WishlistScreen: React.FC = () => {
         >
           <Icon name="chevron-back" size={24} color={COLORS.black} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          {t('profile.wishlistTitle')}({wishlistItems.length})
+          <Text style={styles.headerTitle}>
+          {t('profile.wishlistTitleWithCount', { count: wishlistItems.length })}
         </Text>
       </View>
       <View style={styles.headerRight}>
@@ -455,7 +518,7 @@ const WishlistScreen: React.FC = () => {
           }}
         >
           <Text style={styles.managementText}>
-            {isManagementMode ? 'Exit' : 'Management'}
+            {isManagementMode ? t('profile.done') : t('profile.management')}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.headerIcon}>
@@ -476,7 +539,9 @@ const WishlistScreen: React.FC = () => {
           setGroupByStore(false);
         }}
       >
-        <Text style={styles.filterButtonText}>Total items {`(${wishlistItems.length})`}</Text>
+        <Text style={styles.filterButtonText}>
+          {t('profile.wishlistTotalItems', { count: wishlistItems.length })}
+        </Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.filterButton, groupByStore && styles.filterButtonActive]}
@@ -549,7 +614,9 @@ const WishlistScreen: React.FC = () => {
               styles.filterButtonText,
               tempFilters.collectionTime.length > 0 && styles.filterButtonTextActive
             ]}>
-              {tempFilters.collectionTime.length > 0 ? tempFilters.collectionTime[0] : t('profile.wishlistCollectionTime')}
+              {tempFilters.collectionTime.length > 0
+              ? collectionTimeLabel(tempFilters.collectionTime[0])
+              : t('profile.wishlistCollectionTime')}
             </Text>
             <Icon name="chevron-down" size={16} color={tempFilters.collectionTime.length > 0 ? COLORS.primary : COLORS.text.secondary} />
           </TouchableOpacity>
@@ -583,36 +650,6 @@ const WishlistScreen: React.FC = () => {
       </View>
     );
   };
-
-  // Map collection time label → API timeFilter value
-  const collectionTimeToFilter = (label: string): string => {
-    switch (label) {
-      case 'Within 7 days':  return '7d';
-      case 'Within 30 days': return '30d';
-      case 'Within 90 days': return '90d';
-      case 'Six months ago': return '180d';
-      case 'One year ago':   return '365d';
-      default:               return '90d';
-    }
-  };
-
-  // Build API params from current filter state
-  const buildWishlistParams = (grouped = false) => ({
-    discounted: false,
-    sort: sortBy === 'newest' ? 'recently_saved' : 'earliest',
-    timeFilter: tempFilters.collectionTime.length > 0
-      ? collectionTimeToFilter(tempFilters.collectionTime[0])
-      : '90d',
-    ...(grouped ? { groupByStore: true } : {}),
-  });
-
-  // Re-fetch when sort or collection time filter changes
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchWishlist(buildWishlistParams(groupByStore));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortBy, tempFilters.collectionTime, groupByStore]);
 
   // Filter wishlist items by platform (client-side only — API handles sort/time)
   const filteredItems = wishlistItems
@@ -679,7 +716,7 @@ const WishlistScreen: React.FC = () => {
           onPress={async () => {
             const imageUrl = item.image || item.imageUrl || '';
             if (!imageUrl) {
-              showToast('No image available for this product', 'error');
+              showToast(t('product.noProductImageAvailable'), 'error');
               return;
             }
             try {
@@ -691,7 +728,7 @@ const WishlistScreen: React.FC = () => {
               setSimilarSearchBase64(base64);
               setSimilarSearchVisible(true);
             } catch {
-              showToast('Failed to load product image', 'error');
+              showToast(t('product.failedToLoadProductImage'), 'error');
             }
           }}
         >
@@ -780,7 +817,7 @@ const WishlistScreen: React.FC = () => {
       
       {/* Management Mode Footer */}
       {isManagementMode && wishlistItems.length > 0 && (
-        <View style={styles.managementFooter}>
+        <View style={[styles.managementFooter, { paddingBottom: SPACING['2xl'] + insets.bottom }]}>
           <TouchableOpacity 
             style={styles.selectAllButton}
             onPress={() => {
@@ -796,7 +833,7 @@ const WishlistScreen: React.FC = () => {
                 <Icon name="checkmark" size={16} color={COLORS.white} />
               )}
             </View>
-            <Text style={styles.selectAllText}>All</Text>
+            <Text style={styles.selectAllText}>{t('profile.all')}</Text>
           </TouchableOpacity>
           
           <View style={styles.footerActions}>
@@ -805,7 +842,7 @@ const WishlistScreen: React.FC = () => {
               disabled={isAddToCartLoading || selectedItems.length === 0}
               onPress={() => {
                 if (selectedItems.length === 0) {
-                  showToast('Please select items to add to cart', 'warning');
+                  showToast(t('profile.wishlistToastSelectForCart'), 'warning');
                   return;
                 }
                 const itemsToAdd = selectedItems
@@ -817,7 +854,7 @@ const WishlistScreen: React.FC = () => {
               {isAddToCartLoading ? (
                 <ActivityIndicator size="small" color={COLORS.white} />
               ) : (
-                <Text style={styles.footerButtonText}>Add to cart</Text>
+                <Text style={styles.footerButtonText}>{t('product.addToCart')}</Text>
               )}
             </TouchableOpacity>
             
@@ -826,26 +863,26 @@ const WishlistScreen: React.FC = () => {
               onPress={() => {
                 // Share functionality
                 if (selectedItems.length === 0) {
-                  showToast('Please select items to share', 'warning');
+                  showToast(t('profile.wishlistToastSelectForShare'), 'warning');
                 } else {
-                  showToast(`Sharing ${selectedItems.length} items`, 'success');
+                  showToast(t('profile.wishlistToastSharingCount', { count: selectedItems.length }), 'success');
                 }
               }}
             >
-              <Text style={styles.footerButtonText}>Share</Text>
+              <Text style={styles.footerButtonText}>{t('profile.share')}</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
               style={styles.deleteFooterButton}
               onPress={() => {
                 if (selectedItems.length === 0) {
-                  showToast('Please select items to delete', 'warning');
+                  showToast(t('profile.wishlistToastSelectForDelete'), 'warning');
                 } else {
                   setShowDeleteConfirmModal(true);
                 }
               }}
             >
-              <Text style={styles.deleteFooterButtonText}>Delete</Text>
+              <Text style={styles.deleteFooterButtonText}>{t('profile.delete')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -885,7 +922,7 @@ const WishlistScreen: React.FC = () => {
             {/* Triangle pointer */}
             <View style={[styles.dropdownTriangle, { left: 20 }]} />
             
-            {['Purchased', 'Low stock', 'Expired'].map((status) => (
+            {WISHLIST_ITEM_STATUS_KEYS.map((status) => (
               <TouchableOpacity
                 key={status}
                 style={styles.dropdownOption}
@@ -898,7 +935,7 @@ const WishlistScreen: React.FC = () => {
                   styles.dropdownOptionText,
                   tempFilters.itemStatus.includes(status) && styles.dropdownOptionTextActive
                 ]}>
-                  {status}
+                  {itemStatusLabel(status)}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -931,7 +968,7 @@ const WishlistScreen: React.FC = () => {
             {/* Triangle pointer */}
             <View style={[styles.dropdownTriangle, { left: 20 }]} />
             
-            {['Within 7 days', 'Within 30 days', 'Within 90 days', 'Six months ago', 'One year ago'].map((time) => (
+            {WISHLIST_TIME_FILTER_KEYS.map((time) => (
               <TouchableOpacity
                 key={time}
                 style={styles.dropdownOption}
@@ -944,7 +981,7 @@ const WishlistScreen: React.FC = () => {
                   styles.dropdownOptionText,
                   tempFilters.collectionTime.includes(time) && styles.dropdownOptionTextActive
                 ]}>
-                  {time}
+                  {collectionTimeLabel(time)}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -971,9 +1008,9 @@ const WishlistScreen: React.FC = () => {
       >
         <View style={styles.deleteModalOverlay}>
           <View style={styles.deleteModalContent}>
-            <Text style={styles.deleteModalTitle}>Delete Items</Text>
+            <Text style={styles.deleteModalTitle}>{t('profile.wishlistDeleteModalTitle')}</Text>
             <Text style={styles.deleteModalMessage}>
-              Are you sure you want to delete {selectedItems.length} selected item{selectedItems.length !== 1 ? 's' : ''} from your wishlist?
+              {t('profile.wishlistDeleteModalMessage', { count: selectedItems.length })}
             </Text>
             <View style={styles.deleteModalButtons}>
               <TouchableOpacity
@@ -981,7 +1018,7 @@ const WishlistScreen: React.FC = () => {
                 onPress={() => setShowDeleteConfirmModal(false)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.deleteModalCancelText}>Cancel</Text>
+                <Text style={styles.deleteModalCancelText}>{t('profile.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.deleteModalConfirmButton}
@@ -995,7 +1032,7 @@ const WishlistScreen: React.FC = () => {
                 }}
                 activeOpacity={0.7}
               >
-                <Text style={styles.deleteModalConfirmText}>Confirm</Text>
+                <Text style={styles.deleteModalConfirmText}>{t('profile.confirm')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1045,7 +1082,7 @@ const WishlistScreen: React.FC = () => {
               <TouchableOpacity onPress={() => setShowAllFiltersModal(false)}>
                 {/* <Icon name="close" size={24} color={COLORS.black} /> */}
               </TouchableOpacity>
-              <Text style={styles.allFiltersTitle}>All filters</Text>
+              <Text style={styles.allFiltersTitle}>{t('profile.wishlistAllFilters')}</Text>
               <TouchableOpacity onPress={() => setShowAllFiltersModal(false)}>
                 <Icon name="close" size={24} color={COLORS.black} />
               </TouchableOpacity>
@@ -1109,9 +1146,9 @@ const WishlistScreen: React.FC = () => {
               
               {/* Collection time */}
               <View style={styles.filterSection}>
-                <Text style={styles.filterSectionTitle}>Collection time</Text>
+                <Text style={styles.filterSectionTitle}>{t('profile.wishlistCollectionTimeSection')}</Text>
                 <View style={styles.filterOptionsRow}>
-                  {['Within 7 days', 'Within 30 days', 'Within 90 days', 'Six months ago', 'One year ago'].map((time) => (
+                  {WISHLIST_TIME_FILTER_KEYS.map((time) => (
                     <TouchableOpacity
                       key={time}
                       style={[
@@ -1120,7 +1157,7 @@ const WishlistScreen: React.FC = () => {
                       ]}
                       onPress={() => {
                         const newTime = tempFilters.collectionTime.includes(time)
-                          ? tempFilters.collectionTime.filter(t => t !== time)
+                          ? tempFilters.collectionTime.filter((x) => x !== time)
                           : [...tempFilters.collectionTime, time];
                         setTempFilters({ ...tempFilters, collectionTime: newTime });
                       }}
@@ -1129,7 +1166,7 @@ const WishlistScreen: React.FC = () => {
                         styles.filterChipText,
                         tempFilters.collectionTime.includes(time) && styles.filterChipTextActive
                       ]}>
-                        {time}
+                        {collectionTimeLabel(time)}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -1149,7 +1186,7 @@ const WishlistScreen: React.FC = () => {
                   });
                 }}
               >
-                <Text style={styles.resetButtonText}>Reset</Text>
+                <Text style={styles.resetButtonText}>{t('profile.wishlistResetFilters')}</Text>
               </TouchableOpacity>
               
               <TouchableOpacity
@@ -1159,7 +1196,7 @@ const WishlistScreen: React.FC = () => {
                   setShowAllFiltersModal(false);
                 }}
               >
-                <Text style={styles.confirmButtonText}>Confirm</Text>
+                <Text style={styles.confirmButtonText}>{t('profile.confirm')}</Text>
               </TouchableOpacity>
             </View>
           </View>

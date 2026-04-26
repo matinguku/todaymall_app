@@ -224,7 +224,7 @@ const ProfileSettingsScreen: React.FC = () => {
           {
             icon: 'person-outline',
             title: t('profile.securitySettings'),
-            onPress: () => navigation.navigate('PrivacyPolicy'),
+            onPress: () => navigation.navigate('SecuritySettings'),
           },
           {
             icon: 'person-outline',
@@ -253,30 +253,23 @@ const ProfileSettingsScreen: React.FC = () => {
           // },
         ]
       },
-
       {
         name: t('profile.sellerInfo'),
         items: [
-          // {
-          //   icon: 'person-outline',
-          //   title: t('profile.merchantOnboarding'),
-          //   onPress: () => navigation.navigate('EditProfile'),
-          // },
-           {
+          {
             icon: 'key-outline',
             title: t('profile.Sellerpage'),
-            onPress: () => navigation.navigate('SellerPage'),
+            onPress: () => navigation.navigate('SellerStack', { screen: 'SellerHome' }),
           },
           {
             icon: 'key-outline',
             title: t('profile.SellerSalesRefundInfo'),
-            onPress: () => navigation.navigate('SellerSalesRefundInfo'),
+            onPress: () => navigation.navigate('SellerStack', { screen: 'SellerSalesRefundInfo' }),
           },
-          
           {
             icon: 'key-outline',
             title: t('profile.sellerTeamInfo'),
-            onPress: () => navigation.navigate('SellerTeamInfo'),
+            onPress: () => navigation.navigate('SellerStack', { screen: 'SellerTeamInfo' }),
           },
           
          
@@ -382,22 +375,21 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    // justifyContent: 'space-between',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: SPACING.sm,
-    paddingBottom: SPACING.lg,
-    // marginBottom: SPACING.md,
-    paddingTop: SPACING.xl,
-    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    paddingTop: SPACING.md,
     backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
   backButton: {
-    width: 40,
-    height: 24,
-    borderRadius: 20,
-    // backgroundColor: COLORS.gray[100],
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
   headerTitle: {
     fontSize: FONTS.sizes.xl,
@@ -406,7 +398,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   placeholder: {
-    width: 40,
+    width: 32,
+    height: 32,
   },
   scrollView: {
     flex: 1,

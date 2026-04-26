@@ -234,6 +234,9 @@ const Icon: React.FC<IconProps> = ({
   style 
 }) => {
   const iconName = name.toLowerCase();
+  const isBackIcon = iconName === 'arrow-back' || iconName === 'chevron-back';
+  // Enforce smallest unified back icon size across project headers
+  const resolvedSize = isBackIcon ? 16 : size;
   
   // First, check if we have a TSX icon component for this icon
   const IconComponent = iconComponentMap[iconName];
@@ -243,7 +246,7 @@ const Icon: React.FC<IconProps> = ({
       const isSelected = iconName === 'checkmark-circle';
       return (
         <CheckIcon 
-          size={size} 
+          size={resolvedSize} 
           color={color}
           isSelected={isSelected}
           circleColor={isSelected ? color : undefined}
@@ -253,8 +256,8 @@ const Icon: React.FC<IconProps> = ({
     
     return (
       <IconComponent 
-        width={size} 
-        height={size} 
+        width={resolvedSize} 
+        height={resolvedSize} 
         color={color}
         style={style}
       />
@@ -272,7 +275,7 @@ const Icon: React.FC<IconProps> = ({
     return (
       <VectorIconComponent 
         name={iconMapping.name as any} 
-        size={size} 
+        size={resolvedSize} 
         color={color} 
         style={style}
       />
@@ -283,7 +286,7 @@ const Icon: React.FC<IconProps> = ({
   return (
     <MaterialIcons 
       name={name as any} 
-      size={size} 
+      size={resolvedSize} 
       color={color} 
       style={style}
     />

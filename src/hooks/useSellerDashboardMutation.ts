@@ -1,110 +1,131 @@
-import { useCallback, useState } from 'react';
-import { sellerApi, SellerDashboardItem, SellerDashboardParams } from '../services/sellerApi';
+import { useCallback, useMemo, useState } from 'react';
 
-interface UseSellerDashboardMutationOptions {
-  onSuccess?: (data: {
-    items: SellerDashboardItem[];
-    total: number;
-    page: number;
-    pageSize: number;
-  }) => void;
-  onError?: (error: string) => void;
-}
+export type SellerDashboardMode = 'profit' | 'refund';
 
-interface UseSellerDashboardMutationResult {
-  mutate: (params: SellerDashboardParams) => Promise<void>;
+type SellerDashboardRequest = {
+  search?: string;
+  from?: string;
+  to?: string;
+  mode?: SellerDashboardMode;
+  page?: number;
+  pageSize?: number;
+};
+
+type SellerDashboardItem = {
+  firstTierPaidAt: string;
+  orderNumber: string;
+  orderId: string;
+  productNumber: string;
+  quantity: number;
+  recipient: string;
+  paidAmountKrw: number;
+  rebateKrw: number;
+  trackingNumber: string | null;
+  liveCodeSnapshot: string;
+};
+
+type UseSellerDashboardMutationResult = {
+  mutate: (request: SellerDashboardRequest) => Promise<void>;
   items: SellerDashboardItem[];
   total: number;
   page: number;
   pageSize: number;
   isLoading: boolean;
   isLoadingMore: boolean;
-  isSuccess: boolean;
   isError: boolean;
   error: string | null;
-}
+};
 
-export const useSellerDashboardMutation = (
-  options?: UseSellerDashboardMutationOptions
-): UseSellerDashboardMutationResult => {
+const BASE_DATA: SellerDashboardItem[] = Array.from({ length: 42 }).map((_, index) => {
+  const seq = index + 1;
+  const quantity = (seq % 5) + 1;
+  const paidAmount = 12000 + seq * 860;
+  return {
+    firstTierPaidAt: new Date(2026, 0, (seq % 28) + 1).toISOString(),
+    orderNumber: `TM-ORD-${String(10000 + seq)}`,
+    orderId: `order-${seq}`,
+    productNumber: `PRD-${String(3000 + seq)}`,
+    quantity,
+    recipient: `Buyer ${seq}`,
+    paidAmountKrw: paidAmount,
+    rebateKrw: Math.floor(paidAmount * 0.03),
+    trackingNumber: seq % 3 === 0 ? null : `TRK${900000 + seq}`,
+    liveCodeSnapshot: seq % 2 === 0 ? 'LIVE-SEOUL' : 'LIVE-BUSAN',
+  };
+});
+
+/**
+ * Local in-memory fallback for seller order/refund dashboard.
+ * Keeps current screen functional until backend endpoints are wired.
+ */
+export const useSellerDashboardMutation = (): UseSellerDashboardMutationResult => {
   const [items, setItems] = useState<SellerDashboardItem[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(20);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
-  const [isSuccess, setIsSuccess] = useState<boolean>(false);
   const [isError, setIsError] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const mutate = useCallback(
-    async (params: SellerDashboardParams) => {
-      const currentPage = params.page ?? 1;
-      const currentPageSize = params.pageSize ?? 20;
+  const mutate = useCallback(async (request: SellerDashboardRequest): Promise<void> => {
+    const nextPage = request.page ?? 1;
+    const nextPageSize = request.pageSize ?? 20;
+    const keyword = request.search?.trim().toLowerCase() ?? '';
 
-      if (currentPage === 1) {
-        setIsLoading(true);
-      } else {
-        setIsLoadingMore(true);
+    if (nextPage > 1) {
+      setIsLoadingMore(true);
+    } else {
+      setIsLoading(true);
+    }
+
+    setIsError(false);
+    setError(null);
+
+    try {
+      const filtered = BASE_DATA.filter((row) => {
+        if (!keyword) return true;
+        return (
+          row.orderNumber.toLowerCase().includes(keyword) ||
+          row.productNumber.toLowerCase().includes(keyword) ||
+          row.recipient.toLowerCase().includes(keyword)
+        );
+      });
+
+      const start = (nextPage - 1) * nextPageSize;
+      const end = start + nextPageSize;
+      const paged = filtered.slice(start, end);
+
+      setTotal(filtered.length);
+      setPage(nextPage);
+      setPageSize(nextPageSize);
+      setItems((prev) => (nextPage > 1 ? [...prev, ...paged] : paged));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load seller dashboard data.';
+      setIsError(true);
+      setError(message);
+      if (nextPage === 1) {
+        setItems([]);
+        setTotal(0);
       }
+    } finally {
+      setIsLoading(false);
+      setIsLoadingMore(false);
+    }
+  }, []);
 
-      setIsError(false);
-      setIsSuccess(false);
-      setError(null);
-
-      try {
-        const response = await sellerApi.getSellerDashboard({
-          ...params,
-          page: currentPage,
-          pageSize: currentPageSize,
-        });
-
-        if (response.success && response.data) {
-          const responseItems = response.data.items || [];
-          setItems((prevItems) =>
-            currentPage === 1 ? responseItems : [...prevItems, ...responseItems]
-          );
-          setTotal(response.data.total ?? 0);
-          setPage(response.data.page ?? currentPage);
-          setPageSize(response.data.pageSize ?? currentPageSize);
-          setIsSuccess(true);
-
-          options?.onSuccess?.({
-            items: responseItems,
-            total: response.data.total ?? 0,
-            page: response.data.page ?? currentPage,
-            pageSize: response.data.pageSize ?? currentPageSize,
-          });
-        } else {
-          const errorMessage =
-            response.message || response.error || 'Failed to fetch seller dashboard.';
-          setError(errorMessage);
-          setIsError(true);
-          options?.onError?.(errorMessage);
-        }
-      } catch (err: any) {
-        const errorMessage = err?.message || 'An unexpected error occurred.';
-        setError(errorMessage);
-        setIsError(true);
-        options?.onError?.(errorMessage);
-      } finally {
-        setIsLoading(false);
-        setIsLoadingMore(false);
-      }
-    },
-    [options]
+  return useMemo(
+    () => ({
+      mutate,
+      items,
+      total,
+      page,
+      pageSize,
+      isLoading,
+      isLoadingMore,
+      isError,
+      error,
+    }),
+    [mutate, items, total, page, pageSize, isLoading, isLoadingMore, isError, error]
   );
-
-  return {
-    mutate,
-    items,
-    total,
-    page,
-    pageSize,
-    isLoading,
-    isLoadingMore,
-    isSuccess,
-    isError,
-    error,
-  };
 };

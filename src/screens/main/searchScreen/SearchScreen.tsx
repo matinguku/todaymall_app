@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Modal,
+  useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from '../../../components/Icon';
@@ -24,7 +25,7 @@ import { Platform, Alert } from 'react-native';
 import RNFS from 'react-native-fs';
 import { requestCameraPermission, requestPhotoLibraryPermission } from '../../../utils/permissions';
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG } from '../../../constants';
 import { RootStackParamList, Product } from '../../../types';
 import { usePlatformStore } from '../../../store/platformStore';
 import { useAppSelector } from '../../../store/hooks';
@@ -55,6 +56,11 @@ type ProductDetailNavigationProp = StackNavigationProp<RootStackParamList, 'Prod
 
 const SearchScreenComponent: React.FC = () => {
   const navigation = useNavigation<ProductDetailNavigationProp>();
+  const { width: dynWinWidth, height: dynWinHeight } = useWindowDimensions();
+  const searchIsTablet = Math.min(dynWinWidth, dynWinHeight) >= 600;
+  const searchIsLandscape = dynWinWidth > dynWinHeight;
+  const searchGridCols = searchIsTablet ? (searchIsLandscape ? 4 : 3) : 2;
+  const dynCardWidth = (dynWinWidth - SPACING.sm * 2 - SPACING.sm * (searchGridCols - 1)) / searchGridCols;
   // Search context removed - using local state
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedSort, setSelectedSort] = useState<string>('best_match');
@@ -1136,7 +1142,7 @@ const SearchScreenComponent: React.FC = () => {
 
     const options: CameraOptions = {
       mediaType: 'photo' as MediaType,
-      quality: 0.1, // Very low quality to ensure <1.2MB for large images
+      quality: IMAGE_CONFIG.QUALITY,
       saveToPhotos: false,
       includeBase64: true,
     };
@@ -1153,7 +1159,7 @@ const SearchScreenComponent: React.FC = () => {
         setImagePickerModalVisible(false);
         let base64Data = response.assets[0].base64;
         
-        // Image is already compressed with quality: 0.5 in camera options
+        // Then compressImageForSearch uses IMAGE_CONFIG.QUALITY (may step down for size)
         // Only compress if base64 is not available (fallback case)
         if (!base64Data && response.assets[0].uri) {
           const { compressImageForSearch } = require('../../../utils/imageCompression');
@@ -1188,7 +1194,7 @@ const SearchScreenComponent: React.FC = () => {
 
     const options: ImageLibraryOptions = {
       mediaType: 'photo' as MediaType,
-      quality: 0.1, // Very low quality to ensure <1.2MB for large images
+      quality: IMAGE_CONFIG.QUALITY,
       selectionLimit: 1,
       includeBase64: true,
     };
@@ -1205,7 +1211,7 @@ const SearchScreenComponent: React.FC = () => {
         setImagePickerModalVisible(false);
         let base64Data = response.assets[0].base64;
         
-        // Image is already compressed with quality: 0.5 in gallery options
+        // Then compressImageForSearch uses IMAGE_CONFIG.QUALITY (may step down for size)
         // Only compress if base64 is not available (fallback case)
         if (!base64Data && response.assets[0].uri) {
           const { compressImageForSearch } = require('../../../utils/imageCompression');
@@ -1489,7 +1495,7 @@ const SearchScreenComponent: React.FC = () => {
         onPress={() => handleProductPress(product)}
         onLikePress={() => handleLikePress(product)}
         isLiked={isProductLiked(product)}
-        cardWidth={CARD_WIDTH}
+        cardWidth={dynCardWidth}
       />
     );
   }, [handleLikePress, handleProductPress, isProductLiked]);
@@ -1587,7 +1593,8 @@ const SearchScreenComponent: React.FC = () => {
               data={filteredProducts}
               renderItem={renderProductItem}
               keyExtractor={productKeyExtractor}
-              numColumns={2}
+              key={`search-grid-${searchGridCols}`}
+              numColumns={searchGridCols}
               columnWrapperStyle={styles.productGrid}
               contentContainerStyle={styles.productListContent}
               showsVerticalScrollIndicator={false}
@@ -1761,7 +1768,7 @@ const SearchScreenComponent: React.FC = () => {
                           const source = item.source || '1688';
                           navigateToProductDetail(product.id, source, locale);
                         }}
-                        cardWidth={CARD_WIDTH}
+                        cardWidth={dynCardWidth}
                       />
                     );
                   })}

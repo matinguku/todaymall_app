@@ -140,6 +140,10 @@ const SignupScreen: React.FC = () => {
       newErrors.name = t('auth.nameTooShort');
     }
 
+    if (!formData.user_id) {
+      newErrors.user_id = ERROR_MESSAGES.REQUIRED_FIELD;
+    }
+
     if (!formData.email) {
       newErrors.email = ERROR_MESSAGES.REQUIRED_FIELD;
     } else if (!VALIDATION_RULES.EMAIL_REGEX.test(formData.email)) {
@@ -346,14 +350,14 @@ const SignupScreen: React.FC = () => {
                   ]}>
                     {formData.name.length > 0 && (
                       <Text style={styles.floatingLabel}>
-                        {t('auth.name') || 'Name'}
+                        {t('auth.name') || 'Name'}<Text style={styles.requiredAsterisk}> *</Text>
                       </Text>
                     )}
                     <View style={styles.inputRow}>
                       <RNTextInput
-                        placeholder={formData.name.length > 0 
-                          ? '' 
-                          : (t('auth.enterName') || 'Enter name')
+                        placeholder={formData.name.length > 0
+                          ? ''
+                          : `${t('auth.enterName') || 'Enter name'} *`
                         }
                         placeholderTextColor={'#999999'}
                         value={formData.name}
@@ -390,14 +394,14 @@ const SignupScreen: React.FC = () => {
                   ]}>
                     {formData.user_id.length > 0 && (
                       <Text style={styles.floatingLabel}>
-                        {t('auth.userId') || 'User ID'}
+                        {t('auth.userId') || 'User ID'}<Text style={styles.requiredAsterisk}> *</Text>
                       </Text>
                     )}
                     <View style={styles.inputRow}>
                       <RNTextInput
                         placeholder={formData.user_id.length > 0
                           ? ''
-                          : (t('auth.enterUserId') || 'Enter user ID')
+                          : `${t('auth.enterUserId') || 'Enter user ID'} *`
                         }
                         placeholderTextColor={'#999999'}
                         value={formData.user_id}
@@ -430,14 +434,14 @@ const SignupScreen: React.FC = () => {
                   ]}>
                     {formData.email.length > 0 && (
                       <Text style={styles.floatingLabel}>
-                        {t('auth.email') || 'Email'}
+                        {t('auth.email') || 'Email'}<Text style={styles.requiredAsterisk}> *</Text>
                       </Text>
                     )}
                     <View style={styles.inputRow}>
                       <RNTextInput
                         placeholder={formData.email.length > 0
                           ? ''
-                          : (t('auth.enterEmail') || 'Enter email')
+                          : `${t('auth.enterEmail') || 'Enter email'} *`
                         }
                         placeholderTextColor={'#999999'}
                         value={formData.email}
@@ -526,14 +530,14 @@ const SignupScreen: React.FC = () => {
                   ]}>
                     {formData.password.length > 0 && (
                       <Text style={styles.floatingLabel}>
-                        {t('auth.password') || 'Password'}
+                        {t('auth.password') || 'Password'}<Text style={styles.requiredAsterisk}> *</Text>
                       </Text>
                     )}
                     <View style={styles.inputRow}>
                       <RNTextInput
-                        placeholder={formData.password.length > 0 
-                          ? '' 
-                          : (t('auth.enterPassword') || 'Password')
+                        placeholder={formData.password.length > 0
+                          ? ''
+                          : `${t('auth.enterPassword') || 'Password'} *`
                         }
                         placeholderTextColor={'#999999'}
                         value={formData.password}
@@ -592,14 +596,14 @@ const SignupScreen: React.FC = () => {
                   ]}>
                     {formData.confirmPassword.length > 0 && (
                       <Text style={styles.floatingLabel}>
-                        {t('auth.confirmPassword') || 'Confirm Password'}
+                        {t('auth.confirmPassword') || 'Confirm Password'}<Text style={styles.requiredAsterisk}> *</Text>
                       </Text>
                     )}
                     <View style={styles.inputRow}>
                       <RNTextInput
-                        placeholder={formData.confirmPassword.length > 0 
-                          ? '' 
-                          : (t('auth.confirmPassword') || 'Re-enter password')
+                        placeholder={formData.confirmPassword.length > 0
+                          ? ''
+                          : `${t('auth.confirmPassword') || 'Re-enter password'} *`
                         }
                         placeholderTextColor={'#999999'}
                         value={formData.confirmPassword}
@@ -700,7 +704,7 @@ const SignupScreen: React.FC = () => {
                   <Text style={styles.checkboxText}>{t('auth.registerAsBusinessAccount')}</Text>
                 </TouchableOpacity> */}
 
-                <TouchableOpacity
+                {/* <TouchableOpacity
                   style={styles.checkboxRow}
                   onPress={() => setIsSeller(!isSeller)}
                   activeOpacity={0.7}
@@ -713,7 +717,7 @@ const SignupScreen: React.FC = () => {
                   <Text style={styles.checkboxText}>
                     {t('auth.registerAsSeller') || 'Register as a Seller'}
                   </Text>
-                </TouchableOpacity>
+                </TouchableOpacity> */}
 
                 <TouchableOpacity
                   style={styles.checkboxRow}
@@ -1003,6 +1007,10 @@ const styles = StyleSheet.create({
   inputFieldContainerWithLabel: {
     paddingTop: SPACING.xs + 16, // Add space for label
     paddingBottom: SPACING.xs,
+  },
+  requiredAsterisk: {
+    color: '#E53935',
+    fontSize: FONTS.sizes.xs,
   },
   floatingLabel: {
     position: 'absolute',

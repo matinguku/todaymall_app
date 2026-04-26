@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
 import { useNavigation } from '@react-navigation/native';
-import { COLORS, FONTS, SPACING } from '../../../../constants';
+import { COLORS, FONTS, SPACING, IMAGE_CONFIG } from '../../../../constants';
 
 type DeliveryStatus = 'awaiting_pickup' | 'out_for_delivery' | 'in_transit' | 'awaiting_shipment' | 'delivered';
 
@@ -36,7 +36,7 @@ const MyDeliveriesScreen: React.FC = () => {
       date: '02-02',
       courierCompany: 'Delivery confirmation',
       trackingNumber: '9928383938383847',
-      productImage: 'https://via.placeholder.com/100',
+      productImage: `https://via.placeholder.com/${IMAGE_CONFIG.PRODUCT_DISPLAY_PIXEL}`,
       productTitle: '商品名称展示',
     },
   ];

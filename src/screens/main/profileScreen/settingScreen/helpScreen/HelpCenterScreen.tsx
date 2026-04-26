@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -21,9 +21,45 @@ import { useHelpCenterMutation } from '../../../../../hooks/useHelpCenterMutatio
 
 type HelpCenterScreenNavigationProp = StackNavigationProp<RootStackParamList, 'HelpCenter'>;
 
+interface SearchSectionProps {
+  placeholder: string;
+  onSearch: (query: string) => void;
+}
+
+// Extracted as a separate memoized component so parent re-renders
+// (e.g. helpCenter data loading) do not reset Korean IME composition.
+// Uses a ref + defaultValue (uncontrolled) so keystrokes never push
+// `value` back into the native TextInput mid-composition.
+const SearchSection = React.memo(({ placeholder, onSearch }: SearchSectionProps) => {
+  const queryRef = useRef('');
+
+  const submit = useCallback(() => {
+    const q = queryRef.current.trim();
+    if (q) onSearch(q);
+  }, [onSearch]);
+
+  return (
+    <View style={styles.searchSection}>
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder={placeholder}
+          placeholderTextColor={COLORS.gray[400]}
+          defaultValue=""
+          onChangeText={(text) => { queryRef.current = text; }}
+          onSubmitEditing={submit}
+          returnKeyType="search"
+        />
+        <TouchableOpacity style={styles.searchButton} onPress={submit}>
+          <Icon name="search" size={20} color={COLORS.white} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+});
+
 const HelpCenterScreen: React.FC = () => {
   const navigation = useNavigation<HelpCenterScreenNavigationProp>();
-  const [searchQuery, setSearchQuery] = useState('');
   const locale = useAppSelector((state) => state.i18n.locale);
   
   const { mutate: fetchHelpCenter, data: helpCenterData, isLoading, error } = useHelpCenterMutation();
@@ -49,15 +85,12 @@ const HelpCenterScreen: React.FC = () => {
     return obj[locale] || obj.en || obj.ko || obj.zh || '';
   };
 
-  const handleSearch = () => {
-    if (searchQuery.trim()) {
-      navigation.navigate('HelpSearch', { query: searchQuery.trim() });
-    }
-  };
-
-  const handleSubmitEditing = () => {
-    handleSearch();
-  };
+  const handleSearch = useCallback(
+    (query: string) => {
+      navigation.navigate('HelpSearch', { query, helpCenterData });
+    },
+    [navigation, helpCenterData]
+  );
 
   const handleGuidePress = (guide: any) => {
     navigation.navigate('HelpChapter', { guide });
@@ -69,7 +102,7 @@ const HelpCenterScreen: React.FC = () => {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.backButton}
         onPress={() => navigation.goBack()}
       >
@@ -77,28 +110,6 @@ const HelpCenterScreen: React.FC = () => {
       </TouchableOpacity>
       <Text style={styles.headerTitle}>{t('helpCenter.title')}</Text>
       <View style={styles.placeholder} />
-    </View>
-  );
-
-  const renderSearchSection = () => (
-    <View style={styles.searchSection}>
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder={t('helpCenter.popularSearch')}
-          placeholderTextColor={COLORS.gray[400]}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          onSubmitEditing={handleSubmitEditing}
-          returnKeyType="search"
-        />
-        <TouchableOpacity 
-          style={styles.searchButton}
-          onPress={handleSearch}
-        >
-          <Icon name="search" size={20} color={COLORS.white} />
-        </TouchableOpacity>
-      </View>
     </View>
   );
 
@@ -176,7 +187,10 @@ const HelpCenterScreen: React.FC = () => {
     <SafeAreaView style={styles.container}>
       {renderHeader()}
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {renderSearchSection()}
+        <SearchSection
+          placeholder={t('helpCenter.popularSearch')}
+          onSearch={handleSearch}
+        />
         {renderContent()}
       </ScrollView>
     </SafeAreaView>
@@ -194,14 +208,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
-    paddingTop: SPACING['2xl'],
+    paddingTop: SPACING.md,
     backgroundColor: COLORS.white,
   },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: COLORS.gray[100],
+    backgroundColor: COLORS.white,
     justifyContent: 'center',
     alignItems: 'center',
   },

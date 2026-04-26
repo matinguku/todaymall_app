@@ -16,7 +16,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import Text from '../../../components/Text';
 import Icon from '../../../components/Icon';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, SCREEN_WIDTH } from '../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, SCREEN_WIDTH, IMAGE_CONFIG } from '../../../constants';
 import { productsApi } from '../../../services/productsApi';
 import { useToast } from '../../../context/ToastContext';
 import { useAppSelector } from '../../../store/hooks';
@@ -451,7 +451,7 @@ const LiveSellerDetailScreen: React.FC = () => {
         })}
       >
         <Image
-          source={{ uri: imageUri || 'https://via.placeholder.com/150.png?text=Product' }}
+          source={{ uri: imageUri || `https://via.placeholder.com/${IMAGE_CONFIG.PRODUCT_DISPLAY_PIXEL}.png?text=Product` }}
           style={styles.productImage}
           resizeMode="cover"
         />

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Svg, { Circle } from 'react-native-svg';
 import {
   View,
@@ -12,14 +12,14 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import Icon from '../../../../../components/Icon';
-import { RootStackParamList } from '../../../../../types';
+import type { SellerStackParamList } from '../../../../../types';
 import { COLORS } from '../../../../../constants';
 import { useTranslation } from '../../../../../hooks/useTranslation';
-import { useSellerDashboardSummaryMutation } from '../../../../../hooks/useSellerDashboardSummaryMutation';
+import { useSellerDashboardSummaryMutation } from './useSellerDashboardSummaryMutation';
 
 const { width } = Dimensions.get('window');
 
-type NavigationProp = StackNavigationProp<RootStackParamList, 'SellerPage'>;
+type NavigationProp = StackNavigationProp<SellerStackParamList, 'SellerHome'>;
 
 type Seller = {
   sellerId: string;
@@ -35,26 +35,6 @@ type ChartItem = {
   value: number;
   color: string;
 };
-
-const donutData: ChartItem[] = [
-  { label: '서울', value: 25, color: '#4A6CF7' },
-  { label: '경기도', value: 30, color: '#FF7A00' },
-  { label: '부산', value: 25, color: '#00C48C' },
-  { label: '대전', value: 5, color: '#FF5DA2' },
-  { label: '기타', value: 15, color: '#A66CFF' },
-];
-
-const barData1: ChartItem[] = [
-  { label: 'PC', value: 40, color: '#4A6CF7' },
-  { label: 'APP', value: 30, color: '#FF5DA2' },
-  { label: 'Mobile', value: 30, color: '#00C48C' },
-];
-
-const barData2: ChartItem[] = [
-  { label: 'Link', value: 35, color: '#4A6CF7' },
-  { label: 'out search', value: 40, color: '#FF5DA2' },
-  { label: 'flate homme', value: 25, color: '#00C48C' },
-];
 
 const SellerPage: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -84,6 +64,35 @@ const SellerPage: React.FC = () => {
   useEffect(() => {
     fetchDashboardSummary();
   }, [fetchDashboardSummary]);
+
+  const donutData: ChartItem[] = useMemo(
+    () => [
+      { label: t('sellerInfo.chart.regions.seoul'), value: 25, color: '#4A6CF7' },
+      { label: t('sellerInfo.chart.regions.gyeonggi'), value: 30, color: '#FF7A00' },
+      { label: t('sellerInfo.chart.regions.busan'), value: 25, color: '#00C48C' },
+      { label: t('sellerInfo.chart.regions.daejeon'), value: 5, color: '#FF5DA2' },
+      { label: t('sellerInfo.chart.regions.others'), value: 15, color: '#A66CFF' },
+    ],
+    [t]
+  );
+
+  const barData1: ChartItem[] = useMemo(
+    () => [
+      { label: t('sellerInfo.chart.channels.pc'), value: 40, color: '#4A6CF7' },
+      { label: t('sellerInfo.chart.channels.app'), value: 30, color: '#FF5DA2' },
+      { label: t('sellerInfo.chart.channels.mobile'), value: 30, color: '#00C48C' },
+    ],
+    [t]
+  );
+
+  const barData2: ChartItem[] = useMemo(
+    () => [
+      { label: t('sellerInfo.chart.traffic.link'), value: 35, color: '#4A6CF7' },
+      { label: t('sellerInfo.chart.traffic.externalSearch'), value: 40, color: '#FF5DA2' },
+      { label: t('sellerInfo.chart.traffic.platformHome'), value: 25, color: '#00C48C' },
+    ],
+    [t]
+  );
 
   useEffect(() => {
     if (directTeam.length > 0) {
@@ -143,11 +152,11 @@ const SellerPage: React.FC = () => {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity onPress={() => navigation.goBack()}>
-        <Icon name="arrow-back" size={24} color="#333" />
+      <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
       </TouchableOpacity>
       <Text style={styles.headerTitle}>{t('sellerInfo.dashboardTitle')}</Text>
-      <View style={{ width: 24 }} />
+      <View style={styles.headerPlaceholder} />
     </View>
   );
 
@@ -235,7 +244,7 @@ const SellerPage: React.FC = () => {
           style={styles.sectionButton}
           onPress={() => navigation.navigate('SellerTeamInfo')}
         >
-          <Text style={styles.sectionButtonText}>Seller Team Info</Text>
+          <Text style={styles.sectionButtonText}>{t('sellerInfo.team.buttonLabel')}</Text>
         </TouchableOpacity>
       </View>
       {sellerInfos.map((seller) => (
@@ -312,10 +321,23 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: '#fff',
-    elevation: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  backButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerPlaceholder: {
+    width: 32,
+    height: 32,
   },
   headerTitle: {
     fontSize: 18,

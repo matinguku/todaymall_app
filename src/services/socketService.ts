@@ -1,5 +1,4 @@
 import { io, Socket } from 'socket.io-client';
-import { getStoredToken } from './authApi';
 
 import { SERVER_BASE_URL } from '../constants';
 
@@ -71,7 +70,7 @@ class SocketService {
    * Connect to Socket.IO server
    */
   connect(token: string): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       if (this.socket?.connected) {
         console.log('[SocketService] Already connected, id:', this.socket.id);
         resolve();
@@ -99,11 +98,25 @@ class SocketService {
         this.socket = null;
       }
 
+      let settled = false;
+      let connectTimeout: ReturnType<typeof setTimeout> | undefined;
+
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        if (connectTimeout !== undefined) {
+          clearTimeout(connectTimeout);
+          connectTimeout = undefined;
+        }
+        this.isConnecting = false;
+        resolve();
+      };
+
       this.isConnecting = true;
       this.connectionFailed = false;
       this.reconnectAttempts = 0;
       console.log('[SocketService] Connecting to:', SOCKET_BASE_URL, 'path: /socket.io');
-      const authToken = token || localStorage.getItem('token') || '';
+      const authToken = token || '';
 
       try {
         this.socket = io(SOCKET_BASE_URL, {
@@ -111,53 +124,55 @@ class SocketService {
           auth: {
             token: token,
           },
-          extraHeaders: {
-            Authorization: `Bearer ${authToken}`,
-          },
-          transports: ['polling'],
+          extraHeaders: authToken
+            ? {
+                Authorization: `Bearer ${authToken}`,
+              }
+            : {},
+          // Prefer websocket on native; xhr polling alone often surfaces as "xhr poll error" on RN.
+          transports: ['websocket', 'polling'],
           reconnection: true,
           reconnectionDelay: 2000,
           reconnectionDelayMax: 10000,
           reconnectionAttempts: this.maxReconnectAttempts,
         });
 
-        this.socket.on('connect', () => {
-          console.log('[SocketService] Connected, id:', this.socket?.id);
-          this.isConnecting = false;
-          this.reconnectAttempts = 0;
-          this.connectionFailed = false;
-          resolve();
-        });
-
-        this.socket.on('connect_error', (error) => {
-          this.reconnectAttempts++;
-          console.error(`[SocketService] Connection error (${this.reconnectAttempts}/${this.maxReconnectAttempts}):`, error.message);
-          this.isConnecting = false;
-
-          if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            this.connectionFailed = true;
-            this.lastFailTime = Date.now();
-            console.error('[SocketService] Max retries reached. Cooldown for', this.RETRY_COOLDOWN / 1000, 's. App will use REST API.');
-            // Disconnect to stop socket.io's own reconnection
-            if (this.socket) {
-              this.socket.disconnect();
-            }
-            reject(new Error('Failed to connect to server after multiple attempts'));
-          }
-        });
-
-        // Resolve the promise after a timeout if not connected yet
-        // (so callers aren't stuck waiting forever)
-        const connectTimeout = setTimeout(() => {
-          if (this.isConnecting) {
-            console.warn('[SocketService] Connect timeout, resolving promise (will keep retrying in background)');
-            this.isConnecting = false;
-            resolve();
+        connectTimeout = setTimeout(() => {
+          if (!settled && !this.socket?.connected) {
+            console.debug(
+              '[SocketService] Connect timeout (10s); continuing. Retries may continue in background until max attempts.',
+            );
+            settle();
           }
         }, 10000);
 
         this.socket.on('connect', () => {
-          clearTimeout(connectTimeout);
+          console.log('[SocketService] Connected, id:', this.socket?.id);
+          this.reconnectAttempts = 0;
+          this.connectionFailed = false;
+          settle();
+        });
+
+        this.socket.on('connect_error', (error) => {
+          this.reconnectAttempts += 1;
+          // console.debug: visible in Metro / debugger only — avoids LogBox for transient network issues.
+          console.debug(
+            `[SocketService] Connection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}: ${error.message}`,
+          );
+
+          if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            this.connectionFailed = true;
+            this.lastFailTime = Date.now();
+            console.debug(
+              '[SocketService] Socket unavailable after max attempts; using REST until cooldown (' +
+                this.RETRY_COOLDOWN / 1000 +
+                's).',
+            );
+            if (this.socket) {
+              this.socket.disconnect();
+            }
+            settle();
+          }
         });
 
         this.socket.on('disconnect', (reason) => {
@@ -172,23 +187,21 @@ class SocketService {
         });
 
         this.socket.on('reconnect_error', (error) => {
-          // Only log once every few attempts to reduce spam
           if (this.reconnectAttempts % 3 === 0) {
-            console.error('[SocketService] Reconnection error:', error.message);
+            console.debug('[SocketService] Reconnection error:', error.message);
           }
         });
 
         this.socket.on('reconnect_failed', () => {
-          console.error('[SocketService] Reconnection failed after max attempts. App will use REST API.');
+          console.debug('[SocketService] Reconnection failed after max attempts. App will use REST API.');
           this.connectionFailed = true;
           this.lastFailTime = Date.now();
         });
       } catch (error) {
-        console.error('[SocketService] Error creating connection:', error);
-        this.isConnecting = false;
+        console.debug('[SocketService] Error creating connection:', error);
         this.connectionFailed = true;
         this.lastFailTime = Date.now();
-        reject(error);
+        settle();
       }
     });
   }
@@ -228,7 +241,7 @@ class SocketService {
       console.log('[SocketService] Emitting:', event, data ? JSON.stringify(data).substring(0, 100) : '');
       this.socket.emit(event, data);
     } else {
-      console.warn('[SocketService] Socket not connected! Cannot emit:', event);
+      console.debug('[SocketService] Socket not connected! Cannot emit:', event);
     }
   }
 

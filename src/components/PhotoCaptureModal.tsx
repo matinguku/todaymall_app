@@ -14,7 +14,7 @@ import {
   ScrollView,
 } from 'react-native';
 import Icon from './Icon';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG } from '../constants';
 import { useAppSelector } from '../store/hooks';
 import { translations } from '../i18n/translations';
 import ImagePickerModal from './ImagePickerModal';
@@ -137,14 +137,16 @@ const PhotoCaptureModal: React.FC<PhotoCaptureModalProps> = ({
 
   const handleTakePhoto = () => {
     // Simulate taking a photo
-    const newPhoto = `https://picsum.photos/seed/camera${Date.now()}/200/200`;
+    const px = IMAGE_CONFIG.PRODUCT_DISPLAY_PIXEL;
+    const newPhoto = `https://picsum.photos/seed/camera${Date.now()}/${px}/${px}`;
     setPhotos(prev => [...prev, newPhoto]);
     setImagePickerVisible(false);
   };
 
   const handleChooseFromGallery = () => {
     // Simulate choosing from gallery
-    const newPhoto = `https://picsum.photos/seed/gallery${Date.now()}/200/200`;
+    const px = IMAGE_CONFIG.PRODUCT_DISPLAY_PIXEL;
+    const newPhoto = `https://picsum.photos/seed/gallery${Date.now()}/${px}/${px}`;
     setPhotos(prev => [...prev, newPhoto]);
     setImagePickerVisible(false);
   };

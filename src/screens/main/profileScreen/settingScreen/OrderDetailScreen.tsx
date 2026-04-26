@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Image,
   ActivityIndicator, Modal, TextInput,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { WebView } from 'react-native-webview';
 import Icon from '../../../../components/Icon';
@@ -13,10 +13,12 @@ import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../../../../constants';
 import { useToast } from '../../../../context/ToastContext';
 import { formatPriceKRW } from '../../../../utils/i18nHelpers';
 import { orderApi } from '../../../../services/orderApi';
+import { logDevApiFailure } from '../../../../utils/devLog';
 
 const OrderDetailScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { order: initialOrder } = route.params || {};
   const [currentOrder, setCurrentOrder] = useState(initialOrder);
@@ -241,7 +243,7 @@ const OrderDetailScreen: React.FC = () => {
       </ScrollView>
 
       {/* Bottom action bar */}
-      <View style={styles.bottomBar}>
+      <View style={[styles.bottomBar, { paddingBottom: SPACING.md + insets.bottom }]}>
         {isPayCase ? (
           <TouchableOpacity style={styles.payBtn} onPress={() => navigation.navigate('Payment' as never)}>
             <Text style={styles.payBtnText}>Pay</Text>
@@ -383,7 +385,7 @@ const OrderDetailScreen: React.FC = () => {
                       showToast(res.error || 'Failed to update address', 'error');
                     }
                   } catch (error: any) {
-                    console.error('Address update error:', error);
+                    logDevApiFailure('OrderDetailScreen.updateAddress', error);
                     showToast(error?.message || 'Failed to update address', 'error');
                   } finally {
                     setIsSavingAddress(false);

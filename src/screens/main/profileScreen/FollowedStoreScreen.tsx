@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../components/Icon';
 import { useNavigation } from '@react-navigation/native';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG } from '../../../constants';
 import { useToast } from '../../../context/ToastContext';
 import { useTranslation } from '../../../hooks/useTranslation';
 
@@ -245,7 +245,7 @@ const FollowedStoreScreen: React.FC = () => {
         {item.defaultItems.slice(0, 4).map((product) => (
           <View key={product.offerId} style={styles.productItem}>
             <Image 
-              source={{ uri: product.photoUrl || 'https://via.placeholder.com/200' }} 
+              source={{ uri: product.photoUrl || `https://via.placeholder.com/${IMAGE_CONFIG.PRODUCT_DISPLAY_PIXEL}` }} 
               style={styles.productImage} 
             />
             <Text style={styles.productPrice}>¥{product.price}</Text>

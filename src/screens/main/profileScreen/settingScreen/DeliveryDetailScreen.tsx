@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { COLORS, FONTS, SPACING } from '../../../../constants';
+import { COLORS, FONTS, SPACING, IMAGE_CONFIG } from '../../../../constants';
 import { useToast } from '../../../../context/ToastContext';
 
 interface TrackingEvent {
@@ -54,7 +54,7 @@ const DeliveryDetailScreen: React.FC = () => {
 
   const orderDetails = {
     storeName: 'SANSUI Brand STORE',
-    productImage: 'https://via.placeholder.com/100',
+    productImage: `https://via.placeholder.com/${IMAGE_CONFIG.PRODUCT_DISPLAY_PIXEL}`,
     productTitle: 'Text Text Text Text Text Text Text ...',
     productSpecs: '2pack/1.2V/United States',
     productPrice: 500.00,

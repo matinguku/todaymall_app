@@ -240,21 +240,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (token) {
         const userData = await getStoredUserData();
         if (userData) {
-          // Validate the token against the server before trusting it
-          const profileResult = await getProfile();
-          if (profileResult.success) {
-            dispatch({ type: 'AUTH_SUCCESS', payload: userData });
-            return;
-          } else if (profileResult.statusCode === 401 || profileResult.statusCode === 403) {
-            // Token is expired or invalid — clear stored data and go to guest mode
-            await clearAuthData();
-            dispatch({ type: 'AUTH_LOGOUT' });
-            return;
-          } else {
-            // Network error or other server issue — trust the cached data so offline users stay logged in
-            dispatch({ type: 'AUTH_SUCCESS', payload: userData });
-            return;
-          }
+          // Optimistic restore: trust the cached user immediately so the UI
+          // can render with the right auth state on first paint. We then
+          // validate the token in the background; if the server rejects it
+          // we transition to guest mode after the fact.
+          dispatch({ type: 'AUTH_SUCCESS', payload: userData });
+
+          // Background validation — does not block the first frame.
+          getProfile()
+            .then(async (profileResult) => {
+              if (
+                profileResult.statusCode === 401 ||
+                profileResult.statusCode === 403
+              ) {
+                await clearAuthData();
+                dispatch({ type: 'AUTH_LOGOUT' });
+              }
+              // Other failures = network issue → keep optimistic auth.
+            })
+            .catch(() => {
+              /* network failure → keep optimistic auth */
+            });
+          return;
         }
       }
 

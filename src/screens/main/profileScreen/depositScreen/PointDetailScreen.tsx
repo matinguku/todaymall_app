@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import Icon from '../../../../components/Icon';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS, FONTS, SPACING } from '../../../../constants';
 import { useAppSelector } from '../../../../store/hooks';
-import { translations } from '../../../../i18n/translations';
+import { getTranslation } from '../../../../utils/i18nHelpers';
 import { voucherApi, PointTransaction } from '../../../../services/voucherApi';
 import { useToast } from '../../../../context/ToastContext';
 
@@ -23,16 +23,19 @@ const PointDetailScreen = () => {
   const [loading, setLoading] = useState(true);
   const [pointBalance, setPointBalance] = useState(0);
   const [transactions, setTransactions] = useState<PointTransaction[]>([]);
-  
-  // Translation function
-  const t = (key: string) => {
-    const keys = key.split('.');
-    let value: any = translations[locale as keyof typeof translations];
-    for (const k of keys) {
-      value = value?.[k];
-    }
-    return value || key;
-  };
+
+  const t = useMemo(
+    () => (key: string, params?: Record<string, string | number>) => {
+      let text = getTranslation(key, locale);
+      if (typeof text === 'string' && params) {
+        Object.entries(params).forEach(([pk, pv]) => {
+          text = text.replace(`{${pk}}`, String(pv));
+        });
+      }
+      return text;
+    },
+    [locale],
+  );
 
   useEffect(() => {
     fetchVoucherWallet();
@@ -50,7 +53,7 @@ const PointDetailScreen = () => {
         showToast(response.message || t('home.failedToLoadPoints'), 'error');
       }
     } catch (error) {
-      showToast('Failed to load points', 'error');
+      showToast(t('home.failedToLoadPoints'), 'error');
     } finally {
       setLoading(false);
     }
@@ -58,7 +61,9 @@ const PointDetailScreen = () => {
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const ld = locale === 'en' || locale === 'ko' || locale === 'zh' ? locale : 'ko';
+    const loc = ld === 'zh' ? 'zh-CN' : ld === 'ko' ? 'ko-KR' : 'en-US';
+    return date.toLocaleDateString(loc, { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   return (
@@ -88,7 +93,7 @@ const PointDetailScreen = () => {
           <Text style={styles.mainTabText}>{t('home.coupon')}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.mainTab}>
-          <Text style={styles.mainTabTextActive}>{t('home.point')}</Text>
+          <Text style={styles.mainTabTextActive}>{t('home.points')}</Text>
           <View style={styles.mainTabIndicator} />
         </TouchableOpacity>
       </View>
@@ -140,20 +145,20 @@ const PointDetailScreen = () => {
                 
               </View>
                 <TouchableOpacity style={styles.useNowButton}>
-                  <Text style={styles.useNowButtonText}>Use now</Text>
+                  <Text style={styles.useNowButtonText}>{t('home.useNow')}</Text>
                 </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.emptyState}>
               <Icon name="wallet-outline" size={80} color="#CCC" />
-              <Text style={styles.emptyText}>No points available</Text>
+              <Text style={styles.emptyText}>{t('home.noPointsAvailable')}</Text>
             </View>
           )}
 
           {/* Recent Transactions */}
           {transactions.length > 0 && (
             <View style={styles.transactionsSection}>
-              <Text style={styles.sectionTitle}>Recent Transactions</Text>
+              <Text style={styles.sectionTitle}>{t('home.pointRecentTransactions')}</Text>
               {transactions.map((transaction) => (
                 <View key={transaction.id} style={styles.transactionCard}>
                   <View style={styles.transactionInfo}>

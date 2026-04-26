@@ -9,6 +9,7 @@ import {
   Animated,
   FlatList,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -35,6 +36,7 @@ import { useAddToWishlistMutation } from '../../../hooks/useAddToWishlistMutatio
 import { useDeleteFromWishlistMutation } from '../../../hooks/useDeleteFromWishlistMutation';
 import { usePlatformStore } from '../../../store/platformStore';
 import { formatPriceKRW, formatDepositBalance } from '../../../utils/i18nHelpers';
+import { logDevApiFailure } from '../../../utils/devLog';
 import { useGetOrdersMutation } from '../../../hooks/useGetOrdersMutation';
 import HeadsetMicIcon from '../../../assets/icons/HeadsetMicIcon';
 import LocationIcon from '../../../assets/icons/LocationIcon';
@@ -67,8 +69,168 @@ import AffiliateMarketingIcon from '../../../assets/icons/AffiliateMarketingIcon
 
 type ProfileScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Main'>;
 
+/** API may return a flat `wishlist` or grouped `wishlistByStore`; Profile must match WishlistScreen semantics. */
+function getGroupItemArray(group: unknown): unknown[] {
+  if (!group || typeof group !== 'object') return [];
+  const g = group as Record<string, unknown>;
+  if (Array.isArray(g.items)) return g.items;
+  if (Array.isArray(g.wishlist)) return g.wishlist;
+  if (Array.isArray(g.products)) return g.products;
+  return [];
+}
+
+/** Prefer flat `wishlist` when non-empty; otherwise flatten `wishlistByStore` (matches WishlistScreen semantics). */
+function flattenWishlistItemsFromApiData(data: unknown): Record<string, unknown>[] {
+  if (!data || typeof data !== 'object') return [];
+  const d = data as Record<string, unknown>;
+  const list = d.wishlist;
+  if (Array.isArray(list) && list.length > 0) {
+    if (typeof list[0] === 'string' || typeof list[0] === 'number') {
+      return [];
+    }
+    return list.filter((x) => x && typeof x === 'object').map((x) => x as Record<string, unknown>);
+  }
+  const byStore = d.wishlistByStore;
+  if (!Array.isArray(byStore) || byStore.length === 0) return [];
+  const out: Record<string, unknown>[] = [];
+  for (const g of byStore) {
+    for (const raw of getGroupItemArray(g)) {
+      if (raw && typeof raw === 'object') out.push(raw as Record<string, unknown>);
+    }
+  }
+  return out;
+}
+
+function pickWishlistItemImageUrl(item: unknown): string {
+  if (!item || typeof item !== 'object') return '';
+  const o = item as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  const direct =
+    str(o.imageUrl) ||
+    str(o.image) ||
+    str(o.thumbnail) ||
+    str(o.photoUrl) ||
+    str(o.coverUrl) ||
+    str(o.picUrl) ||
+    str(o.mainImage);
+  if (direct) return direct;
+  if (Array.isArray(o.images)) {
+    for (const img of o.images) {
+      if (typeof img === 'string' && img.trim()) return img.trim();
+      if (img && typeof img === 'object') {
+        const u =
+          str((img as Record<string, unknown>).url) ||
+          str((img as Record<string, unknown>).uri);
+        if (u) return u;
+      }
+    }
+  }
+  const product = o.product;
+  if (product && typeof product === 'object') {
+    return pickWishlistItemImageUrl(product);
+  }
+  return '';
+}
+
+function getWishlistItemCountFromApiData(data: unknown): number {
+  if (!data || typeof data !== 'object') return 0;
+  const d = data as Record<string, unknown>;
+  const list = d.wishlist;
+  if (Array.isArray(list) && list.length > 0) {
+    if (typeof list[0] === 'string' || typeof list[0] === 'number') {
+      return list.filter((x) => x != null && String(x).trim() !== '').length;
+    }
+  }
+  const flat = flattenWishlistItemsFromApiData(data);
+  if (flat.length > 0) return flat.length;
+  const totalCount = d.totalCount;
+  if (typeof totalCount === 'number' && totalCount > 0) return totalCount;
+  const total = d.total;
+  if (typeof total === 'number' && total > 0) return total;
+  const count = d.count;
+  if (typeof count === 'number' && count > 0) return count;
+  const items = d.items;
+  if (Array.isArray(items) && items.length > 0) return items.length;
+  return 0;
+}
+
+function getWishlistFirstImageFromApiData(data: unknown): string {
+  const flat = flattenWishlistItemsFromApiData(data);
+  for (const row of flat) {
+    const url = pickWishlistItemImageUrl(row);
+    if (url) return url;
+  }
+  return '';
+}
+
+async function getWishlistFallbackCountFromStorage(): Promise<number> {
+  try {
+    const stored = await AsyncStorage.getItem(STORAGE_KEYS.WISHLIST_EXTERNAL_IDS);
+    if (!stored) return 0;
+    const parsed = JSON.parse(stored);
+    if (!Array.isArray(parsed)) return 0;
+    return parsed.map((id: unknown) => (id != null ? String(id) : '')).filter(Boolean).length;
+  } catch {
+    return 0;
+  }
+}
+
+// Mapping from order.progressStatus → ProfileScreen "내 주문" card buckets.
+// Server-side `viewFilterCounts` is unreliable (uses an older filter taxonomy
+// that doesn't cover all current progressStatus values), so we aggregate
+// client-side from the orders array. Unmapped statuses are ignored.
+type ProfileOrderBucket =
+  | 'unpaid'
+  | 'to_be_shipped'
+  | 'shipped'
+  | 'processed'
+  | 'shipping_delay'
+  | 'error'
+  | 'refunds'
+  | 'problemProducts';
+
+const PROGRESS_STATUS_TO_PROFILE_BUCKET: Record<string, ProfileOrderBucket> = {
+  BUY_PAY_WAIT: 'unpaid',                  // 구매결제대기
+  WH_PAY_WAIT: 'to_be_shipped',            // 출고결제대기
+  INTERNATIONAL_SHIPPING: 'shipped',       // 국제운송중
+  INTERNATIONAL_SHIPPED: 'processed',      // 리뷰대기 (delivered, awaiting review)
+  DELIVERY_EXCEPTION: 'shipping_delay',    // 현지배송지연
+  BUYING_PROBLEM: 'problemProducts',       // 문제상품
+  ERR_IN: 'error',                         // 오류입고
+  NO_ORDER_INFO: 'error',                  // 오류입고 (no order info)
+  USER_REFUND_REQ: 'refunds',              // 반품/환불
+  USER_REFUND_COMPLETED: 'refunds',        // 반품/환불
+};
+
+const EMPTY_ORDER_COUNTS: Record<ProfileOrderBucket, number> = {
+  unpaid: 0,
+  to_be_shipped: 0,
+  shipped: 0,
+  processed: 0,
+  shipping_delay: 0,
+  error: 0,
+  refunds: 0,
+  problemProducts: 0,
+};
+
+function computeProfileOrderCounts(orders: unknown): Record<ProfileOrderBucket, number> {
+  const counts: Record<ProfileOrderBucket, number> = { ...EMPTY_ORDER_COUNTS };
+  if (!Array.isArray(orders)) return counts;
+  for (const order of orders) {
+    const ps: string | undefined = (order as any)?.progressStatus;
+    if (!ps) continue;
+    const bucket = PROGRESS_STATUS_TO_PROFILE_BUCKET[ps];
+    if (bucket) counts[bucket] += 1;
+  }
+  return counts;
+}
+
 const ProfileScreen: React.FC = () => {
   const navigation = useNavigation<ProfileScreenNavigationProp>();
+  const { width: pWinWidth, height: pWinHeight } = useWindowDimensions();
+  const pIsTablet = Math.min(pWinWidth, pWinHeight) >= 600;
+  const pGridCols = pIsTablet ? (pWinWidth > pWinHeight ? 4 : 3) : 2;
+  const pCardWidth = (pWinWidth - SPACING.md * 2 * (pGridCols - 1)) / pGridCols;
   const { user, isAuthenticated, isGuest } = useAuth();
   const currentLocale = useAppSelector((state) => state.i18n.locale);
   const { selectedPlatform } = usePlatformStore();
@@ -94,22 +256,23 @@ const ProfileScreen: React.FC = () => {
   const [viewedCount, setViewedCount] = useState(0);
   const [viewedFirstImage, setViewedFirstImage] = useState<string>('');
 
-  // Get orders hook for counts — use viewFilterCounts from API
+  // Get orders hook for counts — aggregate client-side from `orders` because
+  // server-side `viewFilterCounts` doesn't cover all the buckets shown in the
+  // 내 주문 card (shipping_delay, error, refunds, etc. are often missing).
   const { mutate: getOrders } = useGetOrdersMutation({
     onSuccess: (data) => {
-      if (data.viewFilterCounts) {
-        const vfc = data.viewFilterCounts;
-        setOrderCounts({
-          unpaid: vfc.unpaid ?? 0,
-          to_be_shipped: vfc.to_be_shipped ?? 0,
-          shipped: vfc.shipped ?? 0,
-          processed: vfc.processed ?? 0,
-          shipping_delay: vfc.shipping_delay ?? 0,
-          error: vfc.error ?? 0,
-          refunds: vfc.refunds ?? 0,
-          problemProducts: (vfc.error ?? 0) + (vfc.shipping_delay ?? 0),
+      if (__DEV__) {
+        const sampleStatuses = Array.isArray(data.orders)
+          ? data.orders.slice(0, 5).map((o: any) => o?.progressStatus)
+          : [];
+        // eslint-disable-next-line no-console
+        console.log('🔍 ProfileScreen orders:', {
+          length: data.orders?.length ?? 0,
+          viewFilterCounts: data.viewFilterCounts,
+          sampleProgressStatuses: sampleStatuses,
         });
       }
+      setOrderCounts(computeProfileOrderCounts(data.orders));
     },
   });
   
@@ -161,16 +324,30 @@ const ProfileScreen: React.FC = () => {
         if (!isAuthenticated || isGuest || !user) return;
         try {
           const [wishlistRes, viewedRes] = await Promise.allSettled([
-            wishlistApi.getWishlist({ discounted: false }),
+            wishlistApi.getWishlist({
+              discounted: false,
+              sort: 'recently_saved',
+              timeFilter: '90d',
+            }),
             productsApi.getRecentlyViewedProducts(100),
           ]);
-          console.log("viewed products: ", viewedRes)
+          let wlCount = 0;
+          let wlImage = '';
           if (wishlistRes.status === 'fulfilled' && wishlistRes.value?.success && wishlistRes.value?.data) {
             const data = wishlistRes.value.data as any;
-            setWishlistCount(data.total ?? data.wishlist?.length ?? 0);
-            const firstItem = data.wishlist?.[0];
-            setWishlistFirstImage(firstItem?.imageUrl || firstItem?.image || '');
+            wlCount = getWishlistItemCountFromApiData(data);
+            wlImage = getWishlistFirstImageFromApiData(data);
           }
+          if (wlCount === 0) {
+            const fromStorage = await getWishlistFallbackCountFromStorage();
+            if (fromStorage > 0) {
+              wlCount = fromStorage;
+            } else if (Array.isArray(user.wishlist) && user.wishlist.length > 0) {
+              wlCount = user.wishlist.length;
+            }
+          }
+          setWishlistCount(wlCount);
+          setWishlistFirstImage(wlImage);
           if (viewedRes.status === 'fulfilled' && viewedRes.value?.success && viewedRes.value?.data) {
             const data = viewedRes.value.data as any;
             // API returns { items: [...] } — use items.length as count
@@ -185,7 +362,7 @@ const ProfileScreen: React.FC = () => {
         }
       };
       fetchCounts();
-    }, [])
+    }, [isAuthenticated, isGuest, user?.id, user?.wishlist?.length])
   );
   
   // Translation function
@@ -337,7 +514,7 @@ const ProfileScreen: React.FC = () => {
       }
     },
     onError: (error) => {
-      console.error('ProfileScreen: More to Love API Error:', error);
+      logDevApiFailure('ProfileScreen.moreToLove', error);
       // Reset loading flag
       isLoadingMoreRecommendationsRef.current = false;
       const currentPage = currentRecommendationsPageRef.current;
@@ -354,8 +531,21 @@ const ProfileScreen: React.FC = () => {
     fetchRecommendationsRef.current = fetchRecommendations;
   }, [fetchRecommendations]);
 
-  // "More to Love" recommendations section is disabled — API returns internal server error.
-  // The fetch effects below are disabled to prevent unnecessary API calls.
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!isAuthenticated || isGuest || !user?.id) return;
+      const country = currentLocale === 'zh' ? 'en' : currentLocale;
+      const outId = user.memberId || user.userUniqueNo || (user as any).userUniqueId;
+      currentRecommendationsPageRef.current = 1;
+      isLoadingMoreRecommendationsRef.current = false;
+      setRecommendationsOffset(1);
+      setRecommendationsHasMore(true);
+      const fn = fetchRecommendationsRef.current;
+      if (fn) {
+        void fn(country, outId, 1, 20, selectedPlatform);
+      }
+    }, [isAuthenticated, isGuest, user?.id, currentLocale, selectedPlatform]),
+  );
 
   // Toggle wishlist function
   const toggleWishlist = async (product: Product) => {
@@ -808,7 +998,7 @@ const ProfileScreen: React.FC = () => {
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.myOrderItem}
-              onPress={() => navigation.navigate('Note' as never)}
+              onPress={() => (navigation as any).navigate('Message', { initialTab: 'general' })}
             >
               <View style={styles.iconWithBadge}>
                 <FeedbackIcon width={24} height={24} color={COLORS.black} />
@@ -902,6 +1092,7 @@ const ProfileScreen: React.FC = () => {
         key={`moretolove-${product.id || index}`}
         product={product}
         variant="moreToLove"
+        cardWidth={pCardWidth}
         onPress={() => handleProductPress(product)}
         onLikePress={handleLike}
         isLiked={isProductLiked(product)}
@@ -910,7 +1101,7 @@ const ProfileScreen: React.FC = () => {
         showRating={true}
       />
     );
-  }, [user, isGuest, toggleWishlist, handleProductPress, isProductLiked]);
+  }, [user, isGuest, toggleWishlist, handleProductPress, isProductLiked, pCardWidth]);
 
   // Render footer for "More to Love" loading indicator
   const renderMoreToLoveFooter = () => {
@@ -958,9 +1149,23 @@ const ProfileScreen: React.FC = () => {
           </View>
           <View style={styles.quickAccessImageContainer}>
             {wishlistFirstImage ? (
-              <Image source={{ uri: wishlistFirstImage }} style={styles.quickAccessImage} />
+              <Image
+                source={{ uri: wishlistFirstImage.trim() }}
+                style={styles.quickAccessImage}
+                resizeMode="cover"
+              />
+            ) : wishlistCount > 0 ? (
+              <Image
+                source={require('../../../assets/icons/wishlist.png')}
+                style={[styles.quickAccessImage, { padding: SPACING.md }]}
+                resizeMode="contain"
+              />
             ) : (
-              <Image source={{ uri: 'https://via.placeholder.com/120x120/D4B896/FFFFFF?text=Wishlist' }} style={styles.quickAccessImage} />
+              <Image
+                source={require('../../../assets/icons/wishlist.png')}
+                style={[styles.quickAccessImage, { padding: SPACING.md, opacity: 0.45 }]}
+                resizeMode="contain"
+              />
             )}
           </View>
         </TouchableOpacity>
@@ -979,7 +1184,10 @@ const ProfileScreen: React.FC = () => {
             {viewedFirstImage ? (
               <Image source={{ uri: viewedFirstImage }} style={styles.quickAccessImage} />
             ) : (
-              <Image source={{ uri: 'https://via.placeholder.com/120x120/D4B896/FFFFFF?text=Viewed' }} style={styles.quickAccessImage} />
+              <Image
+                source={{ uri: `https://via.placeholder.com/120x120/D4B896/FFFFFF?text=${encodeURIComponent(t('profile.viewed'))}` }}
+                style={styles.quickAccessImage}
+              />
             )}
           </View>
         </TouchableOpacity>
@@ -1023,10 +1231,11 @@ const ProfileScreen: React.FC = () => {
       <View style={styles.moreToLoveSection}>
         <Text style={styles.sectionTitle}>{t('home.moreToLove')}</Text>
         <FlatList
+          key={`profile-moretolove-${pGridCols}`}
           data={productsToDisplay}
           renderItem={renderMoreToLoveItem}
           keyExtractor={(item, index) => `moretolove-${item.id?.toString() || index}-${index}`}
-          numColumns={2}
+          numColumns={pGridCols}
           scrollEnabled={false}
           nestedScrollEnabled={true}
           columnWrapperStyle={styles.productRow}
@@ -1061,8 +1270,24 @@ const ProfileScreen: React.FC = () => {
           const scrollHeight = contentSize.height;
           const screenHeight = layoutMeasurement.height;
           const distanceFromBottom = scrollHeight - scrollPosition - screenHeight;
-          
-          // "More to Love" infinite scroll disabled — section removed
+
+          if (
+            recommendationsHasMore &&
+            !recommendationsLoading &&
+            !isLoadingMoreRecommendationsRef.current &&
+            distanceFromBottom < 240 &&
+            isAuthenticated &&
+            !isGuest &&
+            user?.id
+          ) {
+            isLoadingMoreRecommendationsRef.current = true;
+            const nextPage = currentRecommendationsPageRef.current + 1;
+            currentRecommendationsPageRef.current = nextPage;
+            setRecommendationsOffset(nextPage);
+            const country = currentLocale === 'zh' ? 'en' : currentLocale;
+            const outId = user.memberId || user.userUniqueNo || (user as any).userUniqueId;
+            fetchRecommendationsRef.current?.(country, outId, nextPage, 20, selectedPlatform);
+          }
         }}
         scrollEventThrottle={16}
       >
@@ -1070,7 +1295,7 @@ const ProfileScreen: React.FC = () => {
         {isAuthenticated && renderStatsSection()}
         {isAuthenticated && renderMenuItems()}
         {isAuthenticated && renderQuickAccessSection()}
-        {/* {renderMoreToLove()} */}
+        {isAuthenticated && !isGuest && renderMoreToLove()}
       </ScrollView>
     </SafeAreaView>
   );
@@ -1453,7 +1678,7 @@ const styles = StyleSheet.create({
   quickAccessSection: {
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
-    marginBottom: 100,
+    marginBottom: 2,
   },
   quickAccessContainer: {
     flexDirection: 'row',
@@ -1554,7 +1779,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.red,
   },
   moreToLoveSection: {
-    paddingHorizontal: SPACING.md,
+    paddingHorizontal: SPACING.xs,
     paddingVertical: SPACING.lg,
     marginBottom: SPACING.xl,
   },
@@ -1621,12 +1846,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: SPACING.lg,
-    gap: SPACING.sm,
+    gap: SPACING.xl,
   },
   moreToLoveFooterText: {
     fontSize: FONTS.sizes.sm,
     color: COLORS.text.secondary,
     fontWeight: '500',
+    
   },
 });
 

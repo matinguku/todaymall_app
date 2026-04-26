@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Animated,
   Modal,
   ScrollView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../components/Icon';
@@ -105,17 +106,14 @@ const SearchResultsScreen: React.FC = () => {
     }
   };
 
-  const renderProductItem = ({ item }: { item: Product }) => (
+  const renderProductItem = useCallback(({ item }: { item: Product }) => (
     <TouchableOpacity
       style={styles.productCard}
       onPress={() => {
         const productId = (item as any).offerId || (item as any).externalId || item.id;
         const source = (item as any).source || '1688';
         const country = 'en';
-        // Fetch product detail first, then navigate
-        // Note: This screen would need useProductDetailMutation hook added
-        // For now, navigate with productId and let ProductDetailScreen handle it as fallback
-        navigation.navigate('ProductDetail', { 
+        navigation.navigate('ProductDetail', {
           productId: productId?.toString() || item.id?.toString() || '',
           source: source,
           country: country,
@@ -158,7 +156,10 @@ const SearchResultsScreen: React.FC = () => {
         </View>
       </View>
     </TouchableOpacity>
-  );
+  ), [navigation]);
+
+  // Stable keyExtractor to avoid passing a new function reference on every render.
+  const keyExtractorProduct = useCallback((item: Product) => item.id, []);
 
   const renderSortModal = () => (
     <Modal visible={sortModalVisible} transparent animationType="slide" onRequestClose={() => setSortModalVisible(false)}>
@@ -317,11 +318,16 @@ const SearchResultsScreen: React.FC = () => {
       <FlatList
         data={products}
         renderItem={renderProductItem}
-        keyExtractor={(item) => item.id}
+        keyExtractor={keyExtractorProduct}
         numColumns={2}
         contentContainerStyle={styles.productGrid}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await performSearch(searchQuery); setRefreshing(false); }} />}
         showsVerticalScrollIndicator={false}
+        removeClippedSubviews={Platform.OS === 'android'}
+        maxToRenderPerBatch={6}
+        windowSize={3}
+        initialNumToRender={6}
+        updateCellsBatchingPeriod={80}
       />
 
       {renderSortModal()}

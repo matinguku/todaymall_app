@@ -59,6 +59,10 @@ const HelpArticleScreen: React.FC = () => {
     return text.trim();
   };
 
+  const localeTag = locale === 'ko' ? 'ko-KR' : locale === 'zh' ? 'zh-CN' : 'en-US';
+  const formatDate = (date: Date) =>
+    date.toLocaleDateString(localeTag, { year: 'numeric', month: 'long', day: 'numeric' });
+
   // Get article content
   const getArticleContent = () => {
     // If content is provided from route params, use it
@@ -66,24 +70,24 @@ const HelpArticleScreen: React.FC = () => {
       return {
         title: title,
         content: stripHtml(route.params.content),
-        lastUpdated: `${t('helpCenter.lastUpdated')}: ${new Date().toLocaleDateString()}`,
+        lastUpdated: `${t('helpCenter.lastUpdated')}: ${formatDate(new Date())}`,
       };
     }
 
     // Fallback to translation keys for backward compatibility
     const articleContentMap: { [key: string]: string } = {
       '1': 'helpCenter.articles.termsOfUseContent',
-      '2': 'helpCenter.articles.serviceIntroductionContent', 
+      '2': 'helpCenter.articles.serviceIntroductionContent',
       '3': 'helpCenter.articles.privacyPolicyContent',
       '4': 'helpCenter.articles.returnRefundPolicyContent',
     };
-    
+
     const contentKey = articleContentMap[articleId] || 'helpCenter.articles.defaultContent';
-    
+
     return {
       title: title,
       content: t(contentKey),
-      lastUpdated: `${t('helpCenter.lastUpdated')}: December 15, 2024`,
+      lastUpdated: `${t('helpCenter.lastUpdated')}: ${formatDate(new Date('2024-12-15'))}`,
     };
   };
 
@@ -148,14 +152,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
-    paddingTop: SPACING['2xl'],
+    paddingTop: SPACING.md,
     backgroundColor: COLORS.white,
   },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: COLORS.gray[100],
+    backgroundColor: COLORS.white,
     justifyContent: 'center',
     alignItems: 'center',
   },

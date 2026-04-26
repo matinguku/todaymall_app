@@ -15,6 +15,7 @@ import {
   FlatList,
   PermissionsAndroid,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { launchCamera, launchImageLibrary, MediaType, ImagePickerResponse, CameraOptions, ImageLibraryOptions } from 'react-native-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -29,7 +30,7 @@ import Svg, { Defs, RadialGradient as SvgRadialGradient, Stop, Rect, Mask, Circl
 // Create animated icon component
 const AnimatedIcon = Animated.createAnimatedComponent(Icon);
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG } from '../../constants';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { RootStackParamList, Product, NewInProduct, Story, Carousel } from '../../types';
@@ -56,6 +57,8 @@ import { useSocket } from '../../context/SocketContext';
 import { inquiryApi } from '../../services/inquiryApi';
 import { useDefaultCategoriesMutation } from '../../hooks/useDefaultCategoriesMutation';
 import { formatPriceKRW } from '../../utils/i18nHelpers';
+import { getAlibabaThumbnailImageUri } from '../../utils/productImage';
+import { useResponsive } from '../../hooks/useResponsive';
 const LogoImage = require('../../assets/images/logo.png');
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -240,6 +243,10 @@ const AutoBrandCarousel = React.memo(({
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
+  const dynWidth = winWidth - SPACING.sm * 2;
+  const isTablet = Math.min(winWidth, winHeight) >= 600;
+  const brandImgHeight = isTablet ? Math.round(dynWidth * 0.38) : 128;
 
   useEffect(() => {
     if (carousels.length <= 1) {
@@ -249,13 +256,13 @@ const AutoBrandCarousel = React.memo(({
     const interval = setInterval(() => {
       setCurrentIndex((prevIndex) => {
         const nextIndex = (prevIndex + 1) % carousels.length;
-        scrollRef.current?.scrollTo({ x: nextIndex * width, animated: true });
+        scrollRef.current?.scrollTo({ x: nextIndex * dynWidth, animated: true });
         return nextIndex;
       });
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [carousels.length]);
+  }, [carousels.length, dynWidth]);
 
   if (carousels.length === 0) {
     return (
@@ -273,24 +280,23 @@ const AutoBrandCarousel = React.memo(({
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={(event) => {
-          const nextIndex = Math.round(event.nativeEvent.contentOffset.x / width);
+          const nextIndex = Math.round(event.nativeEvent.contentOffset.x / dynWidth);
           setCurrentIndex(nextIndex);
         }}
         scrollEventThrottle={16}
       >
         {carousels.map((carousel, carouselIdx: number) => {
-          const imageUrl = Platform.OS === 'ios' || width < 600 ? carousel.mobileImage : carousel.desktopImage;
+          const imageUrl = Platform.OS === 'ios' || winWidth < 600 ? carousel.mobileImage : carousel.desktopImage;
 
           return (
             <TouchableOpacity
               key={carousel._id || `carousel-${carouselIdx}`}
-              style={styles.brandSlide}
+              style={[styles.brandSlide, { width: dynWidth }]}
               activeOpacity={0.9}
             >
               <Image
-                // source={{ uri: `${imageUrl}_600x250.jpg` }}
                 source={{ uri: `${imageUrl}` }}
-                style={styles.brandImage}
+                style={[styles.brandImage, { width: dynWidth, height: brandImgHeight }]}
                 resizeMode="cover"
               />
             </TouchableOpacity>
@@ -331,6 +337,27 @@ const AutoLiveChannelSection = React.memo(({
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
+  const isTablet = Math.min(winWidth, winHeight) >= 600;
+  const contentW = winWidth - SPACING.sm * 2;
+  const liveCardW = isTablet ? Math.floor(contentW * 0.42) : 163;
+  const liveCardH = Math.round(liveCardW * (210 / 163));
+  // Promo cards on the right of the live channel - compute the available card width
+  // so we can size the 3 product images responsively.
+  const promoCardWidth = Math.max(contentW - liveCardW - SPACING.sm, 160);
+  const promoBigImageSize = isTablet
+    ? Math.max(140, Math.min(Math.floor(promoCardWidth * 0.45), 200))
+    : 85;
+  const promoSmallImageSize = isTablet
+    ? Math.max(
+        90,
+        Math.min(
+          // Each small image takes ~25% of the promo card width (minus gaps).
+          Math.floor((promoCardWidth * 0.5 - SPACING.sm - SPACING.xs) / 2),
+          130,
+        ),
+      )
+    : 44;
 
   useEffect(() => {
     if (liveChannelImages.length <= 1) {
@@ -341,7 +368,7 @@ const AutoLiveChannelSection = React.memo(({
       setCurrentIndex((prevIndex) => {
         const nextIndex = (prevIndex + 1) % liveChannelImages.length;
         scrollRef.current?.scrollTo({
-          x: nextIndex * LIVE_CHANNEL_CARD_WIDTH,
+          x: nextIndex * liveCardW,
           animated: true,
         });
         return nextIndex;
@@ -349,11 +376,11 @@ const AutoLiveChannelSection = React.memo(({
     }, 4000);
 
     return () => clearInterval(interval);
-  }, [liveChannelImages.length]);
+  }, [liveChannelImages.length, liveCardW]);
 
   return (
     <View style={styles.liveChannelContainer}>
-      <TouchableOpacity style={styles.liveChannelCard} activeOpacity={0.9}>
+      <TouchableOpacity style={[styles.liveChannelCard, { width: liveCardW, height: liveCardH }]} activeOpacity={0.9}>
         <ScrollView
           ref={scrollRef}
           horizontal
@@ -361,11 +388,11 @@ const AutoLiveChannelSection = React.memo(({
           scrollEnabled={false}
           showsHorizontalScrollIndicator={false}
           style={styles.liveChannelImageCarousel}
-          contentContainerStyle={{ width: liveChannelImages.length * LIVE_CHANNEL_CARD_WIDTH }}
+          contentContainerStyle={{ width: liveChannelImages.length * liveCardW }}
         >
           {liveChannelImages.map((image, index) => (
-            <View key={`live-bg-${index}`} style={{ width: LIVE_CHANNEL_CARD_WIDTH }}>
-              <Image source={image} style={styles.liveChannelBackgroundImage} resizeMode="cover" />
+            <View key={`live-bg-${index}`} style={{ width: liveCardW }}>
+              <Image source={image} style={[styles.liveChannelBackgroundImage, { width: liveCardW, height: liveCardH }]} resizeMode="cover" />
             </View>
           ))}
         </ScrollView>
@@ -402,16 +429,21 @@ const AutoLiveChannelSection = React.memo(({
         </View>
       </TouchableOpacity>
 
-      <View style={styles.promosRightStack}>
-        {liveChannelPromoCards.map((card, cardIdx: number) => (
+      <View style={[styles.promosRightStack, { flex: 1, width: undefined }]}>
+        {liveChannelPromoCards.map((card, cardIdx: number) => {
+          const promoImages = Array.isArray(card?.images) ? card.images : [];
+          const promoTopImages = promoImages.slice(0, 2).filter((img: unknown) => img != null);
+          const promoThirdImage = promoImages[2];
+          return (
           <TouchableOpacity
             key={card.id || `promo-${cardIdx}`}
             style={[styles.liveChannelPromoCard, { backgroundColor: COLORS.white }]}
             activeOpacity={0.85}
             onPress={() => {
-              if (card.ids?.[0]) {
+              const pid = card.externalIds?.[0];
+              if (card.ids?.[0] && pid != null) {
                 navigation.navigate('ProductDetail', {
-                  productId: card.externalIds[0],
+                  productId: pid,
                   source: selectedPlatform || '1688',
                   country: locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en',
                 });
@@ -436,46 +468,70 @@ const AutoLiveChannelSection = React.memo(({
                 </View>
 
                 <TouchableOpacity style={styles.promoCardImages} activeOpacity={0.7}>
-                  {card.images.slice(0, 2).map((img: any, idx: number) => {
-                    // console.log('Live Channel Promo Card Image:', { liveChannelPromoCards, });
-                    return (
+                  {promoTopImages.map((img: any, idx: number) => (
                       <TouchableOpacity
                         key={`${card.id}-img-${idx}`}
                         activeOpacity={0.7}
                         onPress={() => {
-                          if (card.ids?.[idx]) {
+                          const pid = card.externalIds?.[idx];
+                          if (card.ids?.[idx] && pid != null) {
                             navigation.navigate('ProductDetail', {
-                              productId: card.externalIds[0],
+                              productId: pid,
                               source: selectedPlatform || '1688',
                               country: locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en',
                             });
                           }
                         }}
                       >
-                        <Image source={img} style={styles.promoCardSmallImage} resizeMode="cover" />
+                        <Image
+                          source={img}
+                          style={[
+                            styles.promoCardSmallImage,
+                            { width: promoSmallImageSize, height: promoSmallImageSize },
+                          ]}
+                          resizeMode="cover"
+                        />
                       </TouchableOpacity>
-                  )})}
+                  ))}
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
-                style={styles.promoCardPriceTag}
+                style={[styles.promoCardPriceTag, { marginLeft: 'auto', marginRight: SPACING.sm, marginTop: SPACING.sm }]}
                 activeOpacity={0.7}
                 onPress={() => {
-                  if (card.ids?.[2]) {
+                  const pid = card.externalIds?.[2];
+                  if (card.ids?.[2] && pid != null) {
                     navigation.navigate('ProductDetail', {
-                      productId: card.externalIds[2],
+                      productId: pid,
                       source: selectedPlatform || '1688',
                       country: locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en',
                     });
                   }
                 }}
               >
-                <Image source={card.images[2]} style={[styles.promoCardSmallImage, { width: 85, height: 85 }]} resizeMode="cover" />
-                <Text style={styles.promoCardPrice}>{card.price}</Text>
+                {promoThirdImage != null ? (
+                <Image
+                  source={promoThirdImage}
+                  style={[
+                    styles.promoCardSmallImage,
+                    { width: promoBigImageSize, height: promoBigImageSize },
+                  ]}
+                  resizeMode="cover"
+                />
+                ) : (
+                <View
+                  style={[
+                    styles.promoCardSmallImage,
+                    { width: promoBigImageSize, height: promoBigImageSize, backgroundColor: COLORS.gray[200] },
+                  ]}
+                />
+                )}
+                <Text style={[styles.promoCardPrice, { width: promoBigImageSize }]}>{card.price}</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
-        ))}
+          );
+        })}
       </View>
     </View>
   );
@@ -483,6 +539,15 @@ const AutoLiveChannelSection = React.memo(({
 
 const HomeScreen: React.FC = () => {
   const navigation = useNavigation<HomeScreenNavigationProp>();
+  const { screenWidth: dynScreenWidth, contentWidth: dynContentWidth, isTablet, isLandscape, moreToLoveColumns, gridCardWidth: dynGridCardWidth } = useResponsive();
+  // Recompute dealsCardWidth to match the actual todaysDealsProductsRow style
+  // (paddingHorizontal: SPACING.sm + gap: SPACING.sm between 2 cards). The
+  // default useResponsive.dealsCardWidth assumes extra outer padding that this
+  // section doesn't have, which left ~16px of empty space on the right and
+  // broke the visual center alignment on tablets.
+  const dynDealsCardWidth = Math.floor(
+    (dynScreenWidth - SPACING.sm * 3) / 2,
+  );
   
   // today's deals category state (used for highlighting)
   const [selectedCategory, setSelectedCategory] = useState<string>('todaysDeals');
@@ -553,7 +618,7 @@ const HomeScreen: React.FC = () => {
       deleteFromWishlist(externalId);
     } else {
       // Add to wishlist - extract required fields from product
-      const imageUrl = product.image || product.images?.[0] || '';
+      const imageUrl = getAlibabaThumbnailImageUri(product) || '';
       const price = product.price || 0;
       const title = product.name || product.title || '';
 
@@ -696,7 +761,7 @@ const HomeScreen: React.FC = () => {
             externalId: item.offerId?.toString() || '',
             offerId: item.offerId?.toString() || '',
             name: locale === 'zh' ? (item.subject || item.subjectTrans || '') : (item.subjectTrans || item.subject || ''),
-            image: item.imageUrl || '',
+            image: '',
             price: price,
             originalPrice: originalPrice,
             discount: discount,
@@ -733,6 +798,21 @@ const HomeScreen: React.FC = () => {
           
           // Preserve non-typed fields for navigation / tracking
           (productData as any).source = selectedPlatform;
+          // Keep raw image-related fields so image resolver can resolve if `image` stays empty
+          Object.assign(productData as any, {
+            imageUrl: item.imageUrl,
+            picUrl: item.picUrl,
+            pictUrl: item.pictUrl,
+            picture: item.picture,
+            images: item.images,
+            imageList: item.imageList,
+            offerDetail: item.offerDetail,
+            offer: item.offer,
+            skuInfos: item.skuInfos,
+            skuList: item.skuList,
+            priceInfo: item.priceInfo,
+          });
+          productData.image = getAlibabaThumbnailImageUri(productData) || '';
           
           return productData;
         });
@@ -1067,15 +1147,17 @@ const HomeScreen: React.FC = () => {
     setRefreshing(false);
   };
 
-  const handleProductPress = async (product: Product) => {
-    // For "more to love" products, use offerId if available
-    // console.log('Product pressed:', product);
-    const offerId = (product as any).externalId;
-    const productIdToUse = offerId || product.id;
-    // Get source from product data, fallback to selectedPlatform
-    const source = (product as any).source || selectedPlatform || '1688';
-    await navigateToProductDetail(productIdToUse, source, locale);
-  };
+  const handleProductPress = useCallback(
+    async (product: Product) => {
+      // For "more to love" products, use offerId if available
+      const offerId = (product as any).externalId;
+      const productIdToUse = offerId || product.id;
+      // Get source from product data, fallback to selectedPlatform
+      const source = (product as any).source || selectedPlatform || '1688';
+      await navigateToProductDetail(productIdToUse, source, locale);
+    },
+    [selectedPlatform, locale, navigateToProductDetail],
+  );
 
   const scrollToTop = () => {
     scrollViewRef.current?.scrollTo({ y: 0, animated: true });
@@ -1104,7 +1186,7 @@ const HomeScreen: React.FC = () => {
 
     const options: CameraOptions = {
       mediaType: 'photo' as MediaType,
-      quality: 0.1, // Very low quality to ensure <1.2MB for large images
+      quality: IMAGE_CONFIG.QUALITY,
       saveToPhotos: false,
       includeBase64: true,
     };
@@ -1121,7 +1203,7 @@ const HomeScreen: React.FC = () => {
         setImagePickerModalVisible(false);
         let base64Data = response.assets[0].base64;
 
-        // Image is already compressed with quality: 0.5 in camera/gallery options
+        // Then compressImageForSearch uses IMAGE_CONFIG.QUALITY (may step down for size)
         // Only compress if base64 is not available (fallback case)
         if (!base64Data && response.assets[0].uri) {
           const { compressImageForSearch } = require('../../utils/imageCompression');
@@ -1156,7 +1238,7 @@ const HomeScreen: React.FC = () => {
 
     const options: ImageLibraryOptions = {
       mediaType: 'photo' as MediaType,
-      quality: 0.1, // Very low quality to ensure <1.2MB for large images
+      quality: IMAGE_CONFIG.QUALITY,
       selectionLimit: 1,
       includeBase64: true,
     };
@@ -1173,7 +1255,7 @@ const HomeScreen: React.FC = () => {
         setImagePickerModalVisible(false);
         let base64Data = response.assets[0].base64;
 
-        // Image is already compressed with quality: 0.5 in camera/gallery options
+        // Then compressImageForSearch uses IMAGE_CONFIG.QUALITY (may step down for size)
         // Only compress if base64 is not available (fallback case)
         if (!base64Data && response.assets[0].uri) {
           const { compressImageForSearch } = require('../../utils/imageCompression');
@@ -1406,12 +1488,13 @@ const HomeScreen: React.FC = () => {
                 const discount = product.discount || 0;
                 
                 // Convert to Product type
+                const resolvedImg = getAlibabaThumbnailImageUri(product);
                 const productData: Product = {
                   id: product.id?.toString() || product.externalId?.toString() || '',
                   externalId: product.externalId?.toString() || product.id?.toString() || '',
                   offerId: product.externalId?.toString() || product.id?.toString() || '',
                   name: product.name || '',
-                  image: product.image || '',
+                  image: resolvedImg,
                   price: price,
                   originalPrice: originalPrice,
                   discount: discount,
@@ -1470,7 +1553,7 @@ const HomeScreen: React.FC = () => {
                       onPress={() => handleNewInProductPress(product)}
                     >
                       <Image
-                        source={{ uri: product.image }}
+                        source={resolvedImg ? { uri: resolvedImg } : undefined}
                         style={styles.newInImage}
                         resizeMode="cover"
                       />
@@ -1540,6 +1623,8 @@ const HomeScreen: React.FC = () => {
     [recommendationsProducts?.length]
   );
 
+  const homeGridPx = IMAGE_CONFIG.HOME_GRID_IMAGE_PIXEL;
+
   // Promo cards data (Flash Sale: newIn 2,3,4 + Points: newIn 5,6,7)
   const liveChannelPromoCards = [
     {
@@ -1548,9 +1633,15 @@ const HomeScreen: React.FC = () => {
       backgroundColor: '#88DBFF',
       price: `₩${newInProducts?.[4]?.price ?? 0}`,
       images: [
-        newInProducts?.[2]?.image ? { uri: newInProducts[2].image } : require('../../assets/images/deal1.png'),
-        newInProducts?.[3]?.image ? { uri: newInProducts[3].image } : require('../../assets/images/deal2.png'),
-        newInProducts?.[4]?.image ? { uri: newInProducts[4].image } : require('../../assets/images/deal3.png'),
+        getAlibabaThumbnailImageUri(newInProducts?.[2], homeGridPx)
+          ? { uri: getAlibabaThumbnailImageUri(newInProducts[2], homeGridPx)! }
+          : require('../../assets/images/deal1.png'),
+        getAlibabaThumbnailImageUri(newInProducts?.[3], homeGridPx)
+          ? { uri: getAlibabaThumbnailImageUri(newInProducts[3], homeGridPx)! }
+          : require('../../assets/images/deal2.png'),
+        getAlibabaThumbnailImageUri(newInProducts?.[4], homeGridPx)
+          ? { uri: getAlibabaThumbnailImageUri(newInProducts[4], homeGridPx)! }
+          : require('../../assets/images/deal3.png'),
       ],
       ids: [newInProducts?.[2]?._id, newInProducts?.[3]?._id, newInProducts?.[4]?._id],
       externalIds: [newInProducts?.[2]?.externalId, newInProducts?.[3]?.externalId, newInProducts?.[4]?.externalId],
@@ -1561,15 +1652,23 @@ const HomeScreen: React.FC = () => {
       backgroundColor: '#FFF27D',
       price: `₩${newInProducts?.[7]?.price ?? 0}`,
       images: [
-        newInProducts?.[5]?.image ? { uri: newInProducts[5].image } : require('../../assets/images/deal1.png'),
-        newInProducts?.[6]?.image ? { uri: newInProducts[6].image } : require('../../assets/images/deal2.png'),
-        newInProducts?.[7]?.image ? { uri: newInProducts[7].image } : require('../../assets/images/deal3.png'),
+        getAlibabaThumbnailImageUri(newInProducts?.[5], homeGridPx)
+          ? { uri: getAlibabaThumbnailImageUri(newInProducts[5], homeGridPx)! }
+          : require('../../assets/images/deal1.png'),
+        getAlibabaThumbnailImageUri(newInProducts?.[6], homeGridPx)
+          ? { uri: getAlibabaThumbnailImageUri(newInProducts[6], homeGridPx)! }
+          : require('../../assets/images/deal2.png'),
+        getAlibabaThumbnailImageUri(newInProducts?.[7], homeGridPx)
+          ? { uri: getAlibabaThumbnailImageUri(newInProducts[7], homeGridPx)! }
+          : require('../../assets/images/deal3.png'),
       ],
       ids: [newInProducts?.[5]?._id, newInProducts?.[6]?._id, newInProducts?.[7]?._id],
+      externalIds: [newInProducts?.[5]?.externalId, newInProducts?.[6]?.externalId, newInProducts?.[7]?.externalId],
     },
   ];
 
   const renderLiveChannelSection = () => {
+    console.log('liveChannelPromoCards', liveChannelPromoCards);
     return (
       <AutoLiveChannelSection
         liveChannelPromoCards={liveChannelPromoCards}
@@ -1587,7 +1686,7 @@ const HomeScreen: React.FC = () => {
         {/* Live On Card */}
         <TouchableOpacity style={styles.promoCard} activeOpacity={0.9}>
           <Image
-            source={{ uri: 'https://res.cloudinary.com/dkdt9sum4/image/upload/v1766567627/live_on_bg_tndc5g.jpg'}}
+            source={{ uri: 'https://res.cloudinary.com/dkdt9sum4/image/upload/v1766567627/live_on_bg_tndc5g.jpg' }}
             style={styles.promoCardBackground}
             resizeMode="cover"
           />
@@ -1640,7 +1739,7 @@ const HomeScreen: React.FC = () => {
         {/* Coupon Card */}
         <TouchableOpacity style={styles.promoCard} activeOpacity={0.9}>
           <Image
-            source={{ uri: 'https://res.cloudinary.com/dkdt9sum4/image/upload/v1766567627/coupon_sy7qod.jpg'}}
+            source={{ uri: 'https://res.cloudinary.com/dkdt9sum4/image/upload/v1766567627/coupon_sy7qod.jpg' }}
             style={styles.promoCardBackground}
             resizeMode="cover"
           />
@@ -1711,7 +1810,7 @@ const HomeScreen: React.FC = () => {
       rating_count: item.reviewNumbers || 0,
       name: name || 'Product',
       description: '',
-      image: item.imageUrl || p?.imageUrl || '',
+      image: getAlibabaThumbnailImageUri({ ...item, product: p }) || '',
       price: Number(price),
       originalPrice: originalPrice > 0 ? Number(originalPrice) : undefined,
       discount,
@@ -1742,7 +1841,6 @@ const HomeScreen: React.FC = () => {
     const hotItems = Array.isArray(popularItems) && popularItems.length > 0
       ? popularItems.slice(0, 2)
       : (newInProducts.length >= 10 ? [newInProducts[8], newInProducts[9]] : []);
-    console.log('Rendering Today\'s Deals - hotItems:', hotItems);
 
     const todaysHotProducts = newInProducts.length >= 13
       ? [newInProducts[11], newInProducts[12]].filter(Boolean)
@@ -1770,23 +1868,27 @@ const HomeScreen: React.FC = () => {
       const totalViews = item.onlineViews || item.itemsSold || Number(item.soldOut) || 0;
       const productId = item.productId || p?.id || item._id || item.id || '';
       const sellerName = item.seller?.nickname || item.companyName || '';
-      const sellerAvatar = item.seller?.picUrl || '';
-      const itemImage = item.imageUrl || item.image || p?.imageUrl || '';
+      const sellerAvatarRaw = item.seller?.picUrl || '';
+      const itemImageUri = getAlibabaThumbnailImageUri(item, homeGridPx);
 
       return (
         <TouchableOpacity
           key={item.id || productId || `live-hot-${index}`}
-          style={styles.todaysDealsProductWrap}
+          style={[styles.todaysDealsProductWrap, { width: dynDealsCardWidth }]}
           activeOpacity={0.9}
           onPress={() => productId && navigateToProductDetail(productId, 'ownmall', locale)}
         >
-          <View style={styles.liveHotUserRow}>
+          <View style={[styles.liveHotUserRow, { width: dynDealsCardWidth }]}>
             <Image
-              source={{ uri: itemImage }}
-              style={styles.liveHotImage}
+              source={
+                itemImageUri
+                  ? { uri: itemImageUri }
+                  : require('../../assets/images/deal1.png')
+              }
+              style={[styles.liveHotImage, { width: dynDealsCardWidth, height: dynDealsCardWidth }]}
               resizeMode="cover"
             />
-            <View style={styles.liveHotLiveRow}>
+            <View style={[styles.liveHotLiveRow, { width: dynDealsCardWidth }]}>
               <View style={styles.liveHotLiveRowIconContainer}>
                 <View style={styles.liveHotLiveRowIcon}>
                   <View style={styles.liveHotLiveRowIconInner}>
@@ -1800,7 +1902,11 @@ const HomeScreen: React.FC = () => {
               </View>
               <View style={styles.liveHotLiveRowUserContainer}>
                 <Image
-                  source={{ uri: sellerAvatar || `https://via.placeholder.com/40?text=${(sellerName || 'S').charAt(0)}` }}
+                  source={
+                    sellerAvatarRaw
+                      ? { uri: getAlibabaThumbnailImageUri({ imageUrl: sellerAvatarRaw }, 64) }
+                      : { uri: `https://via.placeholder.com/40?text=${(sellerName || 'S').charAt(0)}` }
+                  }
                   style={styles.liveHotAvatar}
                 />
                 <View style={styles.liveHotUserNameContainer}>
@@ -1810,28 +1916,31 @@ const HomeScreen: React.FC = () => {
               </View>
             </View>
           </View>
-          <Text style={styles.liveHotProductName} numberOfLines={2}>{productName}</Text>
-          <Text style={styles.liveHotPrice}>{formatPriceKRW(price)}</Text>
+          <Text style={[styles.liveHotProductName, { width: dynDealsCardWidth }]} numberOfLines={2}>{productName}</Text>
+          <Text style={[styles.liveHotPrice, { width: dynDealsCardWidth }]}>{formatPriceKRW(price)}</Text>
         </TouchableOpacity>
       );
     };
 
-    // Today's Hot Deals / Best Sellers: badge image above product image, then name and price
-    const renderDealProductCard = (product: Product, badgeSource: any) => (
+    const renderDealProductCard = (product: Product, badgeSource: any) => {
+      const dealImg = getAlibabaThumbnailImageUri(product, homeGridPx);
+      return (
       <TouchableOpacity
         key={product.id || product.externalId}
-        style={styles.todaysDealsProductWrap}
+        style={[styles.todaysDealsProductWrap, { width: dynDealsCardWidth }]}
         activeOpacity={0.9}
         onPress={() => handleProductPress(product)}
       >
-        <View style={styles.dealProductCard}>
-          <View style={styles.dealProductImageWrap}>
+        <View style={[styles.dealProductCard, { width: dynDealsCardWidth }]}>
+          <View style={[styles.dealProductImageWrap, { width: dynDealsCardWidth }]}>
             {badgeSource && (
-              <Image source={badgeSource} style={styles.dealProductBadge} resizeMode="contain" />
+              <Image source={badgeSource} style={[styles.dealProductBadge, { width: dynDealsCardWidth }]} resizeMode="contain" />
             )}
             <Image
-              source={{ uri: product.image ? `${product.image}_200x200.jpg` : undefined }}
-              style={styles.dealProductImage}
+              source={
+                dealImg ? { uri: dealImg } : require('../../assets/images/deal1.png')
+              }
+              style={[styles.dealProductImage, { width: dynDealsCardWidth }]}
               resizeMode="cover"
             />
           </View>
@@ -1840,6 +1949,7 @@ const HomeScreen: React.FC = () => {
         </View>
       </TouchableOpacity>
     );
+    };
 
     const renderDealBlock = (title: string, subtitle: string, color: string, textColor: string, content: React.ReactNode) => {
       if (!content) return null;
@@ -1929,12 +2039,15 @@ const HomeScreen: React.FC = () => {
       // }
       return {
         title: categoryKey.replace('_', ' ').toUpperCase(), // Use category key as title
-        items: categoryProducts.slice(0, 4).map((product: any) => ({
-          id: product._id || product.externalId || '',
-          platform: product.platform || '1688',
-          price: `₩${product.price}`,
-          image: product.image ? { uri: product.image } : undefined,
-        }))
+        items: categoryProducts.slice(0, 4).map((product: any) => {
+          const uri = getAlibabaThumbnailImageUri(product);
+          return {
+            id: product._id || product.externalId || '',
+            platform: product.platform || '1688',
+            price: `₩${product.price}`,
+            image: uri ? { uri } : undefined,
+          };
+        })
       };
     });
 
@@ -2021,8 +2134,8 @@ const HomeScreen: React.FC = () => {
             
             // Parse variation data if it exists
             let price = product.price || 0;
-            let productImage = product.image || '';
-            
+            const productImage = getAlibabaThumbnailImageUri(product);
+
             // Convert to Product type for display
             const productData: Product = {
               id: product.id.toString(),
@@ -2137,6 +2250,7 @@ const HomeScreen: React.FC = () => {
                 key={`moretolove-${product.id || index}`}
                 product={product}
                 variant="moreToLove"
+                cardWidth={dynGridCardWidth}
                 onPress={() => handleProductPress(product)}
                 onLikePress={handleLike}
                 isLiked={isProductLiked(product)}
@@ -2145,7 +2259,7 @@ const HomeScreen: React.FC = () => {
                 showRating={true}
               />
             );
-  }, [user, isGuest, toggleWishlist, handleProductPress, isProductLiked]);
+  }, [user, isGuest, toggleWishlist, handleProductPress, isProductLiked, dynGridCardWidth]);
 
   // Memoize keyExtractor for better performance
   const keyExtractorMoreToLove = useCallback((item: Product, index: number) => {
@@ -2194,18 +2308,22 @@ const HomeScreen: React.FC = () => {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t('home.moreToLove')}</Text>
         <FlatList
+          key={`moretolove-cols-${moreToLoveColumns}`}
           data={productsToDisplay}
           renderItem={renderMoreToLoveItem}
           keyExtractor={keyExtractorMoreToLove}
-          numColumns={2}
+          numColumns={moreToLoveColumns}
           scrollEnabled={false}
           nestedScrollEnabled={true}
           columnWrapperStyle={styles.newInGridContainer}
-          removeClippedSubviews={true}
-          maxToRenderPerBatch={10}
-          windowSize={5}
-          initialNumToRender={10}
-          updateCellsBatchingPeriod={50}
+          // Tightened virtualization settings: render fewer cards at once and
+          // let Android drop off-screen cells from the view tree to keep memory
+          // and decode cost down on long lists.
+          removeClippedSubviews={Platform.OS === 'android'}
+          maxToRenderPerBatch={6}
+          windowSize={3}
+          initialNumToRender={6}
+          updateCellsBatchingPeriod={80}
           extraData={wishlistExtraData}
           ListFooterComponent={renderMoreToLoveFooter}
         />
@@ -3389,7 +3507,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: SPACING.sm,
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     paddingHorizontal: SPACING.sm,
   },
   todaysDealsProductWrap: {
@@ -3467,6 +3585,7 @@ const styles = StyleSheet.create({
     aspectRatio: 1,
     borderRadius: BORDER_RADIUS.md,
     backgroundColor: COLORS.gray[200],
+    
   },
   liveHotLiveRowUserContainer: {
     flexDirection: 'row',

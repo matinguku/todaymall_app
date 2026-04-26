@@ -25,7 +25,7 @@ import Icon from '../../../components/Icon';
 import { useToast } from '../../../context/ToastContext';
 import { sortProducts } from '../../../utils/productSort';
 import { convertFromKRW } from '../../../utils/i18nHelpers';
-import { compressImageForSearch } from '../../../utils/imageCompression';
+import { compressImageForSearch, getImageSearchQualityLadder } from '../../../utils/imageCompression';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - SPACING.md * 3) / 2;
@@ -129,7 +129,7 @@ const ImageSearchResultsModal: React.FC<ImageSearchResultsModalProps> = ({
         const sizeMB = base64Size / 1024 / 1024;
 
         if (base64Size > 1200000) {
-          const qualities = [0.3, 0.25, 0.2, 0.15, 0.1, 0.08, 0.05];
+          const qualities = getImageSearchQualityLadder();
           let compressed: string | null = null;
           for (const q of qualities) {
             compressed = await compressImageForSearch(imageUri, sizeMB, q);

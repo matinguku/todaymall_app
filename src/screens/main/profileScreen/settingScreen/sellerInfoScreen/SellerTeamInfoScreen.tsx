@@ -11,13 +11,13 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import Icon from '../../../../../components/Icon';
-import { RootStackParamList } from '../../../../../types';
+import type { SellerStackParamList } from '../../../../../types';
 import { COLORS } from '../../../../../constants';
 import { useTranslation } from '../../../../../hooks/useTranslation';
 
 const { width } = Dimensions.get('window');
 
-type NavigationProp = StackNavigationProp<RootStackParamList, 'CreateGeneralInquiry'>;
+type NavigationProp = StackNavigationProp<SellerStackParamList, 'SellerTeamInfo'>;
 
 type Seller = {
   sellerId: string;
@@ -68,11 +68,11 @@ const SellerTeamInfo: React.FC = () => {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity onPress={() => navigation.goBack()}>
-        <Icon name="arrow-back" size={24} color="#333" />
+      <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
       </TouchableOpacity>
       <Text style={styles.headerTitle}>{t('sellerInfo.dashboardTitle')}</Text>
-      <View style={{ width: 24 }} />
+      <View style={styles.headerPlaceholder} />
     </View>
   );
 
@@ -164,10 +164,23 @@ const styles = StyleSheet.create({
 
   header: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: 'white',
-    elevation: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  backButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerPlaceholder: {
+    width: 32,
+    height: 32,
   },
 
   headerTitle: {

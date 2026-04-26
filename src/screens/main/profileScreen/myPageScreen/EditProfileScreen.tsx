@@ -6,7 +6,7 @@ import { launchCamera, launchImageLibrary, MediaType, ImagePickerResponse, Camer
 import Icon from '../../../../components/Icon';
 import ImagePickerModal from '../../../../components/ImagePickerModal';
 import DatePickerModal from '../../../../components/DatePickerModal';
-import { COLORS, FONTS, SPACING } from '../../../../constants';
+import { COLORS, FONTS, SPACING, IMAGE_CONFIG } from '../../../../constants';
 import { RootStackParamList } from '../../../../types';
 import { useAuth } from '../../../../context/AuthContext';
 import { useAppSelector } from '../../../../store/hooks';
@@ -138,7 +138,7 @@ const EditProfileScreen: React.FC = () => {
   const handleTakePhoto = async () => {
     const granted = await requestCameraPermission();
     if (!granted) return Alert.alert(t('common.error'), t('profile.cameraPermissionRequired'));
-    const options: CameraOptions = { mediaType: 'photo' as MediaType, quality: 0.5, saveToPhotos: false };
+    const options: CameraOptions = { mediaType: 'photo' as MediaType, quality: IMAGE_CONFIG.QUALITY, saveToPhotos: false };
     launchCamera(options, async (response: ImagePickerResponse) => {
       if (response.didCancel) return setShowImagePicker(false);
       if (response.errorCode) {
@@ -152,7 +152,7 @@ const EditProfileScreen: React.FC = () => {
   const handleChooseFromGallery = async () => {
     const granted = await requestPhotoLibraryPermission();
     if (!granted) return Alert.alert(t('common.error'), t('profile.photoLibraryPermissionRequired'));
-    const options: ImageLibraryOptions = { mediaType: 'photo' as MediaType, quality: 0.5, selectionLimit: 1 };
+    const options: ImageLibraryOptions = { mediaType: 'photo' as MediaType, quality: IMAGE_CONFIG.QUALITY, selectionLimit: 1 };
     launchImageLibrary(options, async (response: ImagePickerResponse) => {
       if (response.didCancel) return setShowImagePicker(false);
       if (response.errorCode) {
@@ -570,7 +570,7 @@ const styles = StyleSheet.create({
     // justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
-    paddingTop: SPACING['2xl'],
+    paddingTop: SPACING.md,
     backgroundColor: COLORS.white,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,

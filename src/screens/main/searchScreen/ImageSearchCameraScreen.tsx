@@ -23,7 +23,7 @@ import { launchImageLibrary, MediaType, ImagePickerResponse, ImageLibraryOptions
 import ImagePicker from 'react-native-image-crop-picker';
 import { CameraRoll, GetPhotosParams, PhotoIdentifier } from '@react-native-camera-roll/camera-roll';
 import { requestPhotoLibraryPermission } from '../../../utils/permissions';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, IMAGE_CONFIG } from '../../../constants';
 import { RootStackParamList } from '../../../types';
 import ArrowBackIcon from '../../../assets/icons/ArrowBackIcon';
 import CameraIcon from '../../../assets/icons/CameraIcon';
@@ -33,7 +33,7 @@ import HistoryIconSVG from '../../../assets/icons/HistoryIconSVG';
 import Icon from '../../../components/Icon';
 import { useAppSelector } from '../../../store/hooks';
 import { translations } from '../../../i18n/translations';
-import { compressImageForSearch } from '../../../utils/imageCompression';
+import { compressImageForSearch, getImageSearchQualityLadder } from '../../../utils/imageCompression';
 import ImageSearchResultsModal from './ImageSearchResultsModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -388,7 +388,7 @@ const ImageSearchCameraScreen: React.FC = () => {
           cropperToolbarTitle: t('imageSearch.cropImage'),
           cropperChooseText: t('common.confirm'),
           cropperCancelText: t('common.cancel'),
-          compressImageQuality: 0.8,
+          compressImageQuality: IMAGE_CONFIG.QUALITY,
           includeBase64: true,
         });
       } catch (cropperError: any) {
@@ -408,7 +408,7 @@ const ImageSearchCameraScreen: React.FC = () => {
               cropperToolbarTitle: t('imageSearch.cropImage'),
               cropperChooseText: t('common.confirm'),
               cropperCancelText: t('common.cancel'),
-              compressImageQuality: 0.8,
+              compressImageQuality: IMAGE_CONFIG.QUALITY,
               includeBase64: true,
             });
           } catch (secondError) {
@@ -433,7 +433,7 @@ const ImageSearchCameraScreen: React.FC = () => {
                     cropperToolbarTitle: t('imageSearch.cropImage'),
                     cropperChooseText: t('common.confirm'),
                     cropperCancelText: t('common.cancel'),
-                    compressImageQuality: 0.8,
+                    compressImageQuality: IMAGE_CONFIG.QUALITY,
                     includeBase64: true,
                   });
                 } else {
@@ -468,7 +468,7 @@ const ImageSearchCameraScreen: React.FC = () => {
                   cropperToolbarTitle: t('imageSearch.cropImage'),
                   cropperChooseText: t('common.confirm'),
                   cropperCancelText: t('common.cancel'),
-                  compressImageQuality: 0.8,
+                  compressImageQuality: IMAGE_CONFIG.QUALITY,
                   includeBase64: true,
                 });
               } else {
@@ -560,25 +560,16 @@ const ImageSearchCameraScreen: React.FC = () => {
           // If image is over 1.2MB, compress it
           if (base64Size > 1200000) {
             setIsSearching(true);
-            const compressedBase64 = await compressImageForSearch(
-              croppedImage.path,
-              sizeMB,
-              0.3
-            );
-            
-            if (compressedBase64 && compressedBase64.length <= 1200000) {
-              base64Data = compressedBase64;
-              console.log('Compressed to acceptable size');
-            } else if (compressedBase64) {
-              // Try with lower quality
-              const compressedBase642 = await compressImageForSearch(
+            for (const stepQ of getImageSearchQualityLadder()) {
+              const compressed = await compressImageForSearch(
                 croppedImage.path,
                 sizeMB,
-                0.2
+                stepQ,
               );
-              if (compressedBase642 && compressedBase642.length <= 1200000) {
-                base64Data = compressedBase642;
-                console.log('Compressed with lower quality to acceptable size');
+              if (compressed && compressed.length <= 1200000) {
+                base64Data = compressed;
+                console.log('Compressed to acceptable size');
+                break;
               }
             }
           }
@@ -789,7 +780,7 @@ const ImageSearchCameraScreen: React.FC = () => {
     // Otherwise, open the image picker
     const options: ImageLibraryOptions = {
       mediaType: 'photo' as MediaType,
-      quality: 0.8,
+      quality: IMAGE_CONFIG.QUALITY,
       includeBase64: false,
     };
 
@@ -813,7 +804,7 @@ const ImageSearchCameraScreen: React.FC = () => {
             cropperToolbarTitle: t('imageSearch.cropImage'),
             cropperChooseText: t('common.confirm'),
             cropperCancelText: t('common.cancel'),
-            compressImageQuality: 0.8,
+            compressImageQuality: IMAGE_CONFIG.QUALITY,
             includeBase64: true,
           });
 
@@ -836,22 +827,15 @@ const ImageSearchCameraScreen: React.FC = () => {
               // If image is over 1.2MB, compress it
               if (base64Size > 1200000) {
                 setIsSearching(true);
-                const compressedBase64 = await compressImageForSearch(
-                  croppedImage.path,
-                  sizeMB,
-                  0.3
-                );
-                
-                if (compressedBase64 && compressedBase64.length <= 1200000) {
-                  base64Data = compressedBase64;
-                } else if (compressedBase64) {
-                  const compressedBase642 = await compressImageForSearch(
+                for (const stepQ of getImageSearchQualityLadder()) {
+                  const compressed = await compressImageForSearch(
                     croppedImage.path,
                     sizeMB,
-                    0.2
+                    stepQ,
                   );
-                  if (compressedBase642 && compressedBase642.length <= 1200000) {
-                    base64Data = compressedBase642;
+                  if (compressed && compressed.length <= 1200000) {
+                    base64Data = compressed;
+                    break;
                   }
                 }
               }
