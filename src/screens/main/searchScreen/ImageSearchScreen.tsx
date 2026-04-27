@@ -17,17 +17,22 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useAppSelector } from '../../../store/hooks';
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, PAGINATION } from '../../../constants';
 import { RootStackParamList, Product } from '../../../types';
 import { ProductCard, SortDropdown, PriceFilterModal } from '../../../components';
 import { useAuth } from '../../../context/AuthContext';
 import { translations } from '../../../i18n/translations';
-import { productsApi } from '../../../services/productsApi';
 import ArrowBackIcon from '../../../assets/icons/ArrowBackIcon';
 import ViewListIcon from '../../../assets/icons/ViewListIcon';
 import { useToast } from '../../../context/ToastContext';
 import { sortProducts } from '../../../utils/productSort';
 import { convertFromKRW } from '../../../utils/i18nHelpers';
+import {
+  prefetchImageSearch1688,
+  prefetchImageSearchTaobao,
+  warmImageSearch1688,
+  warmImageSearchTaobao,
+} from '../../../utils/imageSearchPrefetch';
 
 const { width, height } = Dimensions.get('window');
 const CARD_WIDTH = (width - SPACING.sm * 3) / 2;
@@ -67,7 +72,13 @@ const ImageSearchScreen: React.FC = () => {
   const [allProducts, setAllProducts] = useState<Product[]>([]); // Store all products for sorting/filtering
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
-  const PAGE_SIZE = 40;
+  // Page size: a small first page so results appear quickly, even smaller
+  // pages on subsequent loads. ImageSearchScreen hits a single platform per
+  // page so it uses the full combined budget directly.
+  const getPageSize = (page: number) =>
+    page === 1
+      ? PAGINATION.FEED_INITIAL_PAGE_SIZE
+      : PAGINATION.FEED_MORE_PAGE_SIZE;
   const [imageError, setImageError] = useState<boolean>(false);
   const [priceFilterModalVisible, setPriceFilterModalVisible] = useState<boolean>(false);
   const [minPrice, setMinPrice] = useState<string>('');
@@ -78,11 +89,11 @@ const ImageSearchScreen: React.FC = () => {
   
   // Sort options
   const sortOptions = [
-    { label: 'Best Match', value: 'best_match' },
-    { label: 'Price High', value: 'price_high' },
-    { label: 'Price Low', value: 'price_low' },
-    { label: 'High Sales', value: 'high_sales' },
-    { label: 'Low Sales', value: 'low_sales' },
+    { label: t('search.sortOptions.bestMatch'), value: 'best_match' },
+    { label: t('search.sortOptions.priceHigh'), value: 'price_high' },
+    { label: t('search.sortOptions.priceLow'), value: 'price_low' },
+    { label: t('search.sortOptions.highSales'), value: 'high_sales' },
+    { label: t('search.sortOptions.lowSales'), value: 'low_sales' },
   ];
   
   const { showToast } = useToast();
@@ -240,7 +251,12 @@ const ImageSearchScreen: React.FC = () => {
             locale === 'ko' ? 'ko' :
             'en';
           
-          response = await productsApi.imageSearch1688(base64, language, page, PAGE_SIZE);
+          response = await prefetchImageSearch1688({
+            imageBase64: base64,
+            language,
+            page,
+            pageSize: getPageSize(page),
+          });
           
           // console.log('🔍 [ImageSearchScreen] 1688 API Response:', {
           //   success: response.success,
@@ -266,7 +282,12 @@ const ImageSearchScreen: React.FC = () => {
             locale === 'ko' ? 'ko' :
             'en';
 
-          response = await productsApi.imageSearchTaobao(language, base64, page, PAGE_SIZE);
+          response = await prefetchImageSearchTaobao({
+            imageBase64: base64,
+            language,
+            page,
+            pageSize: getPageSize(page),
+          });
         } else {
           // Other platforms not yet supported
           setIsLoading(false);
@@ -397,19 +418,58 @@ const ImageSearchScreen: React.FC = () => {
           setAllProducts(mappedProducts);
           setProducts(sortedProducts);
         } else {
+          // Dedup by external/offer id when appending — image search hits
+          // two platforms in parallel and the same listing can appear in
+          // both, plus the API can return the same product across pages.
+          const productKey = (p: any): string =>
+            (p?.offerId?.toString?.()) || (p?.externalId?.toString?.()) || (p?.id?.toString?.()) || '';
           setAllProducts(prev => {
-            const seen = new Set(prev.map(p => p.id));
-            const fresh = mappedProducts.filter(p => !seen.has(p.id));
+            const seen = new Set(prev.map(productKey).filter(Boolean));
+            const fresh = mappedProducts.filter((p: any) => {
+              const k = productKey(p);
+              if (!k || seen.has(k)) return false;
+              seen.add(k);
+              return true;
+            });
             return [...prev, ...fresh];
           });
           setProducts(prev => {
-            const seen = new Set(prev.map(p => p.id));
-            const fresh = sortedProducts.filter(p => !seen.has(p.id));
+            const seen = new Set(prev.map(productKey).filter(Boolean));
+            const fresh = sortedProducts.filter((p: any) => {
+              const k = productKey(p);
+              if (!k || seen.has(k)) return false;
+              seen.add(k);
+              return true;
+            });
             return [...prev, ...fresh];
           });
         }
 
         currentPageRef.current = page;
+
+        // Pre-warm page N+1 in the background so the next "load more" hits
+        // cache instead of waiting on the network. Cost: at most one wasted
+        // request when the user is already on the last page; in exchange
+        // every other "load more" feels instant.
+        if (hasMoreRef.current) {
+          const nextPage = page + 1;
+          const nextPageSize = getPageSize(nextPage);
+          if (platform === '1688') {
+            warmImageSearch1688({
+              imageBase64: base64,
+              language: locale === 'zh' ? 'en' : locale === 'ko' ? 'ko' : 'en',
+              page: nextPage,
+              pageSize: nextPageSize,
+            });
+          } else if (platform === 'taobao') {
+            warmImageSearchTaobao({
+              imageBase64: base64,
+              language: locale === 'zh' ? 'en' : locale === 'ko' ? 'ko' : 'en',
+              page: nextPage,
+              pageSize: nextPageSize,
+            });
+          }
+        }
 
       } catch (error: any) {
         if (page === 1) {

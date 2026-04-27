@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { productsApi } from '../services/productsApi';
+import { prefetchNewInProducts } from '../utils/homePrefetch';
 
 interface UseNewInProductsMutationOptions {
   onSuccess?: (data: any) => void;
@@ -31,7 +32,7 @@ export const useNewInProductsMutation = (
     setError(null);
 
     try {
-      const response = await productsApi.getNewInProducts(platform, country);
+      const response = await prefetchNewInProducts(platform, country);
       
       if (response.success && response.data) {
         setData(response.data);

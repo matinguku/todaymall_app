@@ -15,17 +15,22 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useAppSelector } from '../../../store/hooks';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, PAGINATION } from '../../../constants';
 import { RootStackParamList, Product } from '../../../types';
 import { ProductCard, SortDropdown, PriceFilterModal } from '../../../components';
 import { useAuth } from '../../../context/AuthContext';
 import { translations } from '../../../i18n/translations';
-import { productsApi } from '../../../services/productsApi';
 import Icon from '../../../components/Icon';
 import { useToast } from '../../../context/ToastContext';
 import { sortProducts } from '../../../utils/productSort';
 import { convertFromKRW } from '../../../utils/i18nHelpers';
 import { compressImageForSearch, getImageSearchQualityLadder } from '../../../utils/imageCompression';
+import {
+  prefetchImageSearch1688,
+  prefetchImageSearchTaobao,
+  warmImageSearch1688,
+  warmImageSearchTaobao,
+} from '../../../utils/imageSearchPrefetch';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - SPACING.md * 3) / 2;
@@ -79,13 +84,21 @@ const ImageSearchResultsModal: React.FC<ImageSearchResultsModalProps> = ({
   const [minPrice, setMinPrice] = useState<string>('');
   const [maxPrice, setMaxPrice] = useState<string>('');
   const [selectedSort, setSelectedSort] = useState<string>('best_match');
-  const PAGE_SIZE = 40; // per platform per page
+  // Per-platform page size: a small first page so results appear quickly,
+  // even smaller pages on subsequent loads. Image search hits 1688 + Taobao
+  // in parallel so we split the combined budget evenly across the two.
+  const getPerPlatformPageSize = (page: number) => {
+    const combined = page === 1
+      ? PAGINATION.FEED_INITIAL_PAGE_SIZE
+      : PAGINATION.FEED_MORE_PAGE_SIZE;
+    return Math.ceil(combined / 2);
+  };
 
   // Sort options - Best Match and Price only (no Popular)
   const sortOptions = [
-    { label: 'Best Match', value: 'best_match' },
-    { label: 'Price: Low to High', value: 'price_low' },
-    { label: 'Price: High to Low', value: 'price_high' },
+    { label: t('search.sortOptions.bestMatch'), value: 'best_match' },
+    { label: t('search.sortOptions.priceHigh'), value: 'price_high' },
+    { label: t('search.sortOptions.priceLow'), value: 'price_low' },
   ];
   
   const { showToast } = useToast();
@@ -95,16 +108,20 @@ const ImageSearchResultsModal: React.FC<ImageSearchResultsModalProps> = ({
   const currentPageRef = useRef<number>(1);
   const hasMoreRef = useRef<boolean>(true);
   
-  // Helper function to navigate to product detail
+  // Helper function to navigate to product detail. The optional productData
+  // payload lets ProductDetailScreen render the image / title / price
+  // immediately while it fetches the full detail in the background.
   const navigateToProductDetail = async (
     productId: string | number,
     source: string = '1688',
-    country: string = locale
+    country: string = locale,
+    productData?: Product,
   ) => {
     navigation.navigate('ProductDetail', {
       productId: productId.toString(),
       source: source,
       country: country,
+      productData,
     } as any);
   };
 
@@ -151,10 +168,23 @@ const ImageSearchResultsModal: React.FC<ImageSearchResultsModalProps> = ({
 
         const language = locale === 'ko' ? 'ko' : 'en';
 
-        // Call both APIs in parallel with page + pageSize
+        // Call both APIs in parallel with page + pageSize. Routed through
+        // the prefetch cache so that page N+1 (warmed below after this page
+        // lands) resolves from memory on the next "load more".
+        const perPlatformPageSize = getPerPlatformPageSize(page);
         const [response1688, responseTaobao] = await Promise.allSettled([
-          productsApi.imageSearch1688(base64, language, page, PAGE_SIZE),
-          productsApi.imageSearchTaobao(language, base64, page, PAGE_SIZE),
+          prefetchImageSearch1688({
+            imageBase64: base64,
+            language,
+            page,
+            pageSize: perPlatformPageSize,
+          }),
+          prefetchImageSearchTaobao({
+            imageBase64: base64,
+            language,
+            page,
+            pageSize: perPlatformPageSize,
+          }),
         ]);
 
         const raw1688 =
@@ -173,8 +203,9 @@ const ImageSearchResultsModal: React.FC<ImageSearchResultsModalProps> = ({
           return;
         }
 
-        // hasMore if either platform returned a full page
-        hasMoreRef.current = raw1688.length >= PAGE_SIZE || rawTaobao.length >= PAGE_SIZE;
+        // hasMore if either platform returned a full page (per-platform size
+        // varies between page 1 and subsequent pages — see getPerPlatformPageSize).
+        hasMoreRef.current = raw1688.length >= perPlatformPageSize || rawTaobao.length >= perPlatformPageSize;
 
         const combined = [...raw1688, ...rawTaobao];
 
@@ -253,11 +284,55 @@ const ImageSearchResultsModal: React.FC<ImageSearchResultsModalProps> = ({
           setProducts(sorted);
           if (sorted.length === 0) showToast(t('imageSearch.noResults') || 'No products found', 'info');
         } else {
-          setAllProducts(prev => [...prev, ...mappedProducts]);
-          setProducts(prev => [...prev, ...sorted]);
+          // Dedup by external/offer id when appending — image search hits
+          // two platforms in parallel and the same listing can appear in
+          // both. Duplicates would crash the FlatList with "two children
+          // with the same key".
+          const productKey = (p: any): string =>
+            (p?.offerId?.toString?.()) || (p?.externalId?.toString?.()) || (p?.id?.toString?.()) || '';
+          setAllProducts(prev => {
+            const seen = new Set(prev.map(productKey).filter(Boolean));
+            const fresh = mappedProducts.filter((p: any) => {
+              const k = productKey(p);
+              if (!k || seen.has(k)) return false;
+              seen.add(k);
+              return true;
+            });
+            return [...prev, ...fresh];
+          });
+          setProducts(prev => {
+            const seen = new Set(prev.map(productKey).filter(Boolean));
+            const fresh = sorted.filter((p: any) => {
+              const k = productKey(p);
+              if (!k || seen.has(k)) return false;
+              seen.add(k);
+              return true;
+            });
+            return [...prev, ...fresh];
+          });
         }
 
         currentPageRef.current = page;
+
+        // Pre-warm page N+1 on both platforms in the background so the next
+        // "load more" hits cache instead of the network. Cost: at most one
+        // wasted pair of requests when the user is already on the last page.
+        if (hasMoreRef.current) {
+          const nextPage = page + 1;
+          const nextPerPlatformPageSize = getPerPlatformPageSize(nextPage);
+          warmImageSearch1688({
+            imageBase64: base64,
+            language,
+            page: nextPage,
+            pageSize: nextPerPlatformPageSize,
+          });
+          warmImageSearchTaobao({
+            imageBase64: base64,
+            language,
+            page: nextPage,
+            pageSize: nextPerPlatformPageSize,
+          });
+        }
 
       } catch (error: any) {
         if (page === 1) { setProducts([]); setAllProducts([]); }
@@ -319,7 +394,7 @@ const ImageSearchResultsModal: React.FC<ImageSearchResultsModalProps> = ({
     }
     
     const source = (product as any).source || '1688';
-    await navigateToProductDetail(productIdToUse, source, locale);
+    await navigateToProductDetail(productIdToUse, source, locale, product);
   }, [navigateToProductDetail, locale, showToast]);
 
   const handleLikePress = useCallback(async (product: Product) => {

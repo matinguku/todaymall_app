@@ -14,13 +14,14 @@ import {
   Platform,
   FlatList,
   PermissionsAndroid,
-  ActivityIndicator,
   useWindowDimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { launchCamera, launchImageLibrary, MediaType, ImagePickerResponse, CameraOptions, ImageLibraryOptions } from 'react-native-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
 import RNFS from 'react-native-fs';
+import FastImage from '@d11/react-native-fast-image';
 import { requestCameraPermission, requestPhotoLibraryPermission } from '../../utils/permissions';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -30,7 +31,7 @@ import Svg, { Defs, RadialGradient as SvgRadialGradient, Stop, Rect, Mask, Circl
 // Create animated icon component
 const AnimatedIcon = Animated.createAnimatedComponent(Icon);
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG } from '../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG, PAGINATION } from '../../constants';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { RootStackParamList, Product, NewInProduct, Story, Carousel } from '../../types';
@@ -57,8 +58,9 @@ import { useSocket } from '../../context/SocketContext';
 import { inquiryApi } from '../../services/inquiryApi';
 import { useDefaultCategoriesMutation } from '../../hooks/useDefaultCategoriesMutation';
 import { formatPriceKRW } from '../../utils/i18nHelpers';
-import { getAlibabaThumbnailImageUri } from '../../utils/productImage';
+import { getAlibabaThumbnailImageUri, buildCdnThumbnailUri } from '../../utils/productImage';
 import { useResponsive } from '../../hooks/useResponsive';
+import { invalidateHomeCache, prefetchRecommendations } from '../../utils/homePrefetch';
 const LogoImage = require('../../assets/images/logo.png');
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -286,7 +288,21 @@ const AutoBrandCarousel = React.memo(({
         scrollEventThrottle={16}
       >
         {carousels.map((carousel, carouselIdx: number) => {
-          const imageUrl = Platform.OS === 'ios' || winWidth < 600 ? carousel.mobileImage : carousel.desktopImage;
+          // Pick the right asset for this device, falling back to whichever
+          // one the API returned so a missing mobile/desktop variant doesn't
+          // produce an empty <Image source={{ uri: '' }} /> on refresh.
+          const rawImageUrl =
+            (Platform.OS === 'ios' || winWidth < 600
+              ? carousel.mobileImage || carousel.desktopImage
+              : carousel.desktopImage || carousel.mobileImage) || '';
+          // Ask the CDN (Cloudinary or Alibaba) for a thumbnail roughly the
+          // size we render so the slide loads as fast as a More-to-Love
+          // product card instead of fetching the full desktop/mobile image.
+          // The longest edge we need is dynWidth (display width); request
+          // pixel-density-aware size by capping at 2× device-independent px.
+          const imageUrl = rawImageUrl
+            ? buildCdnThumbnailUri(rawImageUrl, Math.min(800, Math.round(dynWidth * 2)), 60)
+            : '';
 
           return (
             <TouchableOpacity
@@ -294,11 +310,15 @@ const AutoBrandCarousel = React.memo(({
               style={[styles.brandSlide, { width: dynWidth }]}
               activeOpacity={0.9}
             >
-              <Image
-                source={{ uri: `${imageUrl}` }}
-                style={[styles.brandImage, { width: dynWidth, height: brandImgHeight }]}
-                resizeMode="cover"
-              />
+              {imageUrl ? (
+                <Image
+                  source={{ uri: imageUrl }}
+                  style={[styles.brandImage, { width: dynWidth, height: brandImgHeight }]}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={[styles.brandImage, { width: dynWidth, height: brandImgHeight, backgroundColor: COLORS.background }]} />
+              )}
             </TouchableOpacity>
           );
         })}
@@ -380,7 +400,11 @@ const AutoLiveChannelSection = React.memo(({
 
   return (
     <View style={styles.liveChannelContainer}>
-      <TouchableOpacity style={[styles.liveChannelCard, { width: liveCardW, height: liveCardH }]} activeOpacity={0.9}>
+      <TouchableOpacity
+        style={[styles.liveChannelCard, { width: liveCardW, height: liveCardH }]}
+        activeOpacity={0.9}
+        onPress={() => navigation.navigate('Live' as never)}
+      >
         <ScrollView
           ref={scrollRef}
           horizontal
@@ -422,7 +446,10 @@ const AutoLiveChannelSection = React.memo(({
           <View style={styles.liveChannelTextContainer}>
             <Text style={styles.liveChannelTitle}>{(translations[locale] as any)?.home?.todaysLive || "TODAY'S"}</Text>
             <Text style={styles.liveChannelSubtitle}>{(translations[locale] as any)?.home?.liveDeals || 'LIVE DEALS'}</Text>
-            <TouchableOpacity style={styles.watchNowButton}>
+            <TouchableOpacity
+              style={styles.watchNowButton}
+              onPress={() => navigation.navigate('Live' as never)}
+            >
               <Text style={styles.watchNowButtonText}>{(translations[locale] as any)?.home?.watchNow || 'Watch Now'} {">"}</Text>
             </TouchableOpacity>
           </View>
@@ -653,6 +680,17 @@ const HomeScreen: React.FC = () => {
   const lastFetchTimeRef = useRef(0);
   const FETCH_THROTTLE_MS = 30000; // Only fetch every 30 seconds
 
+  // Layout-first paint: render the structural layout immediately on mount and
+  // defer the heavy "More to Love" recommendations grid to the next frame so
+  // the user sees the page composition first; images stream in afterwards.
+  // Uses requestAnimationFrame (16ms guarantee) instead of InteractionManager
+  // (which previously caused fetches to never fire — see ProductDetailScreen).
+  const [showHeavyContent, setShowHeavyContent] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setShowHeavyContent(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
   useFocusEffect(
     React.useCallback(() => {
       const now = Date.now();
@@ -817,16 +855,53 @@ const HomeScreen: React.FC = () => {
           return productData;
         });
         
-        // Check pagination - if we got fewer products than pageSize, no more pages
-        const pageSize = 20;
-        const hasMore = productsArray.length >= pageSize;
+        // Check pagination - if we got fewer products than the page size we
+        // requested for this page, no more pages. First page asks for
+        // FEED_INITIAL_PAGE_SIZE; subsequent pages ask for FEED_MORE_PAGE_SIZE.
+        const requestedPageSize = currentPage === 1
+          ? PAGINATION.FEED_INITIAL_PAGE_SIZE
+          : PAGINATION.FEED_MORE_PAGE_SIZE;
+        const hasMore = productsArray.length >= requestedPageSize;
         setRecommendationsHasMore(hasMore);
-        
+
         // If it's the first page, replace products, otherwise append
+        // Dedup by external/offer id when appending new pages — the
+        // recommendations API can return the same product across pages and
+        // duplicates would crash the FlatList with "two children with the
+        // same key".
+        const productKey = (p: Product): string =>
+          ((p as any)?.offerId?.toString?.()) || ((p as any)?.externalId?.toString?.()) || (p?.id?.toString?.()) || '';
         if (currentPage === 1) {
           setRecommendationsProducts(mappedProducts);
         } else {
-          setRecommendationsProducts(prev => [...prev, ...mappedProducts]);
+          setRecommendationsProducts(prev => {
+            const seen = new Set(prev.map(productKey).filter(Boolean));
+            const fresh = mappedProducts.filter((p: Product) => {
+              const k = productKey(p);
+              if (!k || seen.has(k)) return false;
+              seen.add(k);
+              return true;
+            });
+            return [...prev, ...fresh];
+          });
+        }
+
+        // Pre-warm the NEXT page in the background so the next "load more"
+        // resolves from the in-memory cache instead of waiting on the
+        // network. Cache key includes beginPage, so this never collides
+        // with the current page.
+        if (hasMore) {
+          const nextPage = currentPage + 1;
+          const outMemberId = user?.id?.toString() || 'dferg0001';
+          prefetchRecommendations(
+            locale,
+            outMemberId,
+            nextPage,
+            PAGINATION.FEED_MORE_PAGE_SIZE,
+            '1688',
+          ).catch(() => {
+            // Best-effort warm-up; ignore failures.
+          });
         }
       } else {
         // No products found
@@ -871,7 +946,7 @@ const HomeScreen: React.FC = () => {
       const outMemberId = user?.id?.toString() || 'dferg0001';
       const platform = '1688'; // Always use 1688 for More to Love products
       currentRecommendationsPageRef.current = recommendationsOffset;
-      fetchRecommendationsRef.current(locale, outMemberId, recommendationsOffset, 20, platform)
+      fetchRecommendationsRef.current(locale, outMemberId, recommendationsOffset, PAGINATION.FEED_MORE_PAGE_SIZE, platform)
         .finally(() => {
           isLoadingMoreRecommendationsRef.current = false;
         });
@@ -1034,13 +1109,16 @@ const HomeScreen: React.FC = () => {
   const navigateToProductDetail = async (
     productId: string | number,
     source: string = selectedPlatform,
-    country: string = locale
+    country: string = locale,
+    productData?: Product,
   ) => {
-    // Navigate directly without fetching product detail
+    // Pass the card payload so ProductDetailScreen renders the image / title
+    // / price instantly while it fetches the full detail in the background.
     navigation.navigate('ProductDetail', {
       productId: productId.toString(),
       source: source,
       country: country,
+      productData,
     });
   };
   // Helper function to filter mock products by company and category
@@ -1100,7 +1178,7 @@ const HomeScreen: React.FC = () => {
         setRecommendationsProducts([]);
         // Fetch first page
         currentRecommendationsPageRef.current = 1;
-        fetchRecommendationsRef.current(locale, outMemberId, 1, 20, platform);
+        fetchRecommendationsRef.current(locale, outMemberId, 1, PAGINATION.FEED_INITIAL_PAGE_SIZE, platform);
       }
     }
     // Only depend on locale and user?.id - not selectedPlatform since we always use 1688
@@ -1127,22 +1205,43 @@ const HomeScreen: React.FC = () => {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    // Reset recommendations pagination
+    // Drop the splash-time cache so pull-to-refresh actually hits the network.
+    invalidateHomeCache();
+    // Reset throttle refs so the post-cache useEffects refire instead of
+    // short-circuiting on unchanged platform/locale keys.
+    lastNewInFetchRef.current = null;
+    lastCategoriesFetchRef.current = null;
+    lastRecommendationsFetchRef.current = null;
+    bannersFetchedRef.current = false;
+    // Reset recommendations pagination flags (but keep the existing list of
+    // products on screen — clearing them flashed empty cards / blank image
+    // boxes during the refresh window. The page-1 fetch below replaces the
+    // list atomically when the new data lands).
     isRecommendationsRefreshingRef.current = true;
     setRecommendationsOffset(1);
     setRecommendationsHasMore(true);
-    setRecommendationsProducts([]);
-    
+
+    // Re-fire the home APIs in parallel.
+    fetchBanners();
+    fetchCarousels();
+    fetchLiveCommerce();
+    if (selectedPlatform) {
+      const platformForNewIn = selectedPlatform === 'taobao' ? '1688' : selectedPlatform;
+      const countryCode = (locale === 'zh' || locale === 'ko') ? 'en' : locale;
+      fetchNewInProducts(platformForNewIn, countryCode);
+      fetchDefaultCategories(selectedPlatform, true);
+    }
+
     await loadData();
-    
+
     // Reload recommendations first page
     if (fetchRecommendationsRef.current && locale) {
       const outMemberId = user?.id?.toString() || 'dferg0001';
       const platform = '1688'; // Always use 1688 for More to Love products
       currentRecommendationsPageRef.current = 1;
-      await fetchRecommendationsRef.current(locale, outMemberId, 1, 20, platform);
+      await fetchRecommendationsRef.current(locale, outMemberId, 1, PAGINATION.FEED_INITIAL_PAGE_SIZE, platform);
     }
-    
+
     isRecommendationsRefreshingRef.current = false;
     setRefreshing(false);
   };
@@ -1154,7 +1253,9 @@ const HomeScreen: React.FC = () => {
       const productIdToUse = offerId || product.id;
       // Get source from product data, fallback to selectedPlatform
       const source = (product as any).source || selectedPlatform || '1688';
-      await navigateToProductDetail(productIdToUse, source, locale);
+      // Pass the product card payload so ProductDetailScreen can paint the
+      // image/title/price immediately while the full detail fetches.
+      await navigateToProductDetail(productIdToUse, source, locale, product);
     },
     [selectedPlatform, locale, navigateToProductDetail],
   );
@@ -1876,18 +1977,22 @@ const HomeScreen: React.FC = () => {
           key={item.id || productId || `live-hot-${index}`}
           style={[styles.todaysDealsProductWrap, { width: dynDealsCardWidth }]}
           activeOpacity={0.9}
-          onPress={() => productId && navigateToProductDetail(productId, 'ownmall', locale)}
+          onPress={() => productId && navigateToProductDetail(productId, 'live-commerce', locale)}
         >
           <View style={[styles.liveHotUserRow, { width: dynDealsCardWidth }]}>
-            <Image
-              source={
-                itemImageUri
-                  ? { uri: itemImageUri }
-                  : require('../../assets/images/deal1.png')
-              }
-              style={[styles.liveHotImage, { width: dynDealsCardWidth, height: dynDealsCardWidth }]}
-              resizeMode="cover"
-            />
+            {itemImageUri ? (
+              <FastImage
+                source={{ uri: itemImageUri, priority: FastImage.priority.normal }}
+                style={[styles.liveHotImage, { width: dynDealsCardWidth, height: dynDealsCardWidth }]}
+                resizeMode={FastImage.resizeMode.cover}
+              />
+            ) : (
+              <Image
+                source={require('../../assets/images/deal1.png')}
+                style={[styles.liveHotImage, { width: dynDealsCardWidth, height: dynDealsCardWidth }]}
+                resizeMode="cover"
+              />
+            )}
             <View style={[styles.liveHotLiveRow, { width: dynDealsCardWidth }]}>
               <View style={styles.liveHotLiveRowIconContainer}>
                 <View style={styles.liveHotLiveRowIcon}>
@@ -1936,13 +2041,19 @@ const HomeScreen: React.FC = () => {
             {badgeSource && (
               <Image source={badgeSource} style={[styles.dealProductBadge, { width: dynDealsCardWidth }]} resizeMode="contain" />
             )}
-            <Image
-              source={
-                dealImg ? { uri: dealImg } : require('../../assets/images/deal1.png')
-              }
-              style={[styles.dealProductImage, { width: dynDealsCardWidth }]}
-              resizeMode="cover"
-            />
+            {dealImg ? (
+              <FastImage
+                source={{ uri: dealImg, priority: FastImage.priority.normal }}
+                style={[styles.dealProductImage, { width: dynDealsCardWidth }]}
+                resizeMode={FastImage.resizeMode.cover}
+              />
+            ) : (
+              <Image
+                source={require('../../assets/images/deal1.png')}
+                style={[styles.dealProductImage, { width: dynDealsCardWidth }]}
+                resizeMode="cover"
+              />
+            )}
           </View>
           <Text style={styles.dealProductName} numberOfLines={2}>{product.name}</Text>
           <Text style={styles.dealProductPrice}>{formatPriceKRW(product.price)}</Text>
@@ -2267,18 +2378,21 @@ const HomeScreen: React.FC = () => {
     return `moretolove-${id}`;
   }, []);
 
-  // Render footer for "More to Love" loading indicator - memoized
+  // Show a spinner + "Loading more..." while page N+1 is fetching. Even
+  // though we pre-warm the next page in onSuccess, the warm-up isn't always
+  // resolved by the time the user scrolls to the bottom — and on cache miss
+  // / slow network the user otherwise sees nothing happening.
   const renderMoreToLoveFooter = useCallback(() => {
-    if (recommendationsLoading && recommendationsProducts.length > 0) {
-      return (
-        <View style={styles.moreToLoveFooter}>
-          <ActivityIndicator size="small" color={COLORS.primary} />
-          <Text style={styles.moreToLoveFooterText}>{t('home.loadingMore')}</Text>
-        </View>
-      );
+    if (!recommendationsLoading || memoizedRecommendationsProducts.length === 0) {
+      return null;
     }
-    return null;
-  }, [recommendationsLoading, recommendationsProducts.length]);
+    return (
+      <View style={styles.moreToLoveFooter}>
+        <ActivityIndicator size="small" color={COLORS.primary} />
+        <Text style={styles.moreToLoveFooterText}>{t('home.loadingMore')}</Text>
+      </View>
+    );
+  }, [recommendationsLoading, memoizedRecommendationsProducts.length, t]);
 
   const renderMoreToLove = () => {
     // Use memoized recommendations products
@@ -2320,9 +2434,9 @@ const HomeScreen: React.FC = () => {
           // let Android drop off-screen cells from the view tree to keep memory
           // and decode cost down on long lists.
           removeClippedSubviews={Platform.OS === 'android'}
-          maxToRenderPerBatch={6}
-          windowSize={3}
-          initialNumToRender={6}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          initialNumToRender={10}
           updateCellsBatchingPeriod={80}
           extraData={wishlistExtraData}
           ListFooterComponent={renderMoreToLoveFooter}
@@ -2357,9 +2471,13 @@ const HomeScreen: React.FC = () => {
           setIsScrolled(false);
         }
         
-        // Check if user is near bottom (within 200px) to trigger infinite scroll for "More to Love"
+        // Trigger the next page well before the user actually reaches the
+        // bottom (~one viewport ahead) so the swap to the new items feels
+        // instant. Combined with the page-N+1 pre-warm in onSuccess, the
+        // request usually resolves from cache by the time we get here.
         const distanceFromBottom = scrollHeight - scrollPosition - screenHeight;
-        if (distanceFromBottom < 200 && recommendationsHasMore && !recommendationsLoading && !isRecommendationsRefreshingRef.current && !isLoadingMoreRecommendationsRef.current) {
+        const loadMoreThreshold = Math.max(600, screenHeight);
+        if (distanceFromBottom < loadMoreThreshold && recommendationsHasMore && !recommendationsLoading && !isRecommendationsRefreshingRef.current && !isLoadingMoreRecommendationsRef.current) {
           // Trigger loading more recommendations
           setRecommendationsOffset(prev => prev + 1);
         }
@@ -2422,14 +2540,19 @@ const HomeScreen: React.FC = () => {
       >
         <View style={styles.contentWrapper}>
           {/* {renderQuickCategories()} */}
-          {renderBrandCarousel()}
-          {renderLiveChannelSection()}
+          {/* Heavy image-bearing sections (brand carousel, live channels,
+              today's deals, more-to-love) all defer to the next frame so
+              that on first paint the user sees the page structure (header,
+              categories, banner ticker) immediately. Images stream in on
+              the second frame. */}
+          {showHeavyContent && renderBrandCarousel()}
+          {showHeavyContent && renderLiveChannelSection()}
           {/* {renderTrendingProducts()} */}
           {/* {renderPopularCategories()} */}
           {/* {renderPromoCards()} */}
-          {renderTodaysDeals()}
+          {showHeavyContent && renderTodaysDeals()}
           {/* {renderNewInCards()} */}
-          {renderMoreToLove()}
+          {showHeavyContent && renderMoreToLove()}
         </View>
       </Animated.ScrollView>
       
@@ -2498,7 +2621,7 @@ const styles = StyleSheet.create({
   contentWrapper: {
     backgroundColor: 'transparent',
     // minHeight: '100%',
-    marginBottom: 100,
+    marginBottom: 150,
   },
   loadingContainer: {
     flex: 1,

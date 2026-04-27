@@ -18,7 +18,7 @@ import { LinearGradient } from 'react-native-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { COLORS, FONTS, SPACING, SCREEN_HEIGHT, STORAGE_KEYS, BORDER_RADIUS } from '../../../constants';
+import { COLORS, FONTS, SPACING, SCREEN_HEIGHT, STORAGE_KEYS, BORDER_RADIUS, PAGINATION } from '../../../constants';
 import { RootStackParamList, Product } from '../../../types';
 import { useAuth } from '../../../context/AuthContext';
 import { useAppSelector } from '../../../store/hooks';
@@ -285,7 +285,17 @@ const ProfileScreen: React.FC = () => {
   const isRecommendationsRefreshingRef = useRef(false); // Prevent loading during refresh
   const currentRecommendationsPageRef = useRef<number>(1); // Track current page for callbacks
   const isLoadingMoreRecommendationsRef = useRef(false); // Prevent multiple simultaneous loads
-  
+
+  // Layout-first paint: defer the heavy "More to Love" recommendations grid
+  // to the next frame so the profile header / stats / menu paint immediately
+  // and the recommendation images stream in afterwards. Uses
+  // requestAnimationFrame instead of InteractionManager (see ProductDetail).
+  const [showHeavyContent, setShowHeavyContent] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setShowHeavyContent(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
   // Wishlist hooks
   const { isProductLiked } = useWishlistStatus();
   const { mutate: addToWishlist } = useAddToWishlistMutation();
@@ -494,16 +504,32 @@ const ProfileScreen: React.FC = () => {
           return productData;
         });
         
-        // Check pagination - if we got fewer products than pageSize, no more pages
-        const pageSize = 20;
-        const hasMore = productsArray.length >= pageSize;
+        // Check pagination - first page asks for FEED_INITIAL_PAGE_SIZE,
+        // subsequent pages for FEED_MORE_PAGE_SIZE.
+        const requestedPageSize = currentPage === 1
+          ? PAGINATION.FEED_INITIAL_PAGE_SIZE
+          : PAGINATION.FEED_MORE_PAGE_SIZE;
+        const hasMore = productsArray.length >= requestedPageSize;
         setRecommendationsHasMore(hasMore);
         
-        // If it's the first page, replace products, otherwise append
+        // Dedup by external/offer id when appending — the recommendations
+        // API can return the same product across pages and duplicates would
+        // crash the FlatList with "two children with the same key".
+        const productKey = (p: any): string =>
+          (p?.offerId?.toString?.()) || (p?.externalId?.toString?.()) || (p?.id?.toString?.()) || '';
         if (currentPage === 1) {
           setRecommendationsProducts(mappedProducts);
         } else {
-          setRecommendationsProducts(prev => [...prev, ...mappedProducts]);
+          setRecommendationsProducts(prev => {
+            const seen = new Set(prev.map(productKey).filter(Boolean));
+            const fresh = mappedProducts.filter((p: any) => {
+              const k = productKey(p);
+              if (!k || seen.has(k)) return false;
+              seen.add(k);
+              return true;
+            });
+            return [...prev, ...fresh];
+          });
         }
       } else {
         // No products found
@@ -542,7 +568,7 @@ const ProfileScreen: React.FC = () => {
       setRecommendationsHasMore(true);
       const fn = fetchRecommendationsRef.current;
       if (fn) {
-        void fn(country, outId, 1, 20, selectedPlatform);
+        void fn(country, outId, 1, PAGINATION.FEED_INITIAL_PAGE_SIZE, selectedPlatform);
       }
     }, [isAuthenticated, isGuest, user?.id, currentLocale, selectedPlatform]),
   );
@@ -1286,7 +1312,7 @@ const ProfileScreen: React.FC = () => {
             setRecommendationsOffset(nextPage);
             const country = currentLocale === 'zh' ? 'en' : currentLocale;
             const outId = user.memberId || user.userUniqueNo || (user as any).userUniqueId;
-            fetchRecommendationsRef.current?.(country, outId, nextPage, 20, selectedPlatform);
+            fetchRecommendationsRef.current?.(country, outId, nextPage, PAGINATION.FEED_MORE_PAGE_SIZE, selectedPlatform);
           }
         }}
         scrollEventThrottle={16}
@@ -1295,7 +1321,7 @@ const ProfileScreen: React.FC = () => {
         {isAuthenticated && renderStatsSection()}
         {isAuthenticated && renderMenuItems()}
         {isAuthenticated && renderQuickAccessSection()}
-        {isAuthenticated && !isGuest && renderMoreToLove()}
+        {showHeavyContent && isAuthenticated && !isGuest && renderMoreToLove()}
       </ScrollView>
     </SafeAreaView>
   );

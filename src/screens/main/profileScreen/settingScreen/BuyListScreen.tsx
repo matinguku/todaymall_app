@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG } from '../../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG, PAGINATION } from '../../../../constants';
 import { RootStackParamList, Product } from '../../../../types';
 import { ProductCard, SearchButton } from '../../../../components';
 import TuneIcon from '../../../../assets/icons/TuneIcon';
@@ -43,6 +43,8 @@ import { useAppSelector } from '../../../../store/hooks';
 import { formatPriceKRW, getLocalizedText } from '../../../../utils/i18nHelpers';
 import { translations } from '../../../../i18n/translations';
 import { logDevApiFailure } from '../../../../utils/devLog';
+import { getDisplayOrderNumber } from '../../../../utils/liveCode';
+import { loadLiveProductIds, orderHasRecordedLiveProduct } from '../../../../utils/liveProductTracker';
 import { useCancelOrderMutation } from '../../../../hooks/useCancelOrderMutation';
 import { useAddToCartMutation } from '../../../../hooks/useAddToCartMutation';
 import { useProductDetailMutation } from '../../../../hooks/useProductDetailMutation';
@@ -643,16 +645,32 @@ const BuyListScreen = () => {
           return productData;
         });
         
-        // Check pagination - if we got fewer products than pageSize, no more pages
-        const pageSize = 20;
-        const hasMore = productsArray.length >= pageSize;
+        // Check pagination - first page asks for FEED_INITIAL_PAGE_SIZE,
+        // subsequent pages for FEED_MORE_PAGE_SIZE.
+        const requestedPageSize = currentPage === 1
+          ? PAGINATION.FEED_INITIAL_PAGE_SIZE
+          : PAGINATION.FEED_MORE_PAGE_SIZE;
+        const hasMore = productsArray.length >= requestedPageSize;
         setHasMoreRecommendations(hasMore);
         
-        // If it's the first page, replace products, otherwise append
+        // Dedup by external/offer id when appending — the recommendations
+        // API can return the same product across pages and duplicates would
+        // crash the FlatList with "two children with the same key".
+        const productKey = (p: any): string =>
+          (p?.offerId?.toString?.()) || (p?.externalId?.toString?.()) || (p?.id?.toString?.()) || '';
         if (currentPage === 1) {
           setRecommendationsProducts(mappedProducts);
         } else {
-          setRecommendationsProducts(prev => [...prev, ...mappedProducts]);
+          setRecommendationsProducts(prev => {
+            const seen = new Set(prev.map(productKey).filter(Boolean));
+            const fresh = mappedProducts.filter((p: any) => {
+              const k = productKey(p);
+              if (!k || seen.has(k)) return false;
+              seen.add(k);
+              return true;
+            });
+            return [...prev, ...fresh];
+          });
         }
       } else {
         // No products found
@@ -691,7 +709,7 @@ const BuyListScreen = () => {
       const outMemberId = user?.id?.toString() || 'dferg0001';
       const platform = '1688'; // Always use 1688 for More to Love products
       currentRecommendationsPageRef.current = recommendationsOffset;
-      fetchRecommendationsRef.current(locale, outMemberId, recommendationsOffset, 20, platform)
+      fetchRecommendationsRef.current(locale, outMemberId, recommendationsOffset, PAGINATION.FEED_MORE_PAGE_SIZE, platform)
         .finally(() => {
           isLoadingMoreRecommendationsRef.current = false;
         });
@@ -718,7 +736,7 @@ const BuyListScreen = () => {
         setRecommendationsProducts([]);
         // Fetch first page
         currentRecommendationsPageRef.current = 1;
-        fetchRecommendationsRef.current(locale, outMemberId, 1, 20, platform);
+        fetchRecommendationsRef.current(locale, outMemberId, 1, PAGINATION.FEED_INITIAL_PAGE_SIZE, platform);
       }
     }
   }, [locale, user?.id, fetchRecommendations]);
@@ -744,9 +762,22 @@ const BuyListScreen = () => {
         }
         return String(val);
       };
+      // Load the locally-recorded set of live-product offerIds (set by
+      // ProductDetailScreen's add-to-cart / buy-now handlers). We use it
+      // below to tag each order so getDisplayOrderNumber() swaps the
+      // prefix from `TM` to `LS` for orders containing live items.
+      const liveProductIds = await loadLiveProductIds();
+
       const mappedOrders = data.orders.map((order: any) => {
         const statusMeta = mapOrderStatusMeta(order);
         const totalAmount = order.firstTierCost?.totalKRW ?? order.paidAmount ?? order.totalAmount ?? 0;
+        // Derive backend or local liveCode marker. Order-level field
+        // takes priority; otherwise we fall back to the local
+        // AsyncStorage record. A truthy `liveCode` on the mapped order
+        // is what flips the LS prefix in getDisplayOrderNumber().
+        const backendLiveCode =
+          order.liveCode ?? order.live_code ?? order.liveCommerceCode ?? order.broadcastCode;
+        const localLive = !backendLiveCode && orderHasRecordedLiveProduct(order, liveProductIds);
         return {
           id: order.id,
           orderId: order.id,
@@ -767,8 +798,14 @@ const BuyListScreen = () => {
             source: item.source || '1688',
             specId: item.specId || '',
             skuId: String(item.skuId ?? ''),
+            subject: item.subject,
+            subjectTrans: item.subjectTrans,
+            subjectMultiLang: item.subjectMultiLang,
+            liveCode: item.liveCode ?? item.live_code ?? item.liveCommerceCode ?? item.broadcastCode,
           })),
           totalAmount,
+          liveCode: backendLiveCode || (localLive ? 'local-recorded' : undefined),
+          orderType: order.orderType,
           // Raw API fields for OrderDetailScreen
           shippingAddress: order.shippingAddress,
           firstTierCost: order.firstTierCost,
@@ -1231,12 +1268,15 @@ const BuyListScreen = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Order number + copy */}
+        {/* Order number + copy. getDisplayOrderNumber() swaps the
+            backend's `TM` prefix to `LS` when the order contains live
+            items, so users can spot live orders at a glance. Backend
+            communication still uses the raw `order.orderNumber`. */}
         <View style={styles.orderIdRow}>
-          <Text style={styles.orderIdText}>{t('buyList.orderId')}: {order.orderNumber}</Text>
+          <Text style={styles.orderIdText}>{t('buyList.orderId')}: {getDisplayOrderNumber(order)}</Text>
           <TouchableOpacity onPress={() => {
             const Clipboard = require('@react-native-clipboard/clipboard').default;
-            Clipboard.setString(order.orderNumber);
+            Clipboard.setString(getDisplayOrderNumber(order));
             showToast(t('common.copied') || 'Copied', 'success');
           }}>
             <Text style={styles.orderCopyText}>{t('buyList.copy')}</Text>
@@ -2031,12 +2071,13 @@ const BuyListScreen = () => {
 
             {refundModalOrder && (
               <>
-                {/* Order ID + copy */}
+                {/* Order ID + copy. Same TM→LS swap as the main order
+                    list above — see comment there for details. */}
                 <View style={styles.refundOrderIdRow}>
-                  <Text style={styles.refundOrderIdText}>주문ID: {refundModalOrder.orderNumber}</Text>
+                  <Text style={styles.refundOrderIdText}>주문ID: {getDisplayOrderNumber(refundModalOrder)}</Text>
                   <TouchableOpacity onPress={() => {
                     const Clipboard = require('@react-native-clipboard/clipboard').default;
-                    Clipboard.setString(refundModalOrder.orderNumber);
+                    Clipboard.setString(getDisplayOrderNumber(refundModalOrder));
                     showToast(t('common.copied') || 'Copied', 'success');
                   }}>
                     <Text style={styles.refundCopyText}>복사</Text>

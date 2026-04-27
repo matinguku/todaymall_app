@@ -155,7 +155,11 @@ export function buildProductDisplayImageUri(
       host.includes('cbu01.') ||
       host === 'gw.alicdn.com');
 
-  if (alibabaHost && !/_\d+x\d+\.(jpg|jpeg|png|webp)/i.test(image)) {
+  // Detect both `_NxN.jpg` and `_NxNqQ.jpg` so URLs that have already been
+  // thumbnailed (e.g. by getAlibabaThumbnailImageUri before being stored on
+  // the product object) aren't appended with a second size suffix — that
+  // produced broken URLs like `image.jpg_200x200q60_200x200.jpg`.
+  if (alibabaHost && !/_\d+x\d+(?:q\d+)?\.(jpg|jpeg|png|webp)/i.test(image)) {
     const px = Math.max(32, Math.min(800, Math.round(edgePx)));
     const sizeSuffix =
       quality != null
@@ -186,6 +190,47 @@ export function getProductCardImageUri(
     edgePx ?? IMAGE_CONFIG.PRODUCT_DISPLAY_PIXEL,
     quality,
   );
+}
+
+/**
+ * Returns a smaller, lower-quality URL for CDN-hosted images so the network
+ * payload stays small (used for the home carousel + banner where the full
+ * desktop/mobile image is much larger than the on-screen render box).
+ *
+ * Cloudinary URLs get `/upload/w_<edgePx>,q_<quality>,f_auto/` inserted so
+ * the CDN re-encodes on the fly; Alibaba CDN URLs get the existing
+ * `_NxNqQ.jpg` suffix; everything else is returned unchanged.
+ */
+export function buildCdnThumbnailUri(
+  raw?: string,
+  edgePx: number = 480,
+  quality: number = 60,
+): string {
+  if (!raw) return '';
+  let image = raw.trim();
+  if (!image) return '';
+
+  if (image.startsWith('//')) image = `https:${image}`;
+  if (image.startsWith('http://')) image = image.replace(/^http:\/\//i, 'https://');
+
+  // Cloudinary delivery URL: insert resize/quality/format transformations
+  // immediately after `/upload/` (or `/fetch/`). Skip if already transformed
+  // so we don't stack `w_*` segments.
+  if (/res\.cloudinary\.com\//i.test(image)) {
+    if (/\/(upload|fetch)\/[^/]*\b(w_\d+|q_\d+|f_auto)\b/i.test(image)) {
+      return image;
+    }
+    const px = Math.max(64, Math.min(1600, Math.round(edgePx)));
+    const q = Math.max(1, Math.min(100, Math.round(quality)));
+    return image.replace(
+      /\/(upload|fetch)\//,
+      `/$1/w_${px},q_${q},f_auto/`,
+    );
+  }
+
+  // Anything Alibaba-hosted reuses the `_NxNqQ.jpg` suffix the product image
+  // helper already understands.
+  return buildProductDisplayImageUri(image, edgePx, quality);
 }
 
 /**

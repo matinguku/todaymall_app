@@ -279,6 +279,13 @@ export const STORAGE_KEYS = {
 export const PAGINATION = {
   DEFAULT_PAGE_SIZE: 20,
   MAX_PAGE_SIZE: 100,
+  // Pagination tuning for the "More to Love" recommendation feed and the
+  // search-results feed: a small first page so the user sees content fast,
+  // and even smaller follow-up pages so each "load more" round-trip stays
+  // tiny. Used by HomeScreen, CartScreen, ProfileScreen, BuyListScreen,
+  // SearchScreen and ProductDiscoveryScreen.
+  FEED_INITIAL_PAGE_SIZE: 10,
+  FEED_MORE_PAGE_SIZE: 10,
 };
 
 // Product Categories

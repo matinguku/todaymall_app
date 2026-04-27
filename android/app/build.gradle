@@ -194,6 +194,14 @@ android {
     }
 }
 
+// Resolve duplicate-class conflict between `com.caverock:androidsvg` (jar,
+// pulled in by some RN libs) and `com.caverock:androidsvg-aar` (pulled in
+// transitively by @d11/react-native-fast-image's Glide SVG decoder). Both
+// ship the same classes, so we keep the aar and drop the jar.
+configurations.all {
+    exclude group: 'com.caverock', module: 'androidsvg'
+}
+
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")

@@ -324,9 +324,9 @@ const SearchResultsScreen: React.FC = () => {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await performSearch(searchQuery); setRefreshing(false); }} />}
         showsVerticalScrollIndicator={false}
         removeClippedSubviews={Platform.OS === 'android'}
-        maxToRenderPerBatch={6}
-        windowSize={3}
-        initialNumToRender={6}
+        maxToRenderPerBatch={10}
+        windowSize={7}
+        initialNumToRender={10}
         updateCellsBatchingPeriod={80}
       />
 

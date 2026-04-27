@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { productsApi } from '../services/productsApi';
+import { prefetchLiveCommerce } from '../utils/homePrefetch';
 
 interface UseLiveCommerceMutationOptions {
   onSuccess?: (data: any) => void;
@@ -31,7 +32,7 @@ export const useLiveCommerceMutation = (
     setError(null);
 
     try {
-      const response = await productsApi.getLiveCommerce();
+      const response = await prefetchLiveCommerce();
       if (response.success && response.data) {
         setData(response.data);
         setIsSuccess(true);

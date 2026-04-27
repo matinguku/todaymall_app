@@ -63,8 +63,9 @@ const SplashScreen: React.FC = () => {
       createDotAnimation(dotAnim3, 400).start();
     };
 
-    // Start dot animation after logo appears
-    setTimeout(animateDots, 1000);
+    // Start dot animation immediately — previously delayed 1s, but the splash
+    // can release in under 1s now so the dots never got a chance to animate.
+    setTimeout(animateDots, 0);
   }, [fadeAnim, scaleAnim, dotAnim1, dotAnim2, dotAnim3]);
 
   return (

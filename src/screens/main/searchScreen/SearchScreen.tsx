@@ -25,7 +25,7 @@ import { Platform, Alert } from 'react-native';
 import RNFS from 'react-native-fs';
 import { requestCameraPermission, requestPhotoLibraryPermission } from '../../../utils/permissions';
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG } from '../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG, PAGINATION } from '../../../constants';
 import { RootStackParamList, Product } from '../../../types';
 import { usePlatformStore } from '../../../store/platformStore';
 import { useAppSelector } from '../../../store/hooks';
@@ -35,6 +35,7 @@ import { translations } from '../../../i18n/translations';
 import { productsApi } from '../../../services/productsApi';
 import { useToast } from '../../../context/ToastContext';
 import { convertFromKRW } from '../../../utils/i18nHelpers';
+import { warmSearchPage } from '../../../utils/searchPrefetch';
 import { useAuth } from '../../../context/AuthContext';
 import { useWishlistStatus } from '../../../hooks/useWishlistStatus';
 import { useAddToWishlistMutation } from '../../../hooks/useAddToWishlistMutation';
@@ -461,16 +462,21 @@ const SearchScreenComponent: React.FC = () => {
     { label: t('search.sortOptions.lowSales'), value: 'low_sales' },
   ];
 
-  // Helper function to navigate to product detail
+  // Helper function to navigate to product detail. The optional productData
+  // is the result-card payload — passing it lets ProductDetailScreen paint
+  // the image / title / price instantly while it fetches the full detail in
+  // the background.
   const navigateToProductDetail = async (
     productId: string | number,
     source: string = selectedPlatform,
-    country: string = locale
+    country: string = locale,
+    productData?: Product,
   ) => {
     navigation.navigate('ProductDetail', {
       productId: productId.toString(),
       source: source,
       country: country,
+      productData,
     });
   };
 
@@ -728,14 +734,26 @@ const SearchScreenComponent: React.FC = () => {
         });
         // setCompanies(sortedCompanies);
         
-        // If it's the first page, replace products, otherwise append
+        // If it's the first page, replace products, otherwise append.
+        // Dedup by external/offer id when appending — the search API can
+        // return the same product across pages and duplicates would crash
+        // the FlatList with "two children with the same key".
+        const productKey = (p: any): string =>
+          (p?.offerId?.toString?.()) || (p?.externalId?.toString?.()) || (p?.id?.toString?.()) || '';
         if (currentPage === 1) {
           setAllProducts(mappedProducts);
           // Apply current sort to the products
           const sorted = sortProducts(mappedProducts, selectedSort);
           setProducts(sorted);
         } else {
-          const updatedProducts = [...allProducts, ...mappedProducts];
+          const seen = new Set(allProducts.map(productKey).filter(Boolean));
+          const fresh = mappedProducts.filter((p: any) => {
+            const k = productKey(p);
+            if (!k || seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          });
+          const updatedProducts = [...allProducts, ...fresh];
           setAllProducts(updatedProducts);
           // Apply current sort to the updated products
           const sorted = sortProducts(updatedProducts, selectedSort);
@@ -828,18 +846,52 @@ const SearchScreenComponent: React.FC = () => {
     // Store current page offset for use in callbacks
     currentPageOffsetRef.current = pageOffset;
 
+    // Page size: small first page so results appear quickly, even smaller
+    // pages on subsequent loads. For dual-platform "All" we split the budget
+    // evenly across the two platforms (rounded up so we never request 0).
+    const combinedPageSize = pageOffset === 1
+      ? PAGINATION.FEED_INITIAL_PAGE_SIZE
+      : PAGINATION.FEED_MORE_PAGE_SIZE;
+    const perPlatformPageSize = Math.ceil(combinedPageSize / 2);
+
     // Handle "All" case - search both platforms
     if (selectedCompanyRef.current === 'All') {
       await loadProductsFromBothPlatforms(
         searchKeyword,
         locale,
         pageOffset,
-        10, // pageSize per platform (10 from 1688 + 10 from taobao = 20 combined)
+        perPlatformPageSize,
         sortParam,
         priceStart,
         priceEnd,
         filterParam
       );
+      // Pre-warm page N+1 for both platforms in the background so the next
+      // "load more" hits cache instead of waiting on the network.
+      warmSearchPage({
+        keyword: searchKeyword,
+        source: '1688',
+        country: locale,
+        page: pageOffset + 1,
+        pageSize: perPlatformPageSize,
+        sort: sortParam,
+        priceStart,
+        priceEnd,
+        filter: filterParam,
+        requireAuth: true,
+      });
+      warmSearchPage({
+        keyword: searchKeyword,
+        source: 'taobao',
+        country: locale,
+        page: pageOffset + 1,
+        pageSize: perPlatformPageSize,
+        sort: sortParam,
+        priceStart,
+        priceEnd,
+        filter: filterParam,
+        requireAuth: true,
+      });
     } else {
       // Single platform search
       const platformSource = getPlatformFromCompany(selectedCompanyRef.current);
@@ -850,13 +902,28 @@ const SearchScreenComponent: React.FC = () => {
         platformSource,
         locale,
         pageOffset,
-        20, // pageSize for single platform
+        combinedPageSize,
         sortParam,
         priceStart,
         priceEnd,
         filterParam,
         true // requireAuth = true for search page
       );
+      // Pre-warm page N+1 in the background so the next "load more" hits
+      // cache. Cost: at most one wasted request when the user is already on
+      // the last page; in exchange every other "load more" feels instant.
+      warmSearchPage({
+        keyword: searchKeyword,
+        source: platformSource,
+        country: locale,
+        page: pageOffset + 1,
+        pageSize: combinedPageSize,
+        sort: sortParam,
+        priceStart,
+        priceEnd,
+        filter: filterParam,
+        requireAuth: true,
+      });
     }
   };
 
@@ -1021,14 +1088,26 @@ const SearchScreenComponent: React.FC = () => {
           return a.localeCompare(b);
         });
 
-        // If it's the first page, replace products, otherwise append
+        // If it's the first page, replace products, otherwise append.
+        // Dedup by external/offer id when appending — the search API can
+        // return the same product across pages and duplicates would crash
+        // the FlatList with "two children with the same key".
+        const productKey = (p: any): string =>
+          (p?.offerId?.toString?.()) || (p?.externalId?.toString?.()) || (p?.id?.toString?.()) || '';
         if (currentPage === 1) {
           setAllProducts(mappedProducts);
           // Apply current sort to the products
           const sorted = sortProducts(mappedProducts, selectedSort);
           setProducts(sorted);
         } else {
-          const updatedProducts = [...allProducts, ...mappedProducts];
+          const seen = new Set(allProducts.map(productKey).filter(Boolean));
+          const fresh = mappedProducts.filter((p: any) => {
+            const k = productKey(p);
+            if (!k || seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          });
+          const updatedProducts = [...allProducts, ...fresh];
           setAllProducts(updatedProducts);
           // Apply current sort to the updated products
           const sorted = sortProducts(updatedProducts, selectedSort);
@@ -1104,7 +1183,7 @@ const SearchScreenComponent: React.FC = () => {
   const handleProductPress = useCallback(async (product: Product) => {
     // Get source from product data, fallback to selectedPlatform
     const source = (product as any).source || selectedPlatform || '1688';
-    await navigateToProductDetail(product.id, source, locale);
+    await navigateToProductDetail(product.id, source, locale, product);
   }, [locale, selectedPlatform]);
 
   // Handle like press
@@ -1609,14 +1688,11 @@ const SearchScreenComponent: React.FC = () => {
                 <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
               }
               style={styles.productList}
-              ListFooterComponent={
-                (isSearching || dualPlatformLoading) && currentPageOffsetRef.current > 1 ? (
-                  <View style={styles.loadMoreFooter}>
-                    <ActivityIndicator size="small" color={COLORS.primary} />
-                    <Text style={styles.loadMoreFooterText}>{t('home.loadingMore')}</Text>
-                  </View>
-                ) : null
-              }
+              // No "load more" footer: page N+1 is pre-warmed below as soon
+              // as page N's request is fired, so the next page is in cache by
+              // the time the user scrolls to it. A spinner here would only
+              // flash on the rare cache miss and make the feed feel slower.
+              ListFooterComponent={null}
                 />
               
               {/* Loading overlay for initial search only */}
@@ -1766,7 +1842,7 @@ const SearchScreenComponent: React.FC = () => {
                         variant="simple"
                         onPress={() => {
                           const source = item.source || '1688';
-                          navigateToProductDetail(product.id, source, locale);
+                          navigateToProductDetail(product.id, source, locale, product);
                         }}
                         cardWidth={dynCardWidth}
                       />

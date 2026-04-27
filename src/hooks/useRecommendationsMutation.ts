@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { productsApi } from '../services/productsApi';
 import { logDevApiFailure } from '../utils/devLog';
+import { prefetchRecommendations } from '../utils/homePrefetch';
 
 interface UseRecommendationsMutationOptions {
   onSuccess?: (data: any) => void;
@@ -44,7 +44,19 @@ export const useRecommendationsMutation = (
     setData(null); // Clear previous data on new request
 
     try {
-      const response = await productsApi.getRecommendations(country, outMemberId, beginPage, pageSize, platform);
+      // Every page goes through prefetchRecommendations: the cache key
+      // includes beginPage, so each page has its own slot. The win is that
+      // HomeScreen pre-warms page N+1 as soon as page N arrives — by the
+      // time the user scrolls and triggers the next fetch, the response is
+      // already sitting in cache and resolves on the next microtask instead
+      // of waiting for a fresh network round-trip.
+      const response = await prefetchRecommendations(
+        country,
+        outMemberId ?? 'dferg0001',
+        beginPage,
+        pageSize,
+        platform,
+      );
       
       if (response.success && response.data) {
         if (__DEV__) {

@@ -20,7 +20,7 @@ import {
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, PAGINATION } from '../../../constants';
 import { RootStackParamList, Product } from '../../../types';
 import { ProductCard, Button, SortDropdown, PriceFilterModal } from '../../../components';
 import { usePlatformStore } from '../../../store/platformStore';
@@ -30,6 +30,7 @@ import { useSearchProductsMutation } from '../../../hooks/useSearchProductsMutat
 import { useToast } from '../../../context/ToastContext';
 import { convertFromKRW } from '../../../utils/i18nHelpers';
 import { sortProducts } from '../../../utils/productSort';
+import { warmSearchPage } from '../../../utils/searchPrefetch';
 import { useWishlistStatus } from '../../../hooks/useWishlistStatus';
 import { useAddToWishlistMutation } from '../../../hooks/useAddToWishlistMutation';
 import { useDeleteFromWishlistMutation } from '../../../hooks/useDeleteFromWishlistMutation';
@@ -174,16 +175,20 @@ const ProductDiscoveryScreen: React.FC = () => {
     }
   };
 
-  // Helper function to navigate to product detail
+  // Helper function to navigate to product detail. The optional productData
+  // payload lets ProductDetailScreen render the image / title / price
+  // immediately while it fetches the full detail in the background.
   const navigateToProductDetail = async (
     productId: string | number,
     source: string = selectedPlatform,
-    country: string = locale
+    country: string = locale,
+    productData?: Product,
   ) => {
     navigation.navigate('ProductDetail', {
       productId: productId.toString(),
       source: source,
       country: country,
+      productData,
     });
   };
 
@@ -543,7 +548,11 @@ const ProductDiscoveryScreen: React.FC = () => {
         }
         setHasMore(hasMoreFlag);
         
-        // If it's the first page, replace products, otherwise append
+        // Dedup by external/offer id when appending — the search API can
+        // return the same product across pages and duplicates would crash
+        // the FlatList with "two children with the same key".
+        const productKey = (p: any): string =>
+          (p?.offerId?.toString?.()) || (p?.externalId?.toString?.()) || (p?.id?.toString?.()) || '';
         if (currentPage === 1) {
           setUnsortedProducts(mappedProducts);
           // Apply current sort to the products
@@ -551,7 +560,14 @@ const ProductDiscoveryScreen: React.FC = () => {
           setProducts(sorted);
           dataLoadedRef.current = true;
         } else {
-          const updatedUnsorted = [...unsortedProducts, ...mappedProducts];
+          const seen = new Set(unsortedProducts.map(productKey).filter(Boolean));
+          const fresh = mappedProducts.filter((p: any) => {
+            const k = productKey(p);
+            if (!k || seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          });
+          const updatedUnsorted = [...unsortedProducts, ...fresh];
           setUnsortedProducts(updatedUnsorted);
           // Apply current sort to the updated products
           const sorted = sortProducts(updatedUnsorted, selectedSort);
@@ -698,19 +714,38 @@ const ProductDiscoveryScreen: React.FC = () => {
     //   selectedPlatform,
     // });
     
-    // Call search API without auth token (category page search)
+    // Call search API without auth token (category page search). Small page
+    // sizes so the user sees results fast and "load more" stays cheap.
+    const requestedPageSize = pageOffset === 1
+      ? PAGINATION.FEED_INITIAL_PAGE_SIZE
+      : PAGINATION.FEED_MORE_PAGE_SIZE;
     searchProducts(
       searchKeyword,
       platformSource,
       locale,
       pageOffset,
-      20, // pageSize
+      requestedPageSize,
       sortParam,
       priceStart,
       priceEnd,
       filterParam,
       false // requireAuth = false for category page
     );
+    // Pre-warm page N+1 in the background so the next "load more" hits
+    // cache. Cost: at most one wasted request when the user is on the last
+    // page; in exchange every subsequent "load more" feels instant.
+    warmSearchPage({
+      keyword: searchKeyword,
+      source: platformSource,
+      country: locale,
+      page: pageOffset + 1,
+      pageSize: PAGINATION.FEED_MORE_PAGE_SIZE,
+      sort: sortParam,
+      priceStart,
+      priceEnd,
+      filter: filterParam,
+      requireAuth: false,
+    });
   };
 
   // Handle end reached for infinite scroll
@@ -952,7 +987,7 @@ const ProductDiscoveryScreen: React.FC = () => {
   const handleProductPress = useCallback(async (product: Product) => {
     // Get source from product data, fallback to selectedPlatform
     const source = (product as any).source || selectedPlatform ;
-    await navigateToProductDetail(product.id, source, locale);
+    await navigateToProductDetail(product.id, source, locale, product);
   }, [locale, selectedPlatform]);
 
   const handleLikePress = useCallback(async (product: Product) => {
@@ -975,13 +1010,11 @@ const ProductDiscoveryScreen: React.FC = () => {
     [],
   );
 
-  const renderProductsFooter = useCallback(() => (
-    isSearching && memoizedProducts.length > 0 ? (
-      <View style={{ padding: SPACING.md }}>
-        <ActivityIndicator size="small" color={COLORS.primary} />
-      </View>
-    ) : null
-  ), [isSearching, memoizedProducts.length]);
+  // No "load more" footer: loadProducts pre-warms page N+1 the moment page N
+  // is fired, so the next page is in cache by the time the user scrolls to
+  // it. A spinner here would only flash on the rare cache miss and make the
+  // feed feel slower than it actually is.
+  const renderProductsFooter = useCallback(() => null, []);
   
   // Handle clear filters
   const handleClearFilters = useCallback(() => {
@@ -1044,9 +1077,9 @@ const ProductDiscoveryScreen: React.FC = () => {
               scrollEnabled={false}
               nestedScrollEnabled={true}
               removeClippedSubviews={Platform.OS === 'android'}
-              maxToRenderPerBatch={6}
-              windowSize={3}
-              initialNumToRender={6}
+              maxToRenderPerBatch={10}
+              windowSize={7}
+              initialNumToRender={10}
               updateCellsBatchingPeriod={80}
               ListFooterComponent={renderProductsFooter}
             />

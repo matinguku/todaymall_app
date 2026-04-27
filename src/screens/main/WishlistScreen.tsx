@@ -358,12 +358,15 @@ const WishlistScreen: React.FC = () => {
   const fetchProductDetail = (_productId: string) => {
     // Product detail API removed
   };
-  const fetchProductDetailForNavigation = (productId: string, _source?: string, _country?: string) => {
-    // Product detail API removed - navigate directly
+  const fetchProductDetailForNavigation = (productId: string, _source?: string, _country?: string, productData?: Product) => {
+    // Product detail API removed - navigate directly. Pass the wishlist
+    // card payload so ProductDetailScreen renders the image / title / price
+    // immediately while it fetches the full detail in the background.
     (navigation as any).navigate('ProductDetail', {
       productId: productId,
       source: _source || selectedPlatform,
       country: _country || (locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en'),
+      productData,
     });
   };
 
@@ -409,11 +412,10 @@ const WishlistScreen: React.FC = () => {
   };
 
   const handleProductPress = (product: Product) => {
-    // Fetch product detail first, then navigate
     const productId = (product as any).offerId || (product as any).externalId || product.id;
     const source = (product as any).source || selectedPlatform || '1688';
     const country = locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en';
-    fetchProductDetailForNavigation(productId, source, country);
+    fetchProductDetailForNavigation(productId, source, country, product);
   };
 
   const handleAddToCartClick = async (product: Product) => {

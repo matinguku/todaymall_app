@@ -215,7 +215,21 @@ const SellerProfileScreen: React.FC = () => {
           }));
 
           if (append) {
-            setAllProducts(prev => [...prev, ...mappedProducts]);
+            // Dedup by id when appending — the seller-products API can
+            // return the same listing across pages and duplicates would
+            // crash the FlatList with "two children with the same key".
+            const productKey = (p: any): string =>
+              (p?.offerId?.toString?.()) || (p?.externalId?.toString?.()) || (p?.id?.toString?.()) || '';
+            setAllProducts(prev => {
+              const seen = new Set(prev.map(productKey).filter(Boolean));
+              const fresh = mappedProducts.filter((p: any) => {
+                const k = productKey(p);
+                if (!k || seen.has(k)) return false;
+                seen.add(k);
+                return true;
+              });
+              return [...prev, ...fresh];
+            });
           } else {
             setAllProducts(mappedProducts);
           }
@@ -243,7 +257,21 @@ const SellerProfileScreen: React.FC = () => {
           }));
 
           if (append) {
-            setAllProducts(prev => [...prev, ...mappedProducts]);
+            // Dedup by id when appending — the seller-products API can
+            // return the same listing across pages and duplicates would
+            // crash the FlatList with "two children with the same key".
+            const productKey = (p: any): string =>
+              (p?.offerId?.toString?.()) || (p?.externalId?.toString?.()) || (p?.id?.toString?.()) || '';
+            setAllProducts(prev => {
+              const seen = new Set(prev.map(productKey).filter(Boolean));
+              const fresh = mappedProducts.filter((p: any) => {
+                const k = productKey(p);
+                if (!k || seen.has(k)) return false;
+                seen.add(k);
+                return true;
+              });
+              return [...prev, ...fresh];
+            });
           } else {
             setAllProducts(mappedProducts);
           }
@@ -433,6 +461,7 @@ const SellerProfileScreen: React.FC = () => {
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.loadingText}>{t('home.loading')}</Text>
         </View>
       ) : (
         <FlatList
@@ -452,9 +481,9 @@ const SellerProfileScreen: React.FC = () => {
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           removeClippedSubviews={true}
-          maxToRenderPerBatch={8}
+          maxToRenderPerBatch={10}
           windowSize={7}
-          initialNumToRender={8}
+          initialNumToRender={10}
           updateCellsBatchingPeriod={50}
         />
       )}
@@ -576,6 +605,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  loadingText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
   },
   listContent: {
     paddingBottom: 100,

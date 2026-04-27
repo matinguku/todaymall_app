@@ -12,6 +12,7 @@
     "adb:reverse": "node ./scripts/adbReverse.js"
   },
   "dependencies": {
+    "@d11/react-native-fast-image": "^8.13.0",
     "@gorhom/bottom-sheet": "^5.2.6",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-camera-roll/camera-roll": "^7.10.2",

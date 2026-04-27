@@ -8,4 +8,18 @@
         <item name="android:windowLightNavigationBar">true</item>
     </style>
 
+    <!--
+      Theme used while the activity launches and the JS bundle is still
+      loading. windowBackground = the same logo + white that the JS splash
+      shows, so the user sees one continuous splash instead of a blank window
+      followed by the JS splash.
+      MainActivity swaps to AppTheme in onCreate() so this drawable is not
+      kept in memory or composited under every screen during normal use.
+    -->
+    <style name="LaunchTheme" parent="AppTheme">
+        <item name="android:windowBackground">@drawable/launch_screen</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowTranslucentStatus">true</item>
+    </style>
+
 </resources>

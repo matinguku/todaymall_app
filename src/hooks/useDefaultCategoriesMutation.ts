@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { productsApi } from '../services/productsApi';
+import { prefetchDefaultCategories, invalidateHomeCache, homePrefetchKeys } from '../utils/homePrefetch';
 
 interface UseDefaultCategoriesMutationOptions {
   onSuccess?: (data: any) => void;
@@ -31,7 +32,12 @@ export const useDefaultCategoriesMutation = (
     setError(null);
 
     try {
-      const response = await productsApi.getDefaultCategories(platform, skipCache);
+      // skipCache controls the API-side cache header. Reuse the in-memory
+      // home prefetch only when the caller wants the same behavior the
+      // splash-time prefetch already kicked off (skipCache=true).
+      const response = skipCache
+        ? await prefetchDefaultCategories(platform)
+        : await productsApi.getDefaultCategories(platform, skipCache);
       
       if (response.success && response.data) {
         setData(response.data);

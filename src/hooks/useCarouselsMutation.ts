@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { productsApi } from '../services/productsApi';
+import { prefetchCarousels } from '../utils/homePrefetch';
 
 interface UseCarouselsMutationOptions {
   onSuccess?: (data: any) => void;
@@ -31,7 +32,7 @@ export const useCarouselsMutation = (
     setError(null);
 
     try {
-      const response = await productsApi.getCarousels();
+      const response = await prefetchCarousels();
       if (response.success && response.data) {
         setData(response.data);
         setIsSuccess(true);

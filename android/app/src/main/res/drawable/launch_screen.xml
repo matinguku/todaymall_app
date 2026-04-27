@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Native launch background. Visually matches the JS SplashScreen
+  (white background + centered logo) so the cold-start handoff from native
+  window → React-rendered SplashScreen is invisible to the user.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@android:color/white" />
+    <item>
+        <bitmap
+            android:src="@drawable/launch_logo"
+            android:gravity="center" />
+    </item>
+</layer-list>
