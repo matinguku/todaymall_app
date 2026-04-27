@@ -8,6 +8,7 @@ import {
   Image,
   FlatList,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
@@ -603,6 +604,15 @@ const LiveScreen: React.FC = () => {
         <NoticeBanner />
       </View>
 
+      {/* Initial-load spinner: shown the first time the user lands on Live
+          while the live-commerce request is in flight and we have no data
+          yet. Once data arrives the ScrollView takes over; subsequent
+          refreshes are surfaced via the RefreshControl spinner instead. */}
+      {!liveCommerceData && isLoading ? (
+        <View style={styles.initialLoadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.white} />
+        </View>
+      ) : (
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} />}
@@ -735,6 +745,7 @@ const LiveScreen: React.FC = () => {
           </View>
         )}
       </ScrollView>
+      )}
     </SafeAreaView>
   );
 };
@@ -806,6 +817,12 @@ const styles = StyleSheet.create({
 
   scrollContent: {
     paddingBottom: SPACING.xl,
+  },
+
+  initialLoadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // Search Bar

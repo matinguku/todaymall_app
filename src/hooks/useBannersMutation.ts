@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { productsApi } from '../services/productsApi';
+import { prefetchBanners } from '../utils/homePrefetch';
 
 interface UseBannersMutationOptions {
   onSuccess?: (data: any) => void;
@@ -31,7 +32,7 @@ export const useBannersMutation = (
     setError(null);
 
     try {
-      const response = await productsApi.getBanners();
+      const response = await prefetchBanners();
       if (response.success && response.data) {
         setData(response.data);
         setIsSuccess(true);

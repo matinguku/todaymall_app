@@ -230,7 +230,21 @@ const LiveSellerDetailScreen: React.FC = () => {
         }));
 
         if (append) {
-          setAllProducts(prev => [...prev, ...mappedProducts]);
+          // Dedup by id when appending — the live API can return the same
+          // listing across pages and duplicates would crash the list with
+          // "two children with the same key".
+          const productKey = (p: any): string =>
+            (p?.offerId?.toString?.()) || (p?.externalId?.toString?.()) || (p?.id?.toString?.()) || '';
+          setAllProducts(prev => {
+            const seen = new Set(prev.map(productKey).filter(Boolean));
+            const fresh = mappedProducts.filter((p: any) => {
+              const k = productKey(p);
+              if (!k || seen.has(k)) return false;
+              seen.add(k);
+              return true;
+            });
+            return [...prev, ...fresh];
+          });
         } else {
           setAllProducts(mappedProducts);
         }
@@ -480,9 +494,10 @@ const LiveSellerDetailScreen: React.FC = () => {
     return (
       <View style={styles.loadingMore}>
         <ActivityIndicator size="small" color={COLORS.primary} />
+        <Text style={styles.loadingMoreText}>{t('home.loadingMore')}</Text>
       </View>
     );
-  }, [loadingMore]);
+  }, [loadingMore, t]);
 
   const renderEmpty = useCallback(() => {
     if (loading) return null;
@@ -530,6 +545,7 @@ const LiveSellerDetailScreen: React.FC = () => {
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.loadingMoreText}>{t('home.loading')}</Text>
         </View>
       ) : (
         <FlatList
@@ -936,10 +952,17 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: SPACING.sm,
   },
   loadingMore: {
     paddingVertical: SPACING.lg,
     alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  loadingMoreText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
+    marginTop: SPACING.xs,
   },
   emptyContainer: {
     width: '100%',

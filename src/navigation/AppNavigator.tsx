@@ -7,6 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, RadialGradient as SvgRadialGradient, Stop, Rect } from 'react-native-svg';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
+import { useSplashGate } from '../hooks/useSplashGate';
+import { getHomeFirstPaintPromise } from '../utils/homePrefetch';
 import { RootStackParamList, AuthStackParamList, MainTabParamList } from '../types';
 import { BORDER_RADIUS, COLORS, DEMO_MODE, SPACING } from '../constants';
 import { useAppSelector } from '../store/hooks';
@@ -26,35 +28,35 @@ import ProfileScreenDemo from '../screens/demo/ProfileScreen.demo';
 
 // Import screens
 import SplashScreen from '../screens/main/SplashScreen';
-import LoginScreen from '../screens/lazy/LoginScreen.lazy';
-import SignupScreen from '../screens/lazy/SignupScreen.lazy';
-import ForgotPasswordScreen from '../screens/lazy/ForgotPasswordScreen.lazy';
-import ResetPasswordScreen from '../screens/lazy/ResetPasswordScreen.lazy';
+import LoginScreen from '../screens/auth/LoginScreen';
+import SignupScreen from '../screens/auth/SignupScreen';
+import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
+import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
 import EmailVerificationScreen from '../screens/auth/EmailVerificationScreen';
 import SetPasswordScreen from '../screens/auth/SetPasswordScreen';
 import HomeScreen from '../screens/main/HomeScreen';
-import SearchScreen from '../screens/lazy/SearchScreen.lazy';
-import CartScreen from '../screens/lazy/CartScreen.lazy';
+import SearchScreen from '../screens/main/searchScreen/SearchScreen';
+import CartScreen from '../screens/main/CartScreen';
 import LiveScreen from '../screens/main/LiveScreen';
-import ProfileScreen from '../screens/lazy/ProfileScreen.lazy';
-import ProductDetailScreen from '../screens/lazy/ProductDetailScreen.lazy';
+import ProfileScreen from '../screens/main/profileScreen/ProfileScreen';
+import ProductDetailScreen from '../screens/main/ProductDetailScreen';
 import NotFoundScreen from '../screens/main/NotFoundScreen';
-import ReviewsScreen from '../screens/lazy/ReviewsScreen.lazy';
-import SellerProfileScreen from '../screens/lazy/SellerProfileScreen.lazy';
-import LiveSellerSearchScreen from '../screens/lazy/LiveSellerSearchScreen.lazy';
-import LiveSellerDetailScreen from '../screens/lazy/LiveSellerDetailScreen.lazy';
-import OrderConfirmationScreen from '../screens/lazy/OrderConfirmationScreen.lazy';
-import SearchResultsScreen from '../screens/lazy/SearchResultsScreen.lazy';
-import EditProfileScreen from '../screens/lazy/EditProfileScreen.lazy';
-import AddressBookScreen from '../screens/lazy/AddressBookScreen.lazy';
+import ReviewsScreen from '../screens/main/profileScreen/ReviewsScreen';
+import SellerProfileScreen from '../screens/main/searchScreen/SellerProfileScreen';
+import LiveSellerSearchScreen from '../screens/main/liveScreen/LiveSellerSearchScreen';
+import LiveSellerDetailScreen from '../screens/main/liveScreen/LiveSellerDetailScreen';
+import OrderConfirmationScreen from '../screens/main/profileScreen/settingScreen/OrderConfirmationScreen';
+import SearchResultsScreen from '../screens/main/searchScreen/SearchResultsScreen';
+import EditProfileScreen from '../screens/main/profileScreen/myPageScreen/EditProfileScreen';
+import AddressBookScreen from '../screens/main/profileScreen/settingScreen/addressScreen/AddressBookScreen';
 import SelectAddressScreen from '../screens/main/profileScreen/settingScreen/addressScreen/SelectAddressScreen';
-import AddNewAddressScreen from '../screens/lazy/AddNewAddressScreen.lazy';
-import EditAddressScreen from '../screens/lazy/EditAddressScreen.lazy';
-import EditFinanceAddressScreen from '../screens/lazy/EditFinanceAddressScreen.lazy';
-import PaymentMethodsScreen from '../screens/lazy/PaymentMethodsScreen.lazy';
+import AddNewAddressScreen from '../screens/main/profileScreen/settingScreen/addressScreen/AddNewAddressScreen';
+import EditAddressScreen from '../screens/main/profileScreen/settingScreen/addressScreen/EditAddressScreen';
+import EditFinanceAddressScreen from '../screens/main/profileScreen/settingScreen/EditFinanceAddressScreen';
+import PaymentMethodsScreen from '../screens/main/profileScreen/settingScreen/PaymentMethodsScreen';
 import AddPaymentMethodScreen from '../screens/main/profileScreen/settingScreen/AddPaymentMethodScreen';
-import OrderHistoryScreen from '../screens/lazy/OrderHistoryScreen.lazy';
-import WishlistScreen from '../screens/lazy/WishlistScreen.lazy';
+import OrderHistoryScreen from '../screens/main/profileScreen/settingScreen/OrderHistoryScreen';
+import WishlistScreen from '../screens/main/WishlistScreen';
 import ProfileSettingsScreen from '../screens/main/profileScreen/myPageScreen/ProfileSettingsScreen';
 import HelpCenterScreen from '../screens/main/profileScreen/settingScreen/helpScreen/HelpCenterScreen';
 import HelpSearchScreen from '../screens/main/profileScreen/settingScreen/helpScreen/HelpSearchScreen';
@@ -69,12 +71,12 @@ import AddAddressScreen from '../screens/main/profileScreen/settingScreen/addres
 // import EditProductScreen from '../screens/main/EditProductScreen'; // Temporarily removed due to missing module
 // Order screens
 import MyOrdersScreen from '../screens/main/profileScreen/settingScreen/OrderHistoryScreen';
-import LeaveFeedbackScreen from '../screens/lazy/LeaveFeedbackScreen.lazy';
+import LeaveFeedbackScreen from '../screens/main/profileScreen/LeaveFeedbackScreen';
 // Settings screens
-import PrivacyPolicyScreen from '../screens/lazy/PrivacyPolicyScreen.lazy';
+import PrivacyPolicyScreen from '../screens/main/profileScreen/PrivacyPolicyScreen';
 import AboutUsScreen from '../screens/main/profileScreen/AboutUsScreen';
 import SecuritySettingsScreen from '../screens/main/profileScreen/myPageScreen/SecuritySettingsScreen';
-import ChangePasswordScreen from '../screens/lazy/ChangePasswordScreen.lazy';
+import ChangePasswordScreen from '../screens/main/profileScreen/myPageScreen/ChangePasswordScreen';
 import AffiliateMarketingScreen from '../screens/main/profileScreen/myPageScreen/AffiliateMarketingScreen';
 import UnitSettingsScreen from '../screens/main/profileScreen/myPageScreen/UnitSettingsScreen';
 import PaymentPasswordScreen from '../screens/main/profileScreen/myPageScreen/PaymentPasswordScreen';
@@ -95,16 +97,16 @@ import SellerInfoStackNavigator from '../screens/main/profileScreen/settingScree
 import ViewedProductsScreen from '../screens/main/profileScreen/ViewedProductsScreen';
 import FollowedStoreScreen from '../screens/main/profileScreen/FollowedStoreScreen';
 // Chat screens
-import ChatScreen from '../screens/lazy/ChatScreen.lazy';
+import ChatScreen from '../screens/main/chatScreen/ChatScreen';
 import ChatErrorBoundary from '../components/ChatErrorBoundary';
 // import EditProductScreen from '../screens/main/EditProductScreen';
-import CategoryTabScreen from '../screens/lazy/CategoryTabScreen.lazy';
-import ProductDiscoveryScreen from '../screens/lazy/ProductDiscoveryScreen.lazy';
+import CategoryTabScreen from '../screens/main/CategoryTabScreen';
+import ProductDiscoveryScreen from '../screens/main/searchScreen/ProductDiscoveryScreen';
 import SubCategoryScreen from '../screens/main/SubCategoryScreen';
-import FinanceScreen from '../screens/lazy/FinanceScreen.lazy';
-import OtpVerificationScreen from '../screens/lazy/OtpVerificationScreen.lazy';
+import FinanceScreen from '../screens/main/profileScreen/settingScreen/FinanceScreen';
+import OtpVerificationScreen from '../screens/auth/OtpVerificationScreen';
 import CustomerServiceScreen from '../screens/main/profileScreen/CustomerServiceScreen';
-import OrderInquiryScreen from '../screens/lazy/OrderInquiryScreen.lazy';
+import OrderInquiryScreen from '../screens/main/profileScreen/OrderInquiryScreen';
 import ImageSearchScreen from '../screens/main/searchScreen/ImageSearchScreen';
 import ImageSearchCameraScreen from '../screens/main/searchScreen/ImageSearchCameraScreen';
 // General Inquiry screens
@@ -210,9 +212,21 @@ const MainTabNavigator = () => {
 
   return (
     <MainTab.Navigator
-      detachInactiveScreens={true}
+      // Tab-switch performance is critical for this app. Three flags work
+      // together to make every tap feel instant:
+      //   - lazy: false           → mount all 5 tab screens up-front, behind
+      //                             the splash, so the first tap on every tab
+      //                             hits an already-mounted tree (no cold
+      //                             render + API spin-up on tap).
+      //   - detachInactiveScreens → keep tabs in memory between switches.
+      //   - freezeOnBlur          → suspend backgrounded tabs so the
+      //                             always-mounted set doesn't burn CPU.
+      // Detaching or lazy-mounting was the source of the multi-second tap
+      // delay users were reporting; those costs are now paid once at startup
+      // (hidden by the splash) and never on a tap.
+      detachInactiveScreens={false}
       screenOptions={({ route }) => ({
-        lazy: true,
+        lazy: false,
         freezeOnBlur: true,
         tabBarIcon: ({ focused }) => {
           const iconColor = focused ? COLORS.text.red : COLORS.black;
@@ -410,6 +424,15 @@ const RootNavigator = () => {
   const authContext = useAuth();
   const isAuthenticated = authContext?.isAuthenticated;
   const isLoading = authContext?.isLoading;
+  // Hold the splash until the above-the-fold prefetch (banners + carousels +
+  // default categories) is done so HomeScreen paints with that content
+  // immediately. Live/deals and More-to-Love come in afterward via Phases 2
+  // and 3 — the splash doesn't wait on them.
+  const splashHolding = useSplashGate({
+    minDurationMs: 1200,
+    maxDurationMs: 3500,
+    waitFor: [getHomeFirstPaintPromise()],
+  });
   // console.log('RootNavigator: Rendering with isAuthenticated:', isAuthenticated, 'isLoading:', isLoading);
 
   // Debug authentication state changes
@@ -418,7 +441,7 @@ const RootNavigator = () => {
     // console.log('AppNavigator: Current screen should be:', !isAuthenticated ? 'Auth' : 'Main');
   }, [isAuthenticated, isLoading]);
 
-  if (isLoading) {
+  if (isLoading || splashHolding) {
     return <SplashScreen />;
   }
 

@@ -678,8 +678,11 @@ const styles = StyleSheet.create({
   },
   moreToLoveImage: {
     marginBottom: SPACING.md,
-    borderRadius: 18,
-    // borderBottomRightRadius: 24,
+    // Match the card's borderRadius so the image's top corners line up with
+    // the card's clipping path. Using a larger image radius (e.g. 18) inside
+    // a card with `overflow: 'hidden'` and radius 12 made the corners look
+    // visually mismatched.
+    borderRadius: 12,
   },
   moreToLoveInfo: {
     flex: 1,

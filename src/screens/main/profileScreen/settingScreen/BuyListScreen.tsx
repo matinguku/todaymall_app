@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG } from '../../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG, PAGINATION } from '../../../../constants';
 import { RootStackParamList, Product } from '../../../../types';
 import { ProductCard, SearchButton } from '../../../../components';
 import TuneIcon from '../../../../assets/icons/TuneIcon';
@@ -643,16 +643,32 @@ const BuyListScreen = () => {
           return productData;
         });
         
-        // Check pagination - if we got fewer products than pageSize, no more pages
-        const pageSize = 20;
-        const hasMore = productsArray.length >= pageSize;
+        // Check pagination - first page asks for FEED_INITIAL_PAGE_SIZE,
+        // subsequent pages for FEED_MORE_PAGE_SIZE.
+        const requestedPageSize = currentPage === 1
+          ? PAGINATION.FEED_INITIAL_PAGE_SIZE
+          : PAGINATION.FEED_MORE_PAGE_SIZE;
+        const hasMore = productsArray.length >= requestedPageSize;
         setHasMoreRecommendations(hasMore);
         
-        // If it's the first page, replace products, otherwise append
+        // Dedup by external/offer id when appending — the recommendations
+        // API can return the same product across pages and duplicates would
+        // crash the FlatList with "two children with the same key".
+        const productKey = (p: any): string =>
+          (p?.offerId?.toString?.()) || (p?.externalId?.toString?.()) || (p?.id?.toString?.()) || '';
         if (currentPage === 1) {
           setRecommendationsProducts(mappedProducts);
         } else {
-          setRecommendationsProducts(prev => [...prev, ...mappedProducts]);
+          setRecommendationsProducts(prev => {
+            const seen = new Set(prev.map(productKey).filter(Boolean));
+            const fresh = mappedProducts.filter((p: any) => {
+              const k = productKey(p);
+              if (!k || seen.has(k)) return false;
+              seen.add(k);
+              return true;
+            });
+            return [...prev, ...fresh];
+          });
         }
       } else {
         // No products found
@@ -691,7 +707,7 @@ const BuyListScreen = () => {
       const outMemberId = user?.id?.toString() || 'dferg0001';
       const platform = '1688'; // Always use 1688 for More to Love products
       currentRecommendationsPageRef.current = recommendationsOffset;
-      fetchRecommendationsRef.current(locale, outMemberId, recommendationsOffset, 20, platform)
+      fetchRecommendationsRef.current(locale, outMemberId, recommendationsOffset, PAGINATION.FEED_MORE_PAGE_SIZE, platform)
         .finally(() => {
           isLoadingMoreRecommendationsRef.current = false;
         });
@@ -718,7 +734,7 @@ const BuyListScreen = () => {
         setRecommendationsProducts([]);
         // Fetch first page
         currentRecommendationsPageRef.current = 1;
-        fetchRecommendationsRef.current(locale, outMemberId, 1, 20, platform);
+        fetchRecommendationsRef.current(locale, outMemberId, 1, PAGINATION.FEED_INITIAL_PAGE_SIZE, platform);
       }
     }
   }, [locale, user?.id, fetchRecommendations]);

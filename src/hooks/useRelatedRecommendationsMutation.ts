@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { productsApi } from '../services/productsApi';
+import { prefetchRelated } from '../utils/relatedPrefetch';
 
 interface UseRelatedRecommendationsMutationOptions {
   onSuccess?: (data: any) => void;
@@ -43,13 +43,16 @@ export const useRelatedRecommendationsMutation = (
     setError(null);
 
     try {
-      const response = await productsApi.getRelatedRecommendations(
+      // Route through the cache so callers can pre-warm the next page in
+      // the background. The cache key includes pageNo, so different pages
+      // get their own slot and never collide.
+      const response = await prefetchRelated({
         productId,
         pageNo,
         pageSize,
         language,
-        source
-      );
+        source,
+      });
 
       if (response.success && response.data) {
         setData(response.data);

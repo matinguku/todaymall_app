@@ -1,6 +1,5 @@
 import React from 'react';
-import { StatusBar, Platform, InteractionManager } from 'react-native';
-import { preloadProductDetailScreen } from './src/screens/lazy/ProductDetailScreen.lazy';
+import { StatusBar, Platform } from 'react-native';
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Orientation from 'react-native-orientation-locker';
@@ -12,6 +11,15 @@ import NoteBroadcastManager from './src/components/NoteBroadcastManager';
 import AppNavigator from './src/navigation/AppNavigator';
 import { Provider } from 'react-redux';
 import { store } from './src/store';
+import { prefetchHome } from './src/utils/homePrefetch';
+import { usePlatformStore } from './src/store/platformStore';
+
+// Kick off home-screen API calls before React mounts so HomeScreen can render
+// with cached data on its first paint. Locale comes from the redux store
+// (defaults to 'ko'); platform comes from zustand (defaults to '1688').
+const initialPlatform = usePlatformStore.getState().selectedPlatform;
+const initialLocale = store.getState().i18n.locale;
+prefetchHome({ platform: initialPlatform, country: initialLocale });
 
 // Using system fonts - no custom font loading needed
 // LogBox / console.error filtering: see setupLogBox.ts (imported first from index.ts)
@@ -32,15 +40,6 @@ const AppContent = () => {
       StatusBar.setTranslucent(true);
       StatusBar.setBackgroundColor('transparent');
     }
-  }, []);
-
-  // Prefetch the heavy ProductDetail chunk after the first render so tapping a
-  // product card no longer waits on Suspense ("Loading product details...").
-  React.useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
-      preloadProductDetailScreen();
-    });
-    return () => handle.cancel?.();
   }, []);
 
   return (

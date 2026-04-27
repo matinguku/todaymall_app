@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { productsApi } from '../services/productsApi';
+import { prefetchSearch } from '../utils/searchPrefetch';
 
 interface UseSearchProductsMutationOptions {
   onSuccess?: (data: any) => void;
@@ -55,7 +55,11 @@ export const useSearchProductsMutation = (
     setError(null);
 
     try {
-      const response = await productsApi.searchProductsByKeyword(
+      // Route every search through the shared in-memory cache so consumers
+      // can pre-warm the next page (page N+1) the moment page N arrives.
+      // Cache key includes every parameter, so different filters/pages get
+      // their own slot.
+      const response = await prefetchSearch({
         keyword,
         source,
         country,
@@ -67,7 +71,7 @@ export const useSearchProductsMutation = (
         filter,
         requireAuth,
         sellerOpenId,
-      );
+      });
       
       if (response.success && response.data) {
         setData(response.data);

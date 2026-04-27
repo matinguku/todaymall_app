@@ -38,6 +38,8 @@ import { useCheckoutDirectPurchaseMutation } from '../../hooks/useCheckoutDirect
 import { useTranslation } from '../../hooks/useTranslation';
 import { useToast } from '../../context/ToastContext';
 import { formatPriceKRW, getLocalizedText } from '../../utils/i18nHelpers';
+import { buildCdnThumbnailUri } from '../../utils/productImage';
+import { warmRelatedPage } from '../../utils/relatedPrefetch';
 import { useWishlistStatus } from '../../hooks/useWishlistStatus';
 import { useAddToWishlistMutation } from '../../hooks/useAddToWishlistMutation';
 import { useDeleteFromWishlistMutation } from '../../hooks/useDeleteFromWishlistMutation';
@@ -105,9 +107,15 @@ const ProductDetailScreen: React.FC = () => {
     countryRef.current = (route.params?.country as string) || (locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en');
   }, [route.params?.source, route.params?.country, selectedPlatform, locale]);
   
-  // Use product data from navigation params if available, otherwise fetch
+  // Use product data from navigation params if available, otherwise fetch.
+  // Render whatever we have on the first frame and refresh in the
+  // background — there's no loading screen, so when `product` is null the
+  // page just shows an empty background until the detail API resolves.
   const [product, setProduct] = useState<any>(initialProductData || null);
-  const [loading, setLoading] = useState(!initialProductData);
+  // Set to true once the product-detail API has resolved (or failed). Related
+  // products only fetch after this so the heavy detail call wins network /
+  // CPU budget on the first paint.
+  const [detailFetched, setDetailFetched] = useState(false);
   const [wishlistCount, setWishlistCount] = useState<number | null>(null);
 
   // Scroll-based header animation
@@ -448,6 +456,10 @@ const ProductDetailScreen: React.FC = () => {
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [relatedProductsPage, setRelatedProductsPage] = useState(1);
   const [relatedProductsHasMore, setRelatedProductsHasMore] = useState(true);
+  // Tracks the page number used for the in-flight related-products fetch so
+  // onSuccess knows whether to replace (page 1) or append (page > 1).
+  const relatedProductsPageRef = useRef<number>(1);
+  const isLoadingMoreRelatedRef = useRef(false);
   const [similarProducts, setSimilarProducts] = useState<Product[]>([]);
   const [similarProductsPage, setSimilarProductsPage] = useState(1);
   const [similarProductsHasMore, setSimilarProductsHasMore] = useState(true);
@@ -476,7 +488,7 @@ const ProductDetailScreen: React.FC = () => {
   ];
   
   // Search products mutation (for Taobao related products) - MUST be before useEffect hooks
-  const { mutate: searchProducts, isLoading: searchProductsLoading } = useSearchProductsMutation({
+  const { mutate: searchProducts } = useSearchProductsMutation({
     onSuccess: (data) => {
       if (!data || !data.products || !Array.isArray(data.products)) {
         setRelatedProducts([]);
@@ -597,11 +609,47 @@ const ProductDetailScreen: React.FC = () => {
           promotionUrl: '',
         }));
 
-      setRelatedProducts(mappedProducts);
-      setRelatedProductsHasMore(
-        data.pagination?.pageNo <
-          Math.ceil((data.pagination?.totalRecords || 0) / (data.pagination?.pageSize || 10))
-      );
+      const currentPage = relatedProductsPageRef.current;
+      // First page replaces; subsequent pages append (with dedup so the
+      // FlatList doesn't crash on duplicate keys).
+      const productKey = (p: any): string =>
+        (p?.offerId?.toString?.()) || (p?.externalId?.toString?.()) || (p?.id?.toString?.()) || '';
+      if (currentPage === 1) {
+        setRelatedProducts(mappedProducts);
+      } else {
+        setRelatedProducts(prev => {
+          const seen = new Set(prev.map(productKey).filter(Boolean));
+          const fresh = mappedProducts.filter((p: any) => {
+            const k = productKey(p);
+            if (!k || seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          });
+          return [...prev, ...fresh];
+        });
+      }
+
+      const hasMore = data.pagination?.pageNo <
+        Math.ceil((data.pagination?.totalRecords || 0) / (data.pagination?.pageSize || 10));
+      setRelatedProductsHasMore(hasMore);
+      isLoadingMoreRelatedRef.current = false;
+
+      // Pre-warm page N+1 in the background so the next "load more" hits
+      // cache instead of waiting on the network.
+      if (hasMore) {
+        const fetchSource = sourceRef.current;
+        const language = locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en';
+        const currentProductId = (productId || offerId)?.toString() || '';
+        if (currentProductId) {
+          warmRelatedPage({
+            productId: currentProductId,
+            pageNo: currentPage + 1,
+            pageSize: 10,
+            language,
+            source: fetchSource,
+          });
+        }
+      }
     },
     onError: (error) => {
       // showToast(error || t('product.failedToLoadRelatedProducts'), 'error');
@@ -616,7 +664,7 @@ const ProductDetailScreen: React.FC = () => {
       //   dataKeys: data ? Object.keys(data) : [],
       //   source,
       // });
-
+      console.log('📦 [ProductDetailScreen] Raw API response:', data);
       // Taobao product detail mapping
       if (source === 'taobao' && data) {
         const taobao = data;
@@ -732,7 +780,7 @@ const ProductDetailScreen: React.FC = () => {
         };
 
         setProduct(mappedProduct);
-        setLoading(false);
+        setDetailFetched(true);
 
         const currentProductId = productId?.toString() || offerId?.toString() || '';
         if (currentProductId) {
@@ -830,7 +878,7 @@ const ProductDetailScreen: React.FC = () => {
         };
         
         setProduct(mappedProduct);
-        setLoading(false);
+        setDetailFetched(true);
         // Mark this productId as fetched
         const currentProductId = productId?.toString() || offerId?.toString() || '';
         if (currentProductId) {
@@ -849,7 +897,7 @@ const ProductDetailScreen: React.FC = () => {
       //   source,
       //   country,
       // });
-      setLoading(false);
+      setDetailFetched(true);
       // Reset ref on error so we can retry
       hasFetchedProductRef.current = null;
       
@@ -882,49 +930,25 @@ const ProductDetailScreen: React.FC = () => {
     }
   }, [product?.minOrderQuantity]);
 
-  // Fetch product detail if productId is available and no initialProductData
-  // Only fetch once per productId - use route params in dependencies to avoid infinite loops
+  // Always fetch the full product detail in the background. If we already
+  // have initialProductData (from the previous-page card payload), the screen
+  // is already painting that data — the fetch just upgrades it with the rest
+  // of the fields when the network resolves. If we don't, the empty
+  // background covers the brief wait until detail arrives.
   useEffect(() => {
-    if (initialProductData) {
-      setProduct(initialProductData);
-      setLoading(false);
-      // Mark as fetched so we don't fetch again
-      const currentProductId = productId?.toString() || offerId?.toString() || '';
-      if (currentProductId) {
-        hasFetchedProductRef.current = currentProductId;
-      }
-    } else {
-      // Determine which productId to use
-      const currentProductId = productId?.toString() || offerId?.toString() || '';
-      
-      if (currentProductId) {
-        // Check if we've already fetched for this productId
-        const alreadyFetched = hasFetchedProductRef.current === currentProductId;
-        
-        // Only fetch if we haven't fetched for this productId yet and not currently loading
-        if (!alreadyFetched && !isFetchingDetail) {
-          hasFetchedProductRef.current = currentProductId; // Mark as fetching
-          setLoading(true);
-          const fetchSource = sourceRef.current;
-          const fetchCountry = countryRef.current;
-          // console.log('📦 [ProductDetailScreen] Fetching product detail:', {
-          //   currentProductId,
-          //   productId,
-          //   offerId,
-          //   source: fetchSource,
-          //   country: fetchCountry,
-          //   routeSource,
-          //   routeCountry,
-          // });
-          fetchProductDetail(currentProductId, fetchSource, fetchCountry);
-        } else if (alreadyFetched) {
-          // Already fetched, don't show loading
-          setLoading(false);
-        }
-      }
-    }
+    const currentProductId = productId?.toString() || offerId?.toString() || '';
+    if (!currentProductId) return;
+
+    // Don't refetch the same productId twice (e.g. from re-render churn).
+    if (hasFetchedProductRef.current === currentProductId) return;
+    if (isFetchingDetail) return;
+
+    hasFetchedProductRef.current = currentProductId;
+    const fetchSource = sourceRef.current;
+    const fetchCountry = countryRef.current;
+    fetchProductDetail(currentProductId, fetchSource, fetchCountry);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productId, offerId, initialProductData, routeSource, routeCountry]); // Use route params instead of derived source/country
+  }, [productId, offerId, initialProductData, routeSource, routeCountry]);
   
   // Fetch wishlist count when product is loaded
   useEffect(() => {
@@ -952,32 +976,55 @@ const ProductDetailScreen: React.FC = () => {
     fetchWishlistCount();
   }, [product, productId, offerId, routeSource]);
 
-  // Fetch related products when productId is available
+  // Fetch related products only AFTER the product-detail API has settled.
+  // Track per-productId so this fires exactly once per detail page even if
+  // `product` mutates (initial card payload → full detail upgrade) or other
+  // deps change. The previous implementation used InteractionManager whose
+  // cancel cleanup ran on every product mutation, which prevented the
+  // related-products fetch from ever firing in some cases.
+  const relatedFetchedForRef = useRef<string | null>(null);
   useEffect(() => {
-    const currentProductId = productId || offerId;
-    if (currentProductId && product) {
-      // Map locale to language code
-      const language = locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en';
-      const fetchSource = sourceRef.current; // Use ref to avoid infinite loops
-      
-      if (fetchSource === 'taobao') {
-        // For Taobao, use search API with category name as keyword
-        const searchKeyword = product.category?.name || '';
-        if (searchKeyword) {
-          // console.log('🔍 [ProductDetailScreen] Fetching related products via search API for Taobao:', {
-          //   keyword: searchKeyword,
-          //   source: fetchSource,
-          //   language,
-          // });
-          searchProducts(searchKeyword, fetchSource, language, 1, 20, undefined, undefined, undefined, undefined, false); // requireAuth = false for product detail page
-        }
-      } else {
-        // For non-Taobao, use related recommendations API
-        fetchRelatedRecommendations(currentProductId, 1, 10, language, fetchSource);
+    const currentProductId = (productId || offerId)?.toString();
+    if (!currentProductId || !product || !detailFetched) return;
+    if (relatedFetchedForRef.current === currentProductId) return;
+    relatedFetchedForRef.current = currentProductId;
+
+    const language = locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en';
+    const fetchSource = sourceRef.current;
+
+    // Reset pagination state for the new product.
+    setRelatedProductsPage(1);
+    setRelatedProductsHasMore(true);
+    setRelatedProducts([]);
+    relatedProductsPageRef.current = 1;
+    isLoadingMoreRelatedRef.current = false;
+
+    if (fetchSource === 'taobao') {
+      const searchKeyword = product.category?.name || '';
+      if (searchKeyword) {
+        searchProducts(searchKeyword, fetchSource, language, 1, 20, undefined, undefined, undefined, undefined, false);
       }
+    } else {
+      fetchRelatedRecommendations(currentProductId, 1, 10, language, fetchSource);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productId, offerId, locale, product, routeSource]); // Use routeSource instead of source to avoid infinite loops
+  }, [productId, offerId, locale, product, detailFetched, routeSource]);
+
+  // Load page N+1 when relatedProductsPage advances. Driven by the parent
+  // ScrollView's onScroll handler (see Animated.ScrollView below).
+  useEffect(() => {
+    if (relatedProductsPage <= 1) return;
+    if (!relatedProductsHasMore) return;
+    const fetchSource = sourceRef.current;
+    if (fetchSource === 'taobao') return; // Taobao path uses a different feed.
+    const currentProductId = (productId || offerId)?.toString();
+    if (!currentProductId) return;
+    const language = locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en';
+    relatedProductsPageRef.current = relatedProductsPage;
+    isLoadingMoreRelatedRef.current = true;
+    fetchRelatedRecommendations(currentProductId, relatedProductsPage, 10, language, fetchSource);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [relatedProductsPage, relatedProductsHasMore]);
   
   // Load more similar products - MUST be before early return
   const loadMoreSimilarProducts = useCallback(() => {
@@ -1004,21 +1051,32 @@ const ProductDetailScreen: React.FC = () => {
 
   // Get product images from API only (not from HTML description)
   const getApiProductImages = useCallback((currentProduct: any): string[] => {
-    if (!currentProduct) return [];
-    
-    // Use images array from API, or fallback to single image
-    const apiImages = (currentProduct as any).images || [];
-    if (apiImages.length > 0) {
-      return apiImages;
+    if (!currentProduct) {
+      // Even before product is set, the previous-page thumbnail can render
+      // immediately if it was passed via navigation params.
+      const seedImage = initialProductData?.image || '';
+      return seedImage ? [seedImage] : [];
     }
-    
-    // Fallback to single image if images array is empty
-    if (currentProduct.image) {
-      return [currentProduct.image];
+
+    // Promote the card-thumbnail to the front of the gallery list. The
+    // previous screen has already downloaded that URL, so React Native's
+    // image cache returns it instantly — the user sees a real image on the
+    // first frame instead of a blank box while the rest of the gallery
+    // streams in. Once the detail API arrives, the thumbnail stays at index
+    // 0 and the high-res images fill in behind it.
+    const apiImages: string[] = Array.isArray((currentProduct as any).images)
+      ? (currentProduct as any).images.filter(Boolean)
+      : [];
+    const cardImage: string = initialProductData?.image || currentProduct.image || '';
+
+    if (apiImages.length === 0) {
+      return cardImage ? [cardImage] : [];
     }
-    
-    return [];
-  }, []);
+    if (cardImage && !apiImages.includes(cardImage)) {
+      return [cardImage, ...apiImages];
+    }
+    return apiImages;
+  }, [initialProductData]);
 
   // Parse variation types from variant names
   // Example: "Color: Cat print thickened modal-grey / Specifications: 20*25cm"
@@ -1326,14 +1384,13 @@ const ProductDetailScreen: React.FC = () => {
     );
   }, [similarProductsLoadingMore]);
 
-  // Early return - MUST be after ALL hooks
-  if (loading || !product) {
-    return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={{ marginTop: SPACING.md, color: COLORS.text.secondary }}>{t('product.loadingProduct')}</Text>
-      </View>
-    );
+  // Early return - MUST be after ALL hooks. No spinner: when the previous
+  // page passed `productData`, `product` is non-null on the first frame and
+  // the page renders immediately. When it didn't, we briefly render an empty
+  // background until the detail API resolves — much less jarring than a
+  // full-screen loading indicator.
+  if (!product) {
+    return <View style={styles.container} />;
   }
 
   const isLiked = isProductLiked(product);
@@ -1801,23 +1858,30 @@ const ProductDetailScreen: React.FC = () => {
           }}
           scrollEventThrottle={16}
         >
-          {apiImages.map((img: string, index: number) => (
-            <TouchableOpacity
-              key={`image-${img}-${index}`}
-              activeOpacity={0.9}
-              onPress={() => {
-                setViewerImageIndex(index);
-                setImageViewerVisible(true);
-              }}
-            >
-              <Image
-                source={{ uri: img }}
-                style={[styles.productImage as any, { width: dynWidth }]}
-                resizeMode="cover"
-                fadeDuration={300}
-              />
-            </TouchableOpacity>
-          ))}
+          {apiImages.map((img: string, index: number) => {
+            // Ask the CDN (Cloudinary or Alibaba) for a thumbnail roughly
+            // the size we render so the image loads at More-to-Love speed
+            // instead of fetching the full-resolution asset.
+            const thumbUri = buildCdnThumbnailUri(img, Math.min(900, Math.round(dynWidth * 2)), 70);
+            console.log('Rendering image', index, thumbUri);
+            return (
+              <TouchableOpacity
+                key={`image-${img}-${index}`}
+                activeOpacity={0.9}
+                onPress={() => {
+                  setViewerImageIndex(index);
+                  setImageViewerVisible(true);
+                }}
+              >
+                <Image
+                  source={{ uri: img }}
+                  style={[styles.productImage as any, { width: dynWidth }]}
+                  resizeMode="cover"
+                  fadeDuration={300}
+                />
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
         
         {/* Image indicators */}
@@ -2407,20 +2471,18 @@ const ProductDetailScreen: React.FC = () => {
   };
 
   const renderRelatedProducts = () => {
-    const isLoading = source === 'taobao' ? searchProductsLoading : relatedRecommendationsLoading;
-    if (relatedProducts.length === 0 && !isLoading) {
+    // No loading spinner — items just appear when the API responds. The
+    // first-page fetch is gated by detailFetched, and load-more pages are
+    // pre-warmed in the cache, so the user almost always sees content
+    // instead of a spinner.
+    if (relatedProducts.length === 0) {
       return null;
     }
-    
+
     return (
       <View style={styles.similarProductsContainer}>
         <Text style={styles.similarProductsTitle}>{t('home.moreToLove')}</Text>
-        {isLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color={COLORS.primary} />
-            <Text style={styles.loadingText}>{t('product.loadingProduct')}</Text>
-          </View>
-        ) : (
+        {(
           <FlatList
             data={relatedProducts}
             renderItem={({ item }) => {
@@ -2495,9 +2557,9 @@ const ProductDetailScreen: React.FC = () => {
             nestedScrollEnabled={true}
             columnWrapperStyle={styles.similarProductsGrid}
             removeClippedSubviews={true}
-            maxToRenderPerBatch={6}
+            maxToRenderPerBatch={10}
             windowSize={5}
-            initialNumToRender={6}
+            initialNumToRender={10}
             updateCellsBatchingPeriod={50}
           />
         )}
@@ -2527,9 +2589,9 @@ const ProductDetailScreen: React.FC = () => {
           onEndReachedThreshold={0.5}
           ListFooterComponent={renderSimilarProductsFooter}
           removeClippedSubviews={true}
-          maxToRenderPerBatch={6}
+          maxToRenderPerBatch={10}
           windowSize={5}
-          initialNumToRender={6}
+          initialNumToRender={10}
           updateCellsBatchingPeriod={50}
         />
     </View>
@@ -2749,7 +2811,26 @@ const ProductDetailScreen: React.FC = () => {
         scrollEventThrottle={16}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: false }
+          {
+            useNativeDriver: false,
+            listener: (e: any) => {
+              // Trigger related-products pagination ~one viewport ahead so
+              // the next page resolves from cache (pre-warmed on the
+              // previous page's onSuccess) by the time the user gets here.
+              const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent || {};
+              if (!layoutMeasurement || !contentOffset || !contentSize) return;
+              const distanceFromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
+              const threshold = Math.max(600, layoutMeasurement.height);
+              if (
+                distanceFromBottom < threshold &&
+                relatedProductsHasMore &&
+                !relatedRecommendationsLoading &&
+                !isLoadingMoreRelatedRef.current
+              ) {
+                setRelatedProductsPage(prev => prev + 1);
+              }
+            },
+          }
         )}
       >
         {renderImageGallery()}

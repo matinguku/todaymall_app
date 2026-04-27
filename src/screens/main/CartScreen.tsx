@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG } from '../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG, PAGINATION } from '../../constants';
 import { RootStackParamList } from '../../types';
 import { usePlatformStore } from '../../store/platformStore';
 import { useTranslation } from '../../hooks/useTranslation';
@@ -446,16 +446,33 @@ const CartScreen: React.FC = () => {
           return productData;
         });
         
-        // Check pagination - if we got fewer products than pageSize, no more pages
-        const pageSize = 20;
-        const hasMore = productsArray.length >= pageSize;
+        // Check pagination - first page asks for FEED_INITIAL_PAGE_SIZE,
+        // subsequent pages for FEED_MORE_PAGE_SIZE. If we got fewer products
+        // than the page size we requested, there are no more pages.
+        const requestedPageSize = currentPage === 1
+          ? PAGINATION.FEED_INITIAL_PAGE_SIZE
+          : PAGINATION.FEED_MORE_PAGE_SIZE;
+        const hasMore = productsArray.length >= requestedPageSize;
         setHasMoreRecommendations(hasMore);
         
-        // If it's the first page, replace products, otherwise append
+        // Dedup by external/offer id when appending — the recommendations
+        // API can return the same product across pages and duplicates would
+        // crash the FlatList with "two children with the same key".
+        const productKey = (p: any): string =>
+          (p?.offerId?.toString?.()) || (p?.externalId?.toString?.()) || (p?.id?.toString?.()) || '';
         if (currentPage === 1) {
           setRecommendationsProducts(mappedProducts);
         } else {
-          setRecommendationsProducts(prev => [...prev, ...mappedProducts]);
+          setRecommendationsProducts(prev => {
+            const seen = new Set(prev.map(productKey).filter(Boolean));
+            const fresh = mappedProducts.filter((p: any) => {
+              const k = productKey(p);
+              if (!k || seen.has(k)) return false;
+              seen.add(k);
+              return true;
+            });
+            return [...prev, ...fresh];
+          });
         }
       } else {
         // No products found
@@ -494,7 +511,7 @@ const CartScreen: React.FC = () => {
       const outMemberId = user?.id?.toString() || 'dferg0001';
       const platform = '1688'; // Always use 1688 for More to Love products
       currentRecommendationsPageRef.current = recommendationsOffset;
-      fetchRecommendationsRef.current(locale || 'en', outMemberId, recommendationsOffset, 20, platform)
+      fetchRecommendationsRef.current(locale || 'en', outMemberId, recommendationsOffset, PAGINATION.FEED_MORE_PAGE_SIZE, platform)
         .finally(() => {
           isLoadingMoreRecommendationsRef.current = false;
         });
@@ -521,7 +538,7 @@ const CartScreen: React.FC = () => {
         setRecommendationsProducts([]);
         // Fetch first page
         currentRecommendationsPageRef.current = 1;
-        fetchRecommendationsRef.current(locale || 'en', outMemberId, 1, 20, platform);
+        fetchRecommendationsRef.current(locale || 'en', outMemberId, 1, PAGINATION.FEED_INITIAL_PAGE_SIZE, platform);
       }
     }
   }, [locale, user?.id, isAuthenticated, fetchRecommendations]);
@@ -549,16 +566,20 @@ const CartScreen: React.FC = () => {
   );
 
 
-  // Navigate to product detail helper
+  // Navigate to product detail helper. The optional productData payload lets
+  // ProductDetailScreen render the image / title / price immediately while
+  // it fetches the full detail in the background.
   const navigateToProductDetail = async (
     productId: string | number,
     source: string = '1688',
-    country: string = 'en'
+    country: string = 'en',
+    productData?: any,
   ) => {
     (navigation as any).navigate('ProductDetail', {
       productId: productId.toString(),
       source: source,
       country: country,
+      productData,
     });
   };
 
@@ -689,7 +710,7 @@ const CartScreen: React.FC = () => {
         const productIdToUse = (product as any).offerId || product.id;
         const source = (product as any).source || selectedPlatform || '1688';
         const country = locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en';
-        navigateToProductDetail(productIdToUse, source, country);
+        navigateToProductDetail(productIdToUse, source, country, product);
       };
 
       return (
@@ -775,9 +796,9 @@ const CartScreen: React.FC = () => {
           nestedScrollEnabled={true}
           columnWrapperStyle={styles.productsGridRow}
           removeClippedSubviews={Platform.OS === 'android'}
-          maxToRenderPerBatch={6}
+          maxToRenderPerBatch={10}
           windowSize={3}
-          initialNumToRender={6}
+          initialNumToRender={10}
           updateCellsBatchingPeriod={80}
           onEndReached={() => {
             // For nested FlatList with scrollEnabled={false}, onEndReached may not fire reliably
