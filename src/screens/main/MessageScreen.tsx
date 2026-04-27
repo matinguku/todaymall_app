@@ -59,6 +59,16 @@ const MessageScreen: React.FC = () => {
   const { isConnected, unreadCount: orderUnreadCount, generalInquiryUnreadCount, getUnreadCounts, getGeneralInquiryUnreadCounts, onMessageReceived, onGeneralInquiryMessageReceived } = useSocket();
   const locale = useAppSelector((s) => s.i18n.locale) as 'en' | 'ko' | 'zh';
 
+  // Layout-first paint: render header + tab switcher immediately and defer
+  // the heavy FlatList content (inquiries / general / file downloads) to the
+  // next frame so the user sees the page composition first. Uses
+  // requestAnimationFrame instead of InteractionManager (see ProductDetail).
+  const [showHeavyContent, setShowHeavyContent] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setShowHeavyContent(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
   // Redirect to login if not authenticated
   useFocusEffect(
     useCallback(() => {
@@ -620,9 +630,9 @@ const MessageScreen: React.FC = () => {
       {renderHeader()}
       {renderTabs()}
       <View style={styles.content}>
-        {activeTab === 'order' && renderOrderTab()}
-        {activeTab === 'general' && renderGeneralTab()}
-        {activeTab === 'fileDownload' && renderFileDownloadTab()}
+        {showHeavyContent && activeTab === 'order' && renderOrderTab()}
+        {showHeavyContent && activeTab === 'general' && renderGeneralTab()}
+        {showHeavyContent && activeTab === 'fileDownload' && renderFileDownloadTab()}
       </View>
     </View>
   );

@@ -42,6 +42,13 @@ export interface AddToCartRequest {
   sellerOpenId: string;
   quantity: number;
   minOrderQuantity: number;
+  /**
+   * Live-commerce code parsed from the trailing digits of the product
+   * name. Present only for products navigated from a live source
+   * (live-commerce / live). When set, the backend marks the order with
+   * an `LS` order-number prefix and surfaces it in the live-orders list.
+   */
+  liveCode?: string;
 }
 
 export interface MultiLang {
@@ -180,6 +187,8 @@ export interface DirectPurchaseRequest {
     }>;
     fenxiaoPriceInfo?: { offerPrice?: string };
   };
+  /** Same as AddToCartRequest.liveCode — see that field's docs. */
+  liveCode?: string;
 }
 
 export const cartApi = {

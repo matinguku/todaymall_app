@@ -21,6 +21,7 @@ import { launchCamera, launchImageLibrary, MediaType, ImagePickerResponse, Camer
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
 import RNFS from 'react-native-fs';
+import FastImage from '@d11/react-native-fast-image';
 import { requestCameraPermission, requestPhotoLibraryPermission } from '../../utils/permissions';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -678,6 +679,17 @@ const HomeScreen: React.FC = () => {
   const unreadCountRef = useRef(0);
   const lastFetchTimeRef = useRef(0);
   const FETCH_THROTTLE_MS = 30000; // Only fetch every 30 seconds
+
+  // Layout-first paint: render the structural layout immediately on mount and
+  // defer the heavy "More to Love" recommendations grid to the next frame so
+  // the user sees the page composition first; images stream in afterwards.
+  // Uses requestAnimationFrame (16ms guarantee) instead of InteractionManager
+  // (which previously caused fetches to never fire — see ProductDetailScreen).
+  const [showHeavyContent, setShowHeavyContent] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setShowHeavyContent(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -1965,18 +1977,22 @@ const HomeScreen: React.FC = () => {
           key={item.id || productId || `live-hot-${index}`}
           style={[styles.todaysDealsProductWrap, { width: dynDealsCardWidth }]}
           activeOpacity={0.9}
-          onPress={() => productId && navigateToProductDetail(productId, 'ownmall', locale)}
+          onPress={() => productId && navigateToProductDetail(productId, 'live-commerce', locale)}
         >
           <View style={[styles.liveHotUserRow, { width: dynDealsCardWidth }]}>
-            <Image
-              source={
-                itemImageUri
-                  ? { uri: itemImageUri }
-                  : require('../../assets/images/deal1.png')
-              }
-              style={[styles.liveHotImage, { width: dynDealsCardWidth, height: dynDealsCardWidth }]}
-              resizeMode="cover"
-            />
+            {itemImageUri ? (
+              <FastImage
+                source={{ uri: itemImageUri, priority: FastImage.priority.normal }}
+                style={[styles.liveHotImage, { width: dynDealsCardWidth, height: dynDealsCardWidth }]}
+                resizeMode={FastImage.resizeMode.cover}
+              />
+            ) : (
+              <Image
+                source={require('../../assets/images/deal1.png')}
+                style={[styles.liveHotImage, { width: dynDealsCardWidth, height: dynDealsCardWidth }]}
+                resizeMode="cover"
+              />
+            )}
             <View style={[styles.liveHotLiveRow, { width: dynDealsCardWidth }]}>
               <View style={styles.liveHotLiveRowIconContainer}>
                 <View style={styles.liveHotLiveRowIcon}>
@@ -2025,13 +2041,19 @@ const HomeScreen: React.FC = () => {
             {badgeSource && (
               <Image source={badgeSource} style={[styles.dealProductBadge, { width: dynDealsCardWidth }]} resizeMode="contain" />
             )}
-            <Image
-              source={
-                dealImg ? { uri: dealImg } : require('../../assets/images/deal1.png')
-              }
-              style={[styles.dealProductImage, { width: dynDealsCardWidth }]}
-              resizeMode="cover"
-            />
+            {dealImg ? (
+              <FastImage
+                source={{ uri: dealImg, priority: FastImage.priority.normal }}
+                style={[styles.dealProductImage, { width: dynDealsCardWidth }]}
+                resizeMode={FastImage.resizeMode.cover}
+              />
+            ) : (
+              <Image
+                source={require('../../assets/images/deal1.png')}
+                style={[styles.dealProductImage, { width: dynDealsCardWidth }]}
+                resizeMode="cover"
+              />
+            )}
           </View>
           <Text style={styles.dealProductName} numberOfLines={2}>{product.name}</Text>
           <Text style={styles.dealProductPrice}>{formatPriceKRW(product.price)}</Text>
@@ -2413,7 +2435,7 @@ const HomeScreen: React.FC = () => {
           // and decode cost down on long lists.
           removeClippedSubviews={Platform.OS === 'android'}
           maxToRenderPerBatch={10}
-          windowSize={3}
+          windowSize={7}
           initialNumToRender={10}
           updateCellsBatchingPeriod={80}
           extraData={wishlistExtraData}
@@ -2518,14 +2540,19 @@ const HomeScreen: React.FC = () => {
       >
         <View style={styles.contentWrapper}>
           {/* {renderQuickCategories()} */}
-          {renderBrandCarousel()}
-          {renderLiveChannelSection()}
+          {/* Heavy image-bearing sections (brand carousel, live channels,
+              today's deals, more-to-love) all defer to the next frame so
+              that on first paint the user sees the page structure (header,
+              categories, banner ticker) immediately. Images stream in on
+              the second frame. */}
+          {showHeavyContent && renderBrandCarousel()}
+          {showHeavyContent && renderLiveChannelSection()}
           {/* {renderTrendingProducts()} */}
           {/* {renderPopularCategories()} */}
           {/* {renderPromoCards()} */}
-          {renderTodaysDeals()}
+          {showHeavyContent && renderTodaysDeals()}
           {/* {renderNewInCards()} */}
-          {renderMoreToLove()}
+          {showHeavyContent && renderMoreToLove()}
         </View>
       </Animated.ScrollView>
       

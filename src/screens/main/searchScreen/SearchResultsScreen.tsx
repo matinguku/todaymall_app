@@ -325,7 +325,7 @@ const SearchResultsScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
         removeClippedSubviews={Platform.OS === 'android'}
         maxToRenderPerBatch={10}
-        windowSize={3}
+        windowSize={7}
         initialNumToRender={10}
         updateCellsBatchingPeriod={80}
       />

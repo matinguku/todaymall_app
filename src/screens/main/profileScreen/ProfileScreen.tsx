@@ -285,7 +285,17 @@ const ProfileScreen: React.FC = () => {
   const isRecommendationsRefreshingRef = useRef(false); // Prevent loading during refresh
   const currentRecommendationsPageRef = useRef<number>(1); // Track current page for callbacks
   const isLoadingMoreRecommendationsRef = useRef(false); // Prevent multiple simultaneous loads
-  
+
+  // Layout-first paint: defer the heavy "More to Love" recommendations grid
+  // to the next frame so the profile header / stats / menu paint immediately
+  // and the recommendation images stream in afterwards. Uses
+  // requestAnimationFrame instead of InteractionManager (see ProductDetail).
+  const [showHeavyContent, setShowHeavyContent] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setShowHeavyContent(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
   // Wishlist hooks
   const { isProductLiked } = useWishlistStatus();
   const { mutate: addToWishlist } = useAddToWishlistMutation();
@@ -1311,7 +1321,7 @@ const ProfileScreen: React.FC = () => {
         {isAuthenticated && renderStatsSection()}
         {isAuthenticated && renderMenuItems()}
         {isAuthenticated && renderQuickAccessSection()}
-        {isAuthenticated && !isGuest && renderMoreToLove()}
+        {showHeavyContent && isAuthenticated && !isGuest && renderMoreToLove()}
       </ScrollView>
     </SafeAreaView>
   );

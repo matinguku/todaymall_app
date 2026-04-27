@@ -78,6 +78,17 @@ const CartScreen: React.FC = () => {
   const navigation = useNavigation<CartScreenNavigationProp>();
   const insets = useSafeAreaInsets();
   const { screenWidth: dynScreenWidth, moreToLoveColumns } = useResponsive();
+
+  // Layout-first paint: defer the "More to Love" recommendations grid to the
+  // next frame so the cart layout (header, items, bottom bar) appears first
+  // and images stream in afterwards. requestAnimationFrame is used instead of
+  // InteractionManager to avoid the dropped-fetch issue documented in
+  // ProductDetailScreen.
+  const [showHeavyContent, setShowHeavyContent] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setShowHeavyContent(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
   // Compute cardWidth locally to match the actual MoreToLove grid layout in
   // this screen (moreToLoveSection horizontal padding + productsGridRow gap).
   // The default useResponsive.gridCardWidth assumes smaller padding/gap, which
@@ -549,7 +560,7 @@ const CartScreen: React.FC = () => {
       if (isAuthenticated) {
         const now = Date.now();
         const timeSinceLastFetch = now - lastFetchTimeRef.current;
-        
+
         // Only fetch if enough time has passed since last fetch
         if (timeSinceLastFetch >= FETCH_DEBOUNCE_MS) {
           lastFetchTimeRef.current = now;
@@ -797,7 +808,7 @@ const CartScreen: React.FC = () => {
           columnWrapperStyle={styles.productsGridRow}
           removeClippedSubviews={Platform.OS === 'android'}
           maxToRenderPerBatch={10}
-          windowSize={3}
+          windowSize={7}
           initialNumToRender={10}
           updateCellsBatchingPeriod={80}
           onEndReached={() => {
@@ -1368,9 +1379,9 @@ const CartScreen: React.FC = () => {
         scrollEventThrottle={400}
       >
         {renderGroupedCartItems()}
-        
-        {renderMoreToLove()}
-        
+
+        {showHeavyContent && renderMoreToLove()}
+
         <View style={styles.bottomSpace} />
       </ScrollView>
       

@@ -579,6 +579,17 @@ const LiveScreen: React.FC = () => {
 
   const onRefresh = () => fetchLiveCommerce();
 
+  // Layout-first paint: render header + search + featured carousel immediately
+  // and defer the three heavy seller/product lists (Top Seller, Popular
+  // Items, Point Partner) to the next frame so the user sees the page
+  // composition first; their images stream in afterwards. Uses
+  // requestAnimationFrame instead of InteractionManager (see ProductDetail).
+  const [showHeavyContent, setShowHeavyContent] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setShowHeavyContent(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Gradient background - same as homepage */}
@@ -644,9 +655,16 @@ const LiveScreen: React.FC = () => {
           </ScrollView>
         )} */}
 
-        {/* Featured Live Carousel */}
-        {featuredItems.length > 0 && (
-          <FeaturedLiveCarousel items={featuredItems.slice(0, 5)} locale={locale} t={t} />
+        {/* Featured Live Carousel — heaviest above-the-fold image component.
+            On first paint render a 420px placeholder so the page structure
+            (and the image area) is visible during navigation; the real
+            carousel mounts on the next frame. */}
+        {showHeavyContent ? (
+          featuredItems.length > 0 && (
+            <FeaturedLiveCarousel items={featuredItems.slice(0, 5)} locale={locale} t={t} />
+          )
+        ) : (
+          <View style={liveSkeletonStyles.featuredPlaceholder} />
         )}
 
         {/* Error */}
@@ -671,78 +689,126 @@ const LiveScreen: React.FC = () => {
           </View>
         )} */}
 
-        {/* Top Seller */}
-        {topSellers.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.topSellerHeader}>
-              <Text style={styles.sectionTitle}>{t('live.topSeller')}</Text>
-            </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.topSellerRowContent}
-            >
-              {topSellers.slice(0, 10).map((seller: any, i: number) => (
-                <TopSellerItem
-                  key={seller._id || i}
-                  seller={seller}
-                  onPress={() => navigation.navigate('LiveSellerDetail', {
-                    sellerId: seller._id || seller.id || '',
-                    sellerName: seller.nickname || seller.userName || '',
-                    source: 'ownmall',
-                  })}
-                />
-              ))}
-            </ScrollView>
-          </View>
-        )}
+        {showHeavyContent ? (
+          <>
+            {/* Top Seller */}
+            {topSellers.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.topSellerHeader}>
+                  <Text style={styles.sectionTitle}>{t('live.topSeller')}</Text>
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.topSellerRowContent}
+                >
+                  {topSellers.slice(0, 10).map((seller: any, i: number) => (
+                    <TopSellerItem
+                      key={seller._id || i}
+                      seller={seller}
+                      onPress={() => navigation.navigate('LiveSellerDetail', {
+                        sellerId: seller._id || seller.id || '',
+                        sellerName: seller.nickname || seller.userName || '',
+                        source: 'ownmall',
+                      })}
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+            )}
 
-        {/* Popular Items */}
-        {popularItems.length > 0 && (
-          <View>
-            <Text style={[styles.sectionTitle, { marginVertical: SPACING.sm }]}>{t('live.popularItems')}</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.popularScroll}
-            >
-              {popularItems.map((item: any, i: number) => (
-                <PopularItemCard
-                  key={item.id || i}
-                  item={item}
-                  locale={locale}
-                  rank={i + 1}
-                  onPress={() => {
-                    const productId = item.offerId || item.productNo || item.productId || item.product?.id || item.id || '';
-                    if (productId) navigation.navigate('ProductDetail', { productId, source: 'ownmall' });
-                  }}
-                  t={t}
-                />
-              ))}
-            </ScrollView>
-          </View>
-        )}
+            {/* Popular Items */}
+            {popularItems.length > 0 && (
+              <View>
+                <Text style={[styles.sectionTitle, { marginVertical: SPACING.sm }]}>{t('live.popularItems')}</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.popularScroll}
+                >
+                  {popularItems.map((item: any, i: number) => (
+                    <PopularItemCard
+                      key={item.id || i}
+                      item={item}
+                      locale={locale}
+                      rank={i + 1}
+                      onPress={() => {
+                        const productId = item.offerId || item.productNo || item.productId || item.product?.id || item.id || '';
+                        // source='live-commerce' tags this as a live-origin
+                        // navigation so ProductDetail's resolveLiveCode()
+                        // extracts the trailing numeric code from the
+                        // product name and forwards it as `liveCode` to
+                        // the cart-add / direct-purchase requests. The
+                        // backend then assigns an `LS`-prefixed order
+                        // number. ProductDetailScreen still maps this
+                        // source back to 'ownmall' internally for API
+                        // routing — see ProductDetailScreen.tsx:106.
+                        if (productId) navigation.navigate('ProductDetail', { productId, source: 'live-commerce' });
+                      }}
+                      t={t}
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+            )}
 
-        {/* Point Partner Seller */}
-        {pointPartnerSellers.length > 0 && (
-          <View>
-            <Text style={[styles.sectionTitle, { marginVertical: SPACING.sm }]}>{t('live.pointPartnerSeller')}</Text>
-            <View style={styles.partnerGrid}>
-              {pointPartnerSellers.map((seller: any, i: number) => (
-                <PointPartnerSellerCard
-                  key={seller._id || i}
-                  seller={seller}
-                  locale={locale}
-                  onPress={() => navigation.navigate('LiveSellerDetail', {
-                    sellerId: seller._id || seller.id || '',
-                    sellerName: seller.userName || seller.nickname || '',
-                    source: 'ownmall',
-                  })}
-                  t={t}
-                />
-              ))}
+            {/* Point Partner Seller */}
+            {pointPartnerSellers.length > 0 && (
+              <View>
+                <Text style={[styles.sectionTitle, { marginVertical: SPACING.sm }]}>{t('live.pointPartnerSeller')}</Text>
+                <View style={styles.partnerGrid}>
+                  {pointPartnerSellers.map((seller: any, i: number) => (
+                    <PointPartnerSellerCard
+                      key={seller._id || i}
+                      seller={seller}
+                      locale={locale}
+                      onPress={() => navigation.navigate('LiveSellerDetail', {
+                        sellerId: seller._id || seller.id || '',
+                        sellerName: seller.userName || seller.nickname || '',
+                        source: 'ownmall',
+                      })}
+                      t={t}
+                    />
+                  ))}
+                </View>
+              </View>
+            )}
+          </>
+        ) : (
+          // Skeleton sections — render the morphological structure of each
+          // grid (titles + gray boxes shaped like real items) so the user
+          // sees the page composition during the one-frame defer window.
+          // Sizes match the real components below to avoid layout shift.
+          <>
+            <View style={styles.section}>
+              <View style={styles.topSellerHeader}>
+                <Text style={styles.sectionTitle}>{t('live.topSeller')}</Text>
+              </View>
+              <View style={liveSkeletonStyles.topSellerRow}>
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <View key={i} style={liveSkeletonStyles.topSellerAvatar} />
+                ))}
+              </View>
             </View>
-          </View>
+
+            <View>
+              <Text style={[styles.sectionTitle, { marginVertical: SPACING.sm }]}>{t('live.popularItems')}</Text>
+              <View style={liveSkeletonStyles.popularRow}>
+                {[0, 1, 2].map((i) => (
+                  <View key={i} style={liveSkeletonStyles.popularCard} />
+                ))}
+              </View>
+            </View>
+
+            <View>
+              <Text style={[styles.sectionTitle, { marginVertical: SPACING.sm }]}>{t('live.pointPartnerSeller')}</Text>
+              <View style={styles.partnerGrid}>
+                {[0, 1, 2, 3].map((i) => (
+                  <View key={i} style={liveSkeletonStyles.partnerCard} />
+                ))}
+              </View>
+            </View>
+          </>
         )}
       </ScrollView>
       )}
@@ -1537,6 +1603,54 @@ const styles = StyleSheet.create({
   errorText: {
     color: '#D00000',
     fontWeight: '700',
+  },
+});
+
+// Skeleton placeholder styles — render the morphological shape of each
+// section (gray boxes sized like real items) during the one-frame defer
+// window before showHeavyContent flips to true. Sizes mirror the real
+// styles above so swapping in the real components causes no layout shift.
+const liveSkeletonStyles = StyleSheet.create({
+  // Featured carousel: matches CAROUSEL_HEIGHT (420)
+  featuredPlaceholder: {
+    height: CAROUSEL_HEIGHT,
+    marginHorizontal: SPACING.sm,
+    marginTop: SPACING.md,
+    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: COLORS.gray[100],
+  },
+  // Top Seller row: 5 circle avatars matching topSellerAvatar (60x60)
+  topSellerRow: {
+    flexDirection: 'row',
+    paddingHorizontal: SPACING.md,
+  },
+  topSellerAvatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: COLORS.gray[200],
+    marginRight: SPACING.lg,
+  },
+  // Popular Items row: 3 cards matching popularCard width (280) and
+  // popularImage height (506)
+  popularRow: {
+    flexDirection: 'row',
+    paddingHorizontal: SPACING.sm,
+  },
+  popularCard: {
+    width: 280,
+    height: 506,
+    marginTop: 8,
+    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: COLORS.gray[200],
+    marginRight: SPACING.smmd,
+  },
+  // Partner grid: 4 cards in 2 columns matching partnerCard width formula
+  partnerCard: {
+    width: (SCREEN_WIDTH - SPACING.md * 2 - SPACING.smmd) / 2,
+    height: 160,
+    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: COLORS.gray[100],
   },
 });
 

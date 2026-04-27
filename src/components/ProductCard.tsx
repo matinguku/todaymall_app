@@ -7,6 +7,7 @@ import {
   Image,
   useWindowDimensions,
 } from 'react-native';
+import FastImage from '@d11/react-native-fast-image';
 import Icon from './Icon';
 
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../constants';
@@ -33,6 +34,9 @@ const ProductImage = React.memo(
     style: any;
     badgeLabel: string;
   }) => {
+    // FastImage compares the `uri` string (not object reference) and keeps
+    // its own memory + disk cache, so re-renders don't trigger reloads even
+    // when the parent recreates the source object literal each render.
     const [resolvedUri, setResolvedUri] = React.useState(uri);
     const fallbackTries = React.useRef(0);
     React.useEffect(() => {
@@ -57,12 +61,10 @@ const ProductImage = React.memo(
     return (
       <View style={{ position: 'relative' }}>
         {resolvedUri ? (
-          <Image
-            source={{ uri: resolvedUri }}
+          <FastImage
+            source={{ uri: resolvedUri, priority: FastImage.priority.normal }}
             style={style}
-            resizeMode="cover"
-            resizeMethod="resize"
-            fadeDuration={0}
+            resizeMode={FastImage.resizeMode.cover}
             onError={onImageError}
           />
         ) : null}

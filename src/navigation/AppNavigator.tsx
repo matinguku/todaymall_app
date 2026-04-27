@@ -212,18 +212,18 @@ const MainTabNavigator = () => {
 
   return (
     <MainTab.Navigator
-      // Tab-switch performance is critical for this app. Three flags work
-      // together to make every tap feel instant:
-      //   - lazy: false           → mount all 5 tab screens up-front, behind
-      //                             the splash, so the first tap on every tab
-      //                             hits an already-mounted tree (no cold
-      //                             render + API spin-up on tap).
-      //   - detachInactiveScreens → keep tabs in memory between switches.
-      //   - freezeOnBlur          → suspend backgrounded tabs so the
-      //                             always-mounted set doesn't burn CPU.
-      // Detaching or lazy-mounting was the source of the multi-second tap
-      // delay users were reporting; those costs are now paid once at startup
-      // (hidden by the splash) and never on a tap.
+      // Tab-mount strategy:
+      //   - lazy: true            → only the focused tab (Home) mounts at
+      //                             startup. Message/Live/Cart/Profile mount
+      //                             on first tap. Trades a one-time
+      //                             ~100–500ms delay on each tab's first tap
+      //                             for a much faster cold start (-500 to
+      //                             -1500ms) plus lower memory / battery /
+      //                             network footprint.
+      //   - detachInactiveScreens → once mounted, keep tabs in memory so
+      //                             every subsequent tap is instant.
+      //   - freezeOnBlur          → pause backgrounded tabs so the mounted
+      //                             set never burns CPU.
       detachInactiveScreens={false}
       screenOptions={({ route }) => ({
         lazy: false,
@@ -428,9 +428,12 @@ const RootNavigator = () => {
   // default categories) is done so HomeScreen paints with that content
   // immediately. Live/deals and More-to-Love come in afterward via Phases 2
   // and 3 — the splash doesn't wait on them.
+  // minDurationMs=0 lets the splash release the instant prefetch settles
+  // (no artificial hold). maxDurationMs=1500 caps the worst-case wait when
+  // the network is slow so the user is never stranded on splash.
   const splashHolding = useSplashGate({
-    minDurationMs: 1200,
-    maxDurationMs: 3500,
+    minDurationMs: 0,
+    maxDurationMs: 1500,
     waitFor: [getHomeFirstPaintPromise()],
   });
   // console.log('RootNavigator: Rendering with isAuthenticated:', isAuthenticated, 'isLoading:', isLoading);

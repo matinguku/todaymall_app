@@ -35,6 +35,13 @@ export interface CreateOrderRequest {
   paymentMethod: 'deposit' | 'bank' | 'card';
   addressId: string;
   notes?: string;
+  /**
+   * Live-commerce code carried over from cart items. Normally the
+   * backend reads this from the cart item itself (set at addToCart
+   * time), but we forward it here too as a safety net so the order is
+   * tagged with `LS` prefix even if cart item state somehow drops it.
+   */
+  liveCode?: string;
 }
 
 /** Item shape for POST /orders/direct-purchase (from checkout selectedItems) */
@@ -72,6 +79,8 @@ export interface CreateOrderDirectPurchaseRequest {
   userShippingCouponUsageId?: string;
   pointsToUse?: number;
   netExpectedTotalKRW: number;
+  /** Same purpose as CreateOrderRequest.liveCode — see that field's docs. */
+  liveCode?: string;
 }
 
 export interface OrderResponse {
@@ -223,6 +232,12 @@ export interface GetOrdersParams {
   transferMethod?: 'air' | 'ship';
   periodFrom?: string;
   periodTo?: string;
+  /**
+   * Country/locale filter. Required by the backend for live-orders
+   * pages — the live-order list endpoint returns nothing without it
+   * (e.g. `orders?page=1&pageSize=10&country=ko&progressStatus=BUY_PAY_WAIT`).
+   */
+  country?: string;
 }
 
 /** Order preview (POST /orders/preview) - for detail order */
@@ -286,6 +301,7 @@ export const orderApi = {
       if (p.transferMethod) searchParams.set('transferMethod', p.transferMethod);
       if (p.periodFrom) searchParams.set('periodFrom', p.periodFrom);
       if (p.periodTo) searchParams.set('periodTo', p.periodTo);
+      if (p.country) searchParams.set('country', p.country);
       const query = searchParams.toString();
       const url = `${API_BASE_URL}/orders${query ? `?${query}` : ''}`;
       const signatureHeaders = await buildSignatureHeaders('GET', url);

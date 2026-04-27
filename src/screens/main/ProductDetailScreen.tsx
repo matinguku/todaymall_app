@@ -23,6 +23,8 @@ import Icon from '../../components/Icon';
 // Removed WebView import - using simpler HTML rendering approach
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, SERVER_BASE_URL } from '../../constants';
 import { useAuth } from '../../context/AuthContext';
+import { isLiveSource } from '../../utils/liveCode';
+import { recordLiveProduct } from '../../utils/liveProductTracker';
 
 import { ProductCard, SearchButton } from '../../components';
 import { PhotoCaptureModal } from '../../components';
@@ -79,7 +81,13 @@ const ProductDetailScreen: React.FC = () => {
   const pdpGridCardWidth = (dynWidth - SPACING.sm * 2 - SPACING.sm * (pdpGridCols - 1)) / pdpGridCols;
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const { productId, offerId, productData: initialProductData, source: routeSource, country: routeCountry } = route.params || {};
+  const {
+    productId,
+    offerId,
+    productData: initialProductData,
+    source: routeSource,
+    country: routeCountry,
+  } = route.params || {};
   // console.log("[ProductDetailScreen] routeSource:", routeSource);
   
   // ALL HOOKS MUST BE CALLED BEFORE ANY CONDITIONAL RETURNS OR HOOKS THAT USE THEM
@@ -117,6 +125,21 @@ const ProductDetailScreen: React.FC = () => {
   // CPU budget on the first paint.
   const [detailFetched, setDetailFetched] = useState(false);
   const [wishlistCount, setWishlistCount] = useState<number | null>(null);
+
+  // Post-login auto-add-to-cart flow.
+  // When a logged-out user taps "Add to Cart" we navigate to Login with
+  // autoAddToCart=true. When the login succeeds and we return to this
+  // screen, we render a loading view INSTEAD of the regular product detail
+  // UI so the user doesn't see the product page flash between Login and
+  // Cart — they perceive a direct Login → Cart transition.
+  // Initialize from route.params so the very first render after returning
+  // from Login already shows the loader (no one-frame flash).
+  const [isAutoCartFlow, setIsAutoCartFlow] = useState<boolean>(
+    () => Boolean((route.params as any)?.autoAddToCart),
+  );
+  // Single-fire guard for the auto-trigger useEffect below. Declared here
+  // (above the addToCart hook) so the hook's onError closure can reset it.
+  const autoAddTriggeredRef = useRef(false);
 
   // Scroll-based header animation
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -198,9 +221,14 @@ const ProductDetailScreen: React.FC = () => {
     onError: (error) => {
       // console.error('Failed to add product to cart:', error);
       showToast(error || t('product.failedToAdd'), 'error');
+      // If we were in the post-login auto-add flow, reset both guards so
+      // the user lands back on the regular product detail page (with the
+      // error toast) instead of being stuck on the loading screen.
+      autoAddTriggeredRef.current = false;
+      setIsAutoCartFlow(false);
     },
   });
-  
+
   // Get cart mutation to fetch cart after adding product (for Buy Now - navigates to Payment)
   const { mutate: fetchCart } = useGetCartMutation({
     onSuccess: (data) => {
@@ -1177,27 +1205,36 @@ const ProductDetailScreen: React.FC = () => {
   // Check if all variation types are selected
   // IMPORTANT: This must be defined before early return to avoid hooks order issues
   const canAddToCart = useMemo(() => {
+    // While the detail API is still loading, getVariationTypes() returns
+    // [] (no variation info yet), which would otherwise make this evaluate
+    // to `true` and briefly flash the button as enabled before the real
+    // variations arrive. Gate on detailFetched so the button stays disabled
+    // until we actually know whether variations exist.
+    if (!product || !detailFetched) {
+      return false;
+    }
+
     const variationTypes = getVariationTypes();
-    
+
     // If there are no variations, buttons should be enabled
     if (variationTypes.length === 0) {
       return true;
     }
-    
+
     // Check if all variation types have selections
     for (const variationType of variationTypes) {
       const variationName = variationType.name.toLowerCase();
-      const selectedValue = selectedVariations[variationName] || 
+      const selectedValue = selectedVariations[variationName] ||
                            (variationName === 'color' ? selectedColor : null) ||
                            (variationName === 'size' ? selectedSize : null);
-      
+
       if (!selectedValue) {
         return false; // At least one variation is not selected
       }
     }
-    
+
     return true; // All variations are selected
-  }, [getVariationTypes, selectedVariations, selectedColor, selectedSize]);
+  }, [product, detailFetched, getVariationTypes, selectedVariations, selectedColor, selectedSize]);
 
   // Get selected variation price - MUST be before early return
   const getSelectedVariationPrice = useMemo(() => {
@@ -1384,7 +1421,54 @@ const ProductDetailScreen: React.FC = () => {
     );
   }, [similarProductsLoadingMore]);
 
-  // Early return - MUST be after ALL hooks. No spinner: when the previous
+  // ─── HOOKS THAT MUST RUN BEFORE THE `if (!product)` EARLY RETURN ────
+  // Anything below this comment that registers a hook (useEffect, useRef,
+  // useMemo, useCallback…) must live ABOVE the early return so the hook
+  // count stays constant across renders — otherwise React throws the
+  // "Rendered more hooks than during the previous render" error when
+  // product transitions from null → loaded (e.g. on first navigation
+  // from LiveScreen, where no productData is passed in route params).
+
+  // Holds the latest handleAddToCart closure. handleAddToCart itself is
+  // defined AFTER the early return because its body assumes product is
+  // non-null; the ref bridges the auto-trigger useEffect (which lives
+  // here, above the return) to that later definition.
+  const handleAddToCartRef = useRef<() => void>(() => {});
+
+  // Auto-execute add-to-cart when the user returns from the login screen
+  // after being prompted by the unauthenticated branch in handleAddToCart.
+  // The login screen navigates back to ProductDetail with
+  // `autoAddToCart: true` in route.params; once the user is authenticated
+  // and the detail data / variation selections are ready, we re-fire
+  // handleAddToCart (via the ref above) so the user lands on the Cart
+  // screen without tapping the button again.
+  useEffect(() => {
+    const arrivedFromLogin =
+      (route.params as any)?.autoAddToCart || isAutoCartFlow;
+
+    if (
+      !autoAddTriggeredRef.current &&
+      arrivedFromLogin &&
+      isAuthenticated &&
+      detailFetched &&
+      product &&
+      canAddToCart
+    ) {
+      autoAddTriggeredRef.current = true;
+      navigation.setParams({ autoAddToCart: undefined } as any);
+      setIsAutoCartFlow(true);
+      handleAddToCartRef.current();
+    }
+  }, [
+    (route.params as any)?.autoAddToCart,
+    isAutoCartFlow,
+    isAuthenticated,
+    detailFetched,
+    product,
+    canAddToCart,
+  ]);
+
+  // Early return — MUST be after ALL hooks. No spinner: when the previous
   // page passed `productData`, `product` is non-null on the first frame and
   // the page renders immediately. When it didn't, we briefly render an empty
   // background until the detail API resolves — much less jarring than a
@@ -1406,7 +1490,11 @@ const ProductDetailScreen: React.FC = () => {
 
   const handleAddToCart = async () => {
     if (!isAuthenticated) {
-      // Navigate to login page with return navigation info
+      // Navigate to login page with return navigation info. The
+      // `autoAddToCart` flag tells the post-login useEffect below to
+      // re-execute this handler automatically once the user is
+      // authenticated and the detail data is ready, so the user lands
+      // on the Cart screen without having to tap "Add to Cart" again.
       navigation.navigate('Auth', {
         screen: 'Login',
         params: {
@@ -1415,6 +1503,7 @@ const ProductDetailScreen: React.FC = () => {
             productId: productId || offerId,
             offerId: offerId,
             productData: product,
+            autoAddToCart: true,
           },
         },
       } as never);
@@ -1444,8 +1533,19 @@ const ProductDetailScreen: React.FC = () => {
       const productSkuInfos = (product as any).productSkuInfos || [];
       const rawVariants = (product as any).rawVariants || [];
       
-      // Get source from product, route params, or selected platform
-      const source = (product as any).source || route.params?.source || selectedPlatform || '1688';
+      // Get source from product, route params, or selected platform.
+      // Use the already-normalized sourceRef.current (which maps the
+      // logical 'live-commerce' / 'companymall' / 'myCompany' values to
+      // 'ownmall' for the backend) so the cart-add request doesn't fail
+      // with "source must be one of: taobao, 1688, jd, vip, vvic,
+      // ownmall". handleBuyNow already does this — handleAddToCart was
+      // computing source inline and sending the raw routeSource through.
+      const source =
+        sourceRef.current ||
+        (product as any).source ||
+        route.params?.source ||
+        selectedPlatform ||
+        '1688';
       
       // Find the matching variant/SKU based on selected variations
       let selectedVariant: any = null;
@@ -1542,7 +1642,7 @@ const ProductDetailScreen: React.FC = () => {
       const skuIdValue = typeof finalSkuId === 'string' ? parseInt(finalSkuId) || 0 : finalSkuId;
       
       // Build the request body
-      const requestBody = {
+      const requestBody: any = {
         offerId: parseInt(productIdForUrl.toString() || '0'),
         categoryId: parseInt((product as any).categoryId || product.category?.id || '0'),
         subject: resolveText((product as any).subject || product.name || ''),
@@ -1574,12 +1674,28 @@ const ProductDetailScreen: React.FC = () => {
         quantity: quantity,
         minOrderQuantity: minOrderQuantity,
       };
-      
+
+      // Local-only live tracking. Backend doesn't tag live orders, so we
+      // remember the offerId on this device the moment the user commits
+      // to adding a live product to the cart. BuyListScreen later
+      // cross-references each order item's offerId against this list to
+      // decide whether to display the order number with an `LS` prefix.
+      if (isLiveSource(routeSource)) {
+        void recordLiveProduct(productIdForUrl);
+      }
+
       await addToCart(requestBody);
     } catch (error: any) {
       showToast(error?.message || t('product.failedToAdd'), 'error');
     }
   };
+
+  // Keep the ref pointing to the latest handleAddToCart closure so the
+  // auto-trigger useEffect (registered ABOVE the `if (!product)` early
+  // return for hook-order stability) can call into it once product data
+  // arrives. Plain assignment, not a hook — runs on every render after
+  // the early return is bypassed.
+  handleAddToCartRef.current = handleAddToCart;
 
   // Handle Buy Now - same logic as handleAddToCart but navigates to Checkout
   const handleBuyNow = async () => {
@@ -1704,7 +1820,7 @@ const ProductDetailScreen: React.FC = () => {
         },
       };
 
-      const directPurchaseBody = {
+      const directPurchaseBody: any = {
         productId: parseInt(productIdForUrl.toString(), 10) || 0,
         source: fetchSource,
         quantity: String(quantity),
@@ -1719,6 +1835,12 @@ const ProductDetailScreen: React.FC = () => {
         categoryname: (product as any).categoryName || product.category?.name || undefined,
         skuInfo: skuInfoPayload,
       };
+
+      // Same local-only live tracking as handleAddToCart — see that
+      // handler's comment for context.
+      if (isLiveSource(routeSource)) {
+        void recordLiveProduct(productIdForUrl);
+      }
 
       checkoutDirectPurchase(directPurchaseBody);
     } catch (error: any) {
@@ -2672,8 +2794,8 @@ const ProductDetailScreen: React.FC = () => {
         </View>
         <View style={{ flexDirection: 'row'}}>
           <TouchableOpacity
-            style={[styles.addToCartButton, !canAddToCart && styles.disabledButton]}
-            disabled={isAddingToCart}
+            style={[styles.addToCartButton, (!canAddToCart || isAddingToCart) && styles.disabledButton]}
+            disabled={!canAddToCart || isAddingToCart}
             onPress={() => {
               handleAddToCart();
             }}
@@ -2784,6 +2906,33 @@ const ProductDetailScreen: React.FC = () => {
       </Modal>
     );
   };
+
+  // Post-login auto-add-to-cart flow: render a loading view INSTEAD of the
+  // product detail UI so the user perceives the transition as
+  // Login → (brief loader) → Cart, without seeing the product page flash
+  // in between. The auto-trigger useEffect above fires the addToCart API;
+  // on success it navigates to Cart (which unmounts this screen); on error
+  // the mutation's onError resets isAutoCartFlow so the user falls back to
+  // the regular product detail view with the error toast.
+  if (isAutoCartFlow) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: COLORS.white,
+          }}
+        >
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={{ marginTop: SPACING.md, color: COLORS.text.primary }}>
+            {t('product.addingToCart')}
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <View style={styles.container}>

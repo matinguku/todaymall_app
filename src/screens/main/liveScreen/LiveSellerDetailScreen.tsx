@@ -210,24 +210,55 @@ const LiveSellerDetailScreen: React.FC = () => {
       if (response.success && response.data) {
         const liveSeller = response.data.liveSeller || {};
         const items = response.data.items || [];
-        const mappedProducts = items.map((item: any) => ({
-          id: item.productId || item.product?.id || item.id || '',
-          externalId: item.productId || item.product?.id || item.id || '',
-          name: getLiveCommerceItemTitle(item, locale),
-          title: getLiveCommerceItemTitle(item, locale),
-          image: item.product?.imageUrl || item.imageUrl || item.mediaUrl || '',
-          price: parseFloat(String(item.product?.price ?? 0)),
-          originalPrice: parseFloat(String(item.product?.price ?? item.product?.promotionPrice ?? 0)),
-          source: 'ownmall',
-          label: item.isHotProduct ? t('live.hotProduct') : (item.status || t('live.live')),
-          soldCount: item.itemsSold || 0,
-          reviewCount: item.reviewNumbers || 0,
-          rating: item.reviewScore || 0,
-          category: item.product?.categoryName?.[locale] || item.product?.categoryName?.en || '',
-          liveTitle: item.liveTitle || '',
-          status: item.status || '',
-          raw: item,
-        }));
+
+        // TEMP DEBUG: dump the first item so we can see exactly which
+        // field carries the live code in the API response. Remove once
+        // the live-order tagging is confirmed end-to-end.
+        if (items[0]) {
+          console.log('[liveCode][LiveSellerDetail] first item keys:', Object.keys(items[0]));
+          console.log('[liveCode][LiveSellerDetail] first item:', JSON.stringify(items[0]).slice(0, 1500));
+        }
+
+        const mappedProducts = items.map((item: any) => {
+          // Try every reasonable field name the backend might use for
+          // the live-broadcast code. Falls back to scanning the product
+          // sub-object too. The order goes from most-specific to most-
+          // generic so a real liveCode field wins over generic codes.
+          const liveCode =
+            item.liveCode ||
+            item.live_code ||
+            item.liveCommerceCode ||
+            item.liveCommerceId ||
+            item.broadcastCode ||
+            item.broadcastId ||
+            item.product?.liveCode ||
+            item.product?.live_code ||
+            item.product?.liveCommerceCode ||
+            null;
+
+          return {
+            id: item.productId || item.product?.id || item.id || '',
+            externalId: item.productId || item.product?.id || item.id || '',
+            name: getLiveCommerceItemTitle(item, locale),
+            title: getLiveCommerceItemTitle(item, locale),
+            image: item.product?.imageUrl || item.imageUrl || item.mediaUrl || '',
+            price: parseFloat(String(item.product?.price ?? 0)),
+            originalPrice: parseFloat(String(item.product?.price ?? item.product?.promotionPrice ?? 0)),
+            // Tag this product as live-origin so ProductDetail's
+            // resolveLiveCode() picks it up. ProductDetail maps this
+            // back to 'ownmall' internally for API routing.
+            source: 'live-commerce',
+            liveCode: liveCode != null ? String(liveCode) : undefined,
+            label: item.isHotProduct ? t('live.hotProduct') : (item.status || t('live.live')),
+            soldCount: item.itemsSold || 0,
+            reviewCount: item.reviewNumbers || 0,
+            rating: item.reviewScore || 0,
+            category: item.product?.categoryName?.[locale] || item.product?.categoryName?.en || '',
+            liveTitle: item.liveTitle || '',
+            status: item.status || '',
+            raw: item,
+          };
+        });
 
         if (append) {
           // Dedup by id when appending — the live API can return the same
@@ -460,7 +491,13 @@ const LiveSellerDetailScreen: React.FC = () => {
         onPress={() => navigation.navigate('ProductDetail', {
           productId: item.id,
           offerId: item.externalId,
-          source: item.source,
+          // Always use 'live-commerce' since we're inside the live-seller
+          // page, regardless of what item.source happens to be.
+          source: 'live-commerce',
+          // Forward the explicit live code (if present in the API
+          // response) so ProductDetail can include it in cart/order
+          // requests without having to parse the product name.
+          liveCode: item.liveCode,
           country: country,
         })}
       >
