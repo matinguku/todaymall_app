@@ -950,6 +950,16 @@ const PaymentScreen: React.FC = () => {
         </View>
       )}
 
+      {/* Service fee — 1% of the items total, rounded to the nearest
+          whole won. Sits between the items total and the shipping row
+          per spec; included in the final total computed above. */}
+      <View style={styles.priceRow}>
+        <Text style={styles.priceRowLabel}>서비스 수수료</Text>
+        <Text style={[styles.priceRowValue, { fontSize: FONTS.sizes.md }]}>
+          {formatPriceKRW(serviceFee)}
+        </Text>
+      </View>
+
       {/* Shipping */}
       <View style={styles.priceRow}>
         <Text style={styles.priceRowLabelGray}>{t('payment.shipping')}</Text>

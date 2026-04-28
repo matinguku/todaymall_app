@@ -13,7 +13,11 @@ export function useResponsive() {
 
     const contentWidth = screenWidth - SPACING.sm * 2;
 
-    const moreToLoveColumns = isTablet ? 3 : 2;
+    // Tablet-landscape gets 4 columns (more screen real estate to fill);
+    // tablet-portrait stays at 3; phones stay at 2. The grid card width
+    // below is computed from this so individual cards shrink/expand to
+    // fit the new column count automatically.
+    const moreToLoveColumns = isTablet ? (isLandscape ? 4 : 3) : 2;
 
     const gridCardWidth =
       (contentWidth - SPACING.sm * (moreToLoveColumns - 1) - SPACING.sm * 2) / moreToLoveColumns;

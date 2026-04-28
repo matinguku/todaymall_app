@@ -1,5 +1,5 @@
 import React from 'react';
-import { StatusBar, Platform } from 'react-native';
+import { StatusBar, Platform, Dimensions } from 'react-native';
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Orientation from 'react-native-orientation-locker';
@@ -25,10 +25,25 @@ prefetchHome({ platform: initialPlatform, country: initialLocale });
 // LogBox / console.error filtering: see setupLogBox.ts (imported first from index.ts)
 
 // Component that renders the main app content
+// Devices whose smallest dimension is ≥ 600dp are treated as tablets and
+// allowed to rotate freely so landscape mode uses the full screen width
+// (otherwise the AndroidManifest's old `screenOrientation="portrait"`
+// letterboxed the app into a portrait-shaped column with black bars on
+// either side). Phones stay locked to portrait — the existing UI was
+// not designed for handset landscape and would look wrong rotated.
+const IS_TABLET = (() => {
+  const { width, height } = Dimensions.get('screen');
+  return Math.min(width, height) >= 600;
+})();
+
 const AppContent = () => {
   React.useEffect(() => {
     try {
-      Orientation.lockToPortrait();
+      if (IS_TABLET) {
+        Orientation.unlockAllOrientations();
+      } else {
+        Orientation.lockToPortrait();
+      }
     } catch (e) {
       // Native module unavailable during dev reload; rebuild required
     }

@@ -239,16 +239,24 @@ const BannerTicker = React.memo(({
 const AutoBrandCarousel = React.memo(({
   carousels,
   locale,
+  widthOverride,
+  heightOverride,
 }: {
   carousels: Carousel[];
   locale: 'en' | 'ko' | 'zh';
+  // When provided, the carousel sizes itself to this width instead of
+  // the full screen width. Used by the landscape-tablet 3-column layout
+  // where the carousel sits between the Live Channel card and the
+  // Flash-Sale / Point promo column.
+  widthOverride?: number;
+  heightOverride?: number;
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
   const { width: winWidth, height: winHeight } = useWindowDimensions();
-  const dynWidth = winWidth - SPACING.sm * 2;
+  const dynWidth = widthOverride ?? (winWidth - SPACING.sm * 2);
   const isTablet = Math.min(winWidth, winHeight) >= 600;
-  const brandImgHeight = isTablet ? Math.round(dynWidth * 0.38) : 128;
+  const brandImgHeight = heightOverride ?? (isTablet ? Math.round(dynWidth * 0.38) : 128);
 
   useEffect(() => {
     if (carousels.length <= 1) {
@@ -348,36 +356,89 @@ const AutoLiveChannelSection = React.memo(({
   liveChannelImages,
   selectedPlatform,
   locale,
+  middleSlot,
 }: {
   liveChannelPromoCards: Array<any>;
   navigation: any;
   liveChannelImages: any[];
   selectedPlatform: string;
   locale: 'en' | 'ko' | 'zh';
+  // Optional content rendered between the Live Channel card and the
+  // promo-cards column. Used in landscape-tablet layout to slot the
+  // brand carousel into the middle, producing a single horizontal row of
+  // [Live Channel | Brand Carousel | Flash-Sale + Point].
+  middleSlot?: React.ReactNode;
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
   const { width: winWidth, height: winHeight } = useWindowDimensions();
   const isTablet = Math.min(winWidth, winHeight) >= 600;
+  // True only when the device is a tablet AND currently held in landscape.
+  // The promo-card images get a separate (larger) size tier for this case
+  // because the cards themselves grow wide enough to leave the old
+  // tablet-portrait image sizes looking tiny / leaving empty space.
+  // Phones and tablet-portrait keep the existing sizes — see user request:
+  // sizing change applies ONLY to tablet landscape.
+  const isTabletLandscape = isTablet && winWidth > winHeight;
   const contentW = winWidth - SPACING.sm * 2;
-  const liveCardW = isTablet ? Math.floor(contentW * 0.42) : 163;
-  const liveCardH = Math.round(liveCardW * (210 / 163));
-  // Promo cards on the right of the live channel - compute the available card width
-  // so we can size the 3 product images responsively.
-  const promoCardWidth = Math.max(contentW - liveCardW - SPACING.sm, 160);
-  const promoBigImageSize = isTablet
-    ? Math.max(140, Math.min(Math.floor(promoCardWidth * 0.45), 200))
-    : 85;
-  const promoSmallImageSize = isTablet
+  // 3-column landscape-tablet row: ratios fixed at user's request.
+  //   Live Channel : Brand Carousel : Promo column = 19% : 54% : 17%
+  // Live Channel becomes a perfect square (height = its own width); the
+  // other two columns force their height to match for a unified row.
+  const hasMiddle = !!middleSlot;
+  const liveCardW = hasMiddle
+    ? Math.floor(contentW * 0.19)
+    : isTablet
+      ? Math.floor(contentW * 0.42)
+      : 163;
+  const liveCardH = hasMiddle
+    ? liveCardW // square
+    : Math.round(liveCardW * (210 / 163));
+  const middleSlotWidth = hasMiddle ? Math.floor(contentW * 0.54) : 0;
+  const promoCardWidth = hasMiddle
+    ? Math.floor(contentW * 0.17)
+    : Math.max(contentW - liveCardW - SPACING.sm, 160);
+
+  // For the 3-column landscape layout, each promo card lays its 3 product
+  // images out in a single row of equal squares. Computed from the promo
+  // card's own width minus inner padding and the two gaps between the
+  // three images.
+  const promoEqualImageSize = hasMiddle
     ? Math.max(
-        90,
-        Math.min(
-          // Each small image takes ~25% of the promo card width (minus gaps).
-          Math.floor((promoCardWidth * 0.5 - SPACING.sm - SPACING.xs) / 2),
-          130,
+        32,
+        Math.floor(
+          (promoCardWidth - SPACING.sm * 2 - SPACING.xs * 2) / 3,
         ),
       )
-    : 44;
+    : 0;
+  const promoBigImageSize = isTabletLandscape
+    ? // Landscape tablet: bigger range so the price-tag image actually
+      // fills the card. Cap at 360 to keep aspect ratio sensible on
+      // ultra-wide displays.
+      Math.max(220, Math.min(Math.floor(promoCardWidth * 0.45), 360))
+    : isTablet
+      ? Math.max(140, Math.min(Math.floor(promoCardWidth * 0.45), 200))
+      : 85;
+  const promoSmallImageSize = isTabletLandscape
+    ? // Landscape tablet: bigger small images too so the top-row pair
+      // matches the new big-image scale.
+      Math.max(
+        160,
+        Math.min(
+          Math.floor((promoCardWidth * 0.5 - SPACING.sm - SPACING.xs) / 2),
+          220,
+        ),
+      )
+    : isTablet
+      ? Math.max(
+          90,
+          Math.min(
+            // Each small image takes ~25% of the promo card width (minus gaps).
+            Math.floor((promoCardWidth * 0.5 - SPACING.sm - SPACING.xs) / 2),
+            130,
+          ),
+        )
+      : 44;
 
   useEffect(() => {
     if (liveChannelImages.length <= 1) {
@@ -399,7 +460,18 @@ const AutoLiveChannelSection = React.memo(({
   }, [liveChannelImages.length, liveCardW]);
 
   return (
-    <View style={styles.liveChannelContainer}>
+    <View
+      style={[
+        styles.liveChannelContainer,
+        // 3-column landscape row: distribute the leftover width into
+        // FOUR equal gaps (left edge, between live and carousel,
+        // between carousel and promo, right edge). The result is each
+        // item sitting centered within its slice of the row — Live
+        // Channel centered between the left edge and the carousel,
+        // Promo centered between the carousel and the right edge.
+        hasMiddle && { justifyContent: 'space-evenly', gap: 0 },
+      ]}
+    >
       <TouchableOpacity
         style={[styles.liveChannelCard, { width: liveCardW, height: liveCardH }]}
         activeOpacity={0.9}
@@ -456,7 +528,24 @@ const AutoLiveChannelSection = React.memo(({
         </View>
       </TouchableOpacity>
 
-      <View style={[styles.promosRightStack, { flex: 1, width: undefined }]}>
+      {/* Optional middle column for landscape-tablet layout: hosts the
+          brand carousel between the Live Channel card and the promo
+          stack so the three sections form a single horizontal row.
+          Forced to liveCardH so all three columns share the same height. */}
+      {middleSlot ? (
+        <View style={{ width: middleSlotWidth, height: liveCardH }}>
+          {middleSlot}
+        </View>
+      ) : null}
+
+      <View
+        style={[
+          styles.promosRightStack,
+          hasMiddle
+            ? { width: promoCardWidth, height: liveCardH }
+            : { flex: 1, width: undefined },
+        ]}
+      >
         {liveChannelPromoCards.map((card, cardIdx: number) => {
           const promoImages = Array.isArray(card?.images) ? card.images : [];
           const promoTopImages = promoImages.slice(0, 2).filter((img: unknown) => img != null);
@@ -483,8 +572,13 @@ const AutoLiveChannelSection = React.memo(({
               end={{ x: 0, y: 1 }}
               style={styles.liveChannelOverlay}
             />
-            <View style={styles.promoCardTopRowContainer}>
-              <View style={styles.promoCardTopRowIcon}>
+            {hasMiddle ? (
+              // ─── Landscape-tablet layout ───
+              // Title row at the top (icon + title only — price moved
+              // under each image), 3 equally-sized square images in a
+              // single row below, with that image's own price label
+              // directly underneath each one.
+              <View style={{ flex: 1, padding: SPACING.sm }}>
                 <View style={styles.promoCardTopRow}>
                   {card.id === 'flash-sale' ? (
                     <BoltIcon width={16} height={16} color="#327FE5" />
@@ -493,69 +587,152 @@ const AutoLiveChannelSection = React.memo(({
                   ) : null}
                   <Text style={styles.promoCardTitleSmall}>{card.title}</Text>
                 </View>
-
-                <TouchableOpacity style={styles.promoCardImages} activeOpacity={0.7}>
-                  {promoTopImages.map((img: any, idx: number) => (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    marginTop: SPACING.xs,
+                    flex: 1,
+                  }}
+                >
+                  {[0, 1, 2].map((idx) => {
+                    const img = promoImages[idx];
+                    const itemPrice = (card as any).prices?.[idx] ?? card.price;
+                    return (
                       <TouchableOpacity
-                        key={`${card.id}-img-${idx}`}
+                        key={`${card.id}-eq-${idx}`}
                         activeOpacity={0.7}
+                        // Each image+price cell is a single tap target so
+                        // the user can tap anywhere in that cell to open
+                        // the matching product detail.
+                        style={{ alignItems: 'center', width: promoEqualImageSize }}
                         onPress={() => {
                           const pid = card.externalIds?.[idx];
                           if (card.ids?.[idx] && pid != null) {
                             navigation.navigate('ProductDetail', {
                               productId: pid,
                               source: selectedPlatform || '1688',
-                              country: locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en',
+                              country:
+                                locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en',
                             });
                           }
                         }}
                       >
-                        <Image
-                          source={img}
+                        {img != null ? (
+                          <Image
+                            source={img}
+                            style={{
+                              width: promoEqualImageSize,
+                              height: promoEqualImageSize,
+                              borderRadius: BORDER_RADIUS.sm,
+                            }}
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <View
+                            style={{
+                              width: promoEqualImageSize,
+                              height: promoEqualImageSize,
+                              borderRadius: BORDER_RADIUS.sm,
+                              backgroundColor: COLORS.gray[200],
+                            }}
+                          />
+                        )}
+                        <Text
                           style={[
-                            styles.promoCardSmallImage,
-                            { width: promoSmallImageSize, height: promoSmallImageSize },
+                            styles.promoCardPrice,
+                            {
+                              width: promoEqualImageSize,
+                              marginTop: 2,
+                              textAlign: 'center',
+                            },
                           ]}
-                          resizeMode="cover"
-                        />
+                          numberOfLines={1}
+                        >
+                          {itemPrice}
+                        </Text>
                       </TouchableOpacity>
-                  ))}
+                    );
+                  })}
+                </View>
+              </View>
+            ) : (
+              // ─── Phone / tablet-portrait layout (unchanged) ───
+              <View style={styles.promoCardTopRowContainer}>
+                <View style={styles.promoCardTopRowIcon}>
+                  <View style={styles.promoCardTopRow}>
+                    {card.id === 'flash-sale' ? (
+                      <BoltIcon width={16} height={16} color="#327FE5" />
+                    ) : card.id === 'points' ? (
+                      <StarsIcon width={16} height={16} color="#FFB300" />
+                    ) : null}
+                    <Text style={styles.promoCardTitleSmall}>{card.title}</Text>
+                  </View>
+
+                  <TouchableOpacity style={styles.promoCardImages} activeOpacity={0.7}>
+                    {promoTopImages.map((img: any, idx: number) => (
+                        <TouchableOpacity
+                          key={`${card.id}-img-${idx}`}
+                          activeOpacity={0.7}
+                          onPress={() => {
+                            const pid = card.externalIds?.[idx];
+                            if (card.ids?.[idx] && pid != null) {
+                              navigation.navigate('ProductDetail', {
+                                productId: pid,
+                                source: selectedPlatform || '1688',
+                                country: locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en',
+                              });
+                            }
+                          }}
+                        >
+                          <Image
+                            source={img}
+                            style={[
+                              styles.promoCardSmallImage,
+                              { width: promoSmallImageSize, height: promoSmallImageSize },
+                            ]}
+                            resizeMode="cover"
+                          />
+                        </TouchableOpacity>
+                    ))}
+                  </TouchableOpacity>
+                </View>
+                <TouchableOpacity
+                  style={[styles.promoCardPriceTag, { marginLeft: 'auto', marginRight: SPACING.sm, marginTop: SPACING.sm }]}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    const pid = card.externalIds?.[2];
+                    if (card.ids?.[2] && pid != null) {
+                      navigation.navigate('ProductDetail', {
+                        productId: pid,
+                        source: selectedPlatform || '1688',
+                        country: locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en',
+                      });
+                    }
+                  }}
+                >
+                  {promoThirdImage != null ? (
+                  <Image
+                    source={promoThirdImage}
+                    style={[
+                      styles.promoCardSmallImage,
+                      { width: promoBigImageSize, height: promoBigImageSize },
+                    ]}
+                    resizeMode="cover"
+                  />
+                  ) : (
+                  <View
+                    style={[
+                      styles.promoCardSmallImage,
+                      { width: promoBigImageSize, height: promoBigImageSize, backgroundColor: COLORS.gray[200] },
+                    ]}
+                  />
+                  )}
+                  <Text style={[styles.promoCardPrice, { width: promoBigImageSize }]}>{card.price}</Text>
                 </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                style={[styles.promoCardPriceTag, { marginLeft: 'auto', marginRight: SPACING.sm, marginTop: SPACING.sm }]}
-                activeOpacity={0.7}
-                onPress={() => {
-                  const pid = card.externalIds?.[2];
-                  if (card.ids?.[2] && pid != null) {
-                    navigation.navigate('ProductDetail', {
-                      productId: pid,
-                      source: selectedPlatform || '1688',
-                      country: locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en',
-                    });
-                  }
-                }}
-              >
-                {promoThirdImage != null ? (
-                <Image
-                  source={promoThirdImage}
-                  style={[
-                    styles.promoCardSmallImage,
-                    { width: promoBigImageSize, height: promoBigImageSize },
-                  ]}
-                  resizeMode="cover"
-                />
-                ) : (
-                <View
-                  style={[
-                    styles.promoCardSmallImage,
-                    { width: promoBigImageSize, height: promoBigImageSize, backgroundColor: COLORS.gray[200] },
-                  ]}
-                />
-                )}
-                <Text style={[styles.promoCardPrice, { width: promoBigImageSize }]}>{card.price}</Text>
-              </TouchableOpacity>
-            </View>
+            )}
           </TouchableOpacity>
           );
         })}
@@ -567,14 +744,25 @@ const AutoLiveChannelSection = React.memo(({
 const HomeScreen: React.FC = () => {
   const navigation = useNavigation<HomeScreenNavigationProp>();
   const { screenWidth: dynScreenWidth, contentWidth: dynContentWidth, isTablet, isLandscape, moreToLoveColumns, gridCardWidth: dynGridCardWidth } = useResponsive();
-  // Recompute dealsCardWidth to match the actual todaysDealsProductsRow style
-  // (paddingHorizontal: SPACING.sm + gap: SPACING.sm between 2 cards). The
-  // default useResponsive.dealsCardWidth assumes extra outer padding that this
-  // section doesn't have, which left ~16px of empty space on the right and
-  // broke the visual center alignment on tablets.
-  const dynDealsCardWidth = Math.floor(
-    (dynScreenWidth - SPACING.sm * 3) / 2,
-  );
+  // True only on tablet held in landscape — used to switch the three
+  // deal blocks (Live Hot / Today's Hot Deals / Best Sellers) from a
+  // vertical stack into a single horizontal row, with proportionally
+  // smaller cards inside so each block fits within ~1/3 of the screen.
+  const isTabletLandscape = isTablet && isLandscape;
+
+  // Recompute dealsCardWidth to match the actual todaysDealsProductsRow
+  // style (paddingHorizontal: SPACING.sm + gap: SPACING.sm between 2
+  // cards). On landscape tablet we additionally divide by 3 (one column
+  // per deal block) so cards stay reasonably sized when the three blocks
+  // sit side-by-side. Phones and tablet-portrait keep the original
+  // half-screen sizing.
+  const dynDealsCardWidth = isTabletLandscape
+    ? Math.floor(
+        ((dynScreenWidth - SPACING.md * 2 - SPACING.sm * 2) / 3 -
+          SPACING.sm * 3) /
+          2,
+      )
+    : Math.floor((dynScreenWidth - SPACING.sm * 3) / 2);
   
   // today's deals category state (used for highlighting)
   const [selectedCategory, setSelectedCategory] = useState<string>('todaysDeals');
@@ -1733,6 +1921,14 @@ const HomeScreen: React.FC = () => {
       title: t('home.flashSale'),
       backgroundColor: '#88DBFF',
       price: `₩${newInProducts?.[4]?.price ?? 0}`,
+      // Per-image prices so the landscape-tablet promo card can show a
+      // price under EACH of its three product thumbnails (matching the
+      // ids/images/externalIds index order: 2, 3, 4).
+      prices: [
+        `₩${newInProducts?.[2]?.price ?? 0}`,
+        `₩${newInProducts?.[3]?.price ?? 0}`,
+        `₩${newInProducts?.[4]?.price ?? 0}`,
+      ],
       images: [
         getAlibabaThumbnailImageUri(newInProducts?.[2], homeGridPx)
           ? { uri: getAlibabaThumbnailImageUri(newInProducts[2], homeGridPx)! }
@@ -1752,6 +1948,11 @@ const HomeScreen: React.FC = () => {
       title: t('home.points'),
       backgroundColor: '#FFF27D',
       price: `₩${newInProducts?.[7]?.price ?? 0}`,
+      prices: [
+        `₩${newInProducts?.[5]?.price ?? 0}`,
+        `₩${newInProducts?.[6]?.price ?? 0}`,
+        `₩${newInProducts?.[7]?.price ?? 0}`,
+      ],
       images: [
         getAlibabaThumbnailImageUri(newInProducts?.[5], homeGridPx)
           ? { uri: getAlibabaThumbnailImageUri(newInProducts[5], homeGridPx)! }
@@ -1770,6 +1971,16 @@ const HomeScreen: React.FC = () => {
 
   const renderLiveChannelSection = () => {
     console.log('liveChannelPromoCards', liveChannelPromoCards);
+    // Landscape-tablet: slot the brand carousel into the middle so the row
+    // becomes [Live Channel | Brand Carousel | Flash-Sale + Point]. The
+    // standalone brand-carousel render in the main return is skipped in
+    // this mode so the carousel doesn't appear twice. Width and height
+    // mirror the values AutoLiveChannelSection computes internally so all
+    // three columns line up at the same height (Live Channel is square).
+    const carouselList = Array.isArray(carousels) && carousels.length > 0 ? carousels : [];
+    const liveChannelContentW = dynScreenWidth - SPACING.sm * 2;
+    const middleCarouselWidth = Math.floor(liveChannelContentW * 0.54);
+    const middleCarouselHeight = Math.floor(liveChannelContentW * 0.19);
     return (
       <AutoLiveChannelSection
         liveChannelPromoCards={liveChannelPromoCards}
@@ -1777,6 +1988,16 @@ const HomeScreen: React.FC = () => {
         liveChannelImages={liveChannelImages}
         selectedPlatform={selectedPlatform}
         locale={locale}
+        middleSlot={
+          isTabletLandscape && carouselList.length > 0 ? (
+            <AutoBrandCarousel
+              carousels={carouselList}
+              locale={locale}
+              widthOverride={middleCarouselWidth}
+              heightOverride={middleCarouselHeight}
+            />
+          ) : null
+        }
       />
     );
   };
@@ -2082,51 +2303,71 @@ const HomeScreen: React.FC = () => {
     return (
       <View style={styles.todaysDealsContainer}>
         <Text style={styles.todaysDealsSectionTitle}>{t('home.todaysDealsSection')}</Text>
-        {hotItems.length > 0 && (
-          <View style={styles.todaysDealsBlock}>
-            <LinearGradient
-              colors={['#D0E3FF', COLORS.transparent]}
-              style={styles.liveHotCardGradient}
-            />
-            {renderDealBlock(
-              t('home.liveHotItems'),
-              t('home.liveHotItemsSub'),
-              "#327FE5",
-              "#4082D8",
-              hotItems.map((item, idx) => renderLiveHotCard(item, idx))
-            )}
-          </View>
-        )}
-        {todaysHotProducts.length > 0 && (
-          <View style={styles.todaysDealsBlock}>
-            <LinearGradient
-              colors={['#FFDACA', COLORS.transparent]}
-              style={styles.liveHotCardGradient}
-            />
-            {renderDealBlock(
-              t('home.todaysHotDeals'),
-              t('home.todaysHotDealsSub'),
-              '#FF0000',
-              "#EB5656",
-              todaysHotProducts.map((p) => renderDealProductCard(p, require('../../assets/images/welcomedeal.png')))
-            )}
-          </View>
-        )}
-        {bestSellerProducts.length > 0 && (
-          <View style={styles.todaysDealsBlock}>
-            <LinearGradient
-              colors={['#FFF4B0', COLORS.transparent]}
-              style={styles.liveHotCardGradient}
-            />
-            {renderDealBlock(
-              t('home.bestSellers'),
-              t('home.bestSellersSub'),
-              '#FFB200',
-              "#D9A324",
-              bestSellerProducts.map((p) => renderDealProductCard(p, require('../../assets/images/bestseller.png')))
-            )}
-          </View>
-        )}
+        {/* Landscape tablet: lay the three deal blocks side-by-side
+            (each ~1/3 of the row width). Phones / tablet-portrait keep
+            the existing vertical stack. */}
+        <View style={isTabletLandscape ? styles.todaysDealsBlocksRow : undefined}>
+          {hotItems.length > 0 && (
+            <View
+              style={[
+                styles.todaysDealsBlock,
+                isTabletLandscape && styles.todaysDealsBlockOneThird,
+              ]}
+            >
+              <LinearGradient
+                colors={['#D0E3FF', COLORS.transparent]}
+                style={styles.liveHotCardGradient}
+              />
+              {renderDealBlock(
+                t('home.liveHotItems'),
+                t('home.liveHotItemsSub'),
+                "#327FE5",
+                "#4082D8",
+                hotItems.map((item, idx) => renderLiveHotCard(item, idx))
+              )}
+            </View>
+          )}
+          {todaysHotProducts.length > 0 && (
+            <View
+              style={[
+                styles.todaysDealsBlock,
+                isTabletLandscape && styles.todaysDealsBlockOneThird,
+              ]}
+            >
+              <LinearGradient
+                colors={['#FFDACA', COLORS.transparent]}
+                style={styles.liveHotCardGradient}
+              />
+              {renderDealBlock(
+                t('home.todaysHotDeals'),
+                t('home.todaysHotDealsSub'),
+                '#FF0000',
+                "#EB5656",
+                todaysHotProducts.map((p) => renderDealProductCard(p, require('../../assets/images/welcomedeal.png')))
+              )}
+            </View>
+          )}
+          {bestSellerProducts.length > 0 && (
+            <View
+              style={[
+                styles.todaysDealsBlock,
+                isTabletLandscape && styles.todaysDealsBlockOneThird,
+              ]}
+            >
+              <LinearGradient
+                colors={['#FFF4B0', COLORS.transparent]}
+                style={styles.liveHotCardGradient}
+              />
+              {renderDealBlock(
+                t('home.bestSellers'),
+                t('home.bestSellersSub'),
+                '#FFB200',
+                "#D9A324",
+                bestSellerProducts.map((p) => renderDealProductCard(p, require('../../assets/images/bestseller.png')))
+              )}
+            </View>
+          )}
+        </View>
       </View>
     );
   };
@@ -2545,7 +2786,11 @@ const HomeScreen: React.FC = () => {
               that on first paint the user sees the page structure (header,
               categories, banner ticker) immediately. Images stream in on
               the second frame. */}
-          {showHeavyContent && renderBrandCarousel()}
+          {/* Brand carousel: full-width in phone / tablet-portrait;
+              skipped here in tablet-landscape because it's slotted into
+              the middle of the Live Channel section so the row reads
+              [Live Channel | Brand Carousel | Flash-Sale + Point]. */}
+          {showHeavyContent && !isTabletLandscape && renderBrandCarousel()}
           {showHeavyContent && renderLiveChannelSection()}
           {/* {renderTrendingProducts()} */}
           {/* {renderPopularCategories()} */}
@@ -3600,6 +3845,20 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.lg,
     // backgroundColor: COLORS.background,
     position: 'relative',
+  },
+  // Landscape-tablet only: lays the three deal blocks side-by-side
+  // (Live Hot / Today's Hot Deals / Best Sellers).
+  todaysDealsBlocksRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+  },
+  // Each block fills 1/3 of the row above. Combined with the smaller
+  // dynDealsCardWidth computed in the component body, the inner cards
+  // shrink to fit.
+  todaysDealsBlockOneThird: {
+    flex: 1,
+    marginBottom: 0,
   },
   todaysDealsBlockTitleContainer: {
     left: 10,
