@@ -3,6 +3,7 @@ import { getStoredToken } from './authApi';
 import { API_BASE_URL } from '../constants';
 import { buildSignatureHeaders } from './signature';
 import { logDevApiFailure } from '../utils/devLog';
+import { endsWith } from 'lodash';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -77,15 +78,15 @@ export interface DirectPurchaseOrderItem {
 
 export interface CreateOrderDirectPurchaseRequest {
   items: DirectPurchaseOrderItem[];
-  designatedShootingImageCount?: number;
+  //designatedShootingImageCount?: number;
   estimatedShippingCostBySeller?: Record<string, number>;
   addressId: string;
   paymentMethod: 'deposit' | 'bank' | 'billgate';
   serviceCode?: string;
   transferMethod: 'air' | 'ship';
   flow: 'general';
-  userCouponUsageId?: string;
-  userShippingCouponUsageId?: string;
+  userCouponUsageId?: string | '';
+  userShippingCouponUsageId?: string | '';
   pointsToUse?: number;
   netExpectedTotalKRW: number;
   depositAmountKRW?: number;
@@ -300,7 +301,7 @@ export const orderApi = {
       if (!token) {
         return { success: false, error: 'Authentication required. Please log in again.' };
       }
-      const url = `${API_BASE_URL}/orders/${orderId}/pay`;
+      const url = `${API_BASE_URL}/orders/${orderId}/pay?lang=en`;
       const signatureHeaders = await buildSignatureHeaders('POST', url, body);
       const response = await fetch(url, {
         method: 'POST',
@@ -874,9 +875,19 @@ export const orderApi = {
           error: 'No authentication token found. Please log in again.',
         };
       }
+      let requestBody = {};
+      let apiUrl = '';
       const url = `${API_BASE_URL}/orders/direct-purchase`;
-      const signatureHeaders = await buildSignatureHeaders('POST', url, request);
-      const response = await fetch(url, {
+      if (request.paymentMethod !== 'billgate') {
+        requestBody = request;
+        apiUrl = `${url}?lang=en`;
+      } else {
+        requestBody = request;
+        apiUrl = `${url}?lang=en`;
+      }
+      const signatureHeaders = await buildSignatureHeaders('POST', apiUrl, request);
+      console.log('🛒 CREATE DIRECT PURCHASE ORDER REQUEST URL:', apiUrl, request);
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -884,9 +895,10 @@ export const orderApi = {
           'ngrok-skip-browser-warning': 'true',
           ...signatureHeaders,
         },
-        body: JSON.stringify(request),
+        body: JSON.stringify(requestBody),
       });
       const responseText = await response.text();
+      console.log('🛒 CREATE DIRECT PURCHASE ORDER RESPONSE TEXT:', responseText, response);
       let responseData: any;
       try {
         responseData = JSON.parse(responseText);

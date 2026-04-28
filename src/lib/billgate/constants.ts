@@ -67,11 +67,11 @@ export const BILLGATE_PAYMENT_OPTIONS: BillgatePaymentOption[] = [
   },
   {
     code: '1000',
-    label: '계좌이체',
-    labelKo: '계좌이체',
+    label: '무통장',
+    labelKo: '무통장',
     labelEn: 'Bank Transfer',
-    description: '계좌이체 결제',
-    descriptionKo: '계좌이체 결제',
+    description: '무통장 결제',
+    descriptionKo: '무통장 결제',
     descriptionEn: 'Direct bank transfer',
   },
   {
@@ -171,8 +171,8 @@ export const BILLGATE_PAYMENT_OPTIONS: BillgatePaymentOption[] = [
     label: '무통장입금',
     labelKo: '무통장입금',
     labelEn: 'Bank Transfer (Deposit)',
-    description: '입금 안내에 따라 계좌이체 후 자동 확인',
-    descriptionKo: '입금 안내에 따라 계좌이체 후 자동 확인',
+    description: '입금 안내에 따라 무통장 후 자동 확인',
+    descriptionKo: '입금 안내에 따라 무통장 후 자동 확인',
     descriptionEn: 'Transfer to the given account; payment is confirmed automatically',
   },
 ];

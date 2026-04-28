@@ -438,7 +438,7 @@ const BillgatePaymentScreen: React.FC = () => {
         onResult?.(result);
       } catch {}
 
-      navigation.goBack();
+      navigation.navigate('BuyList', { initialTab: 'purchase_agency' });
     },
     [navigation, onResult],
   );

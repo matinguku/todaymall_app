@@ -1145,6 +1145,7 @@ const PaymentScreen: React.FC = () => {
   });
 
   const handleConfirm = () => {
+    console.log("Handle confirm clicked");
     if (!selectedAddress) {
       Alert.alert('Error', 'Please select a delivery address');
       return;
@@ -1266,6 +1267,9 @@ const PaymentScreen: React.FC = () => {
       Alert.alert('Error', 'No direct purchase items. Please try again from the product page.');
       return;
     }
+    console.log('Direct purchase request:', {
+      items: directPurchaseItems,
+      estimatedShippingCostBySeller, });
     const designatedShootingCount = directPurchaseItems.reduce(
       (sum, it) => sum + (Array.isArray(it.designatedShooting) ? it.designatedShooting.length : 0),
       0
@@ -1280,10 +1284,14 @@ const PaymentScreen: React.FC = () => {
       transferMethod,
       flow: 'general' as const,
       depositAmountKRW: 0,
-      userCouponUsageId: couponUsageId || undefined,
-      userShippingCouponUsageId: shippingCouponUsageId || '',
       pointsToUse: enteredPoints > 0 ? enteredPoints : 0,
       netExpectedTotalKRW: Math.round(finalTotal),
+
+      ...(couponUsageId && { userCouponUsageId: couponUsageId }),
+      ...(shippingCouponUsageId && {
+        userShippingCouponUsageId: shippingCouponUsageId,
+      }),
+
       ...(paymentMethod === 'bank' && { memberName: memberName.trim() }),
     };
     createOrderDirectPurchase(directRequest);

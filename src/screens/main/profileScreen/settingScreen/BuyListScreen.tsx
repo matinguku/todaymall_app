@@ -99,6 +99,7 @@ interface Order {
   date: string;
   status: 'category' | 'unpaid' | 'progressing' | 'end' | 'pending_review' | 'error' | 'refunds';
   progressStatus: string;
+  paymentStatus: string;
   statusGroup: 'purchase_agency' | 'warehouse' | 'international_shipping' | 'error' | 'other';
   statusTranslationKey: string;
   items: OrderItem[];
@@ -334,6 +335,12 @@ const BuyListScreen = () => {
     contact: '',
     customsCode: '',
   });
+  // Payment method modal state
+  const [paymentMethodModalVisible, setPaymentMethodModalVisible] = useState(false);
+  const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<Order | null>(null);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('bank');
+  const [depositAmount, setDepositAmount] = useState<string>('0');
+  const [bankPayerName, setBankPayerName] = useState<string>('');
   const [filters, setFilters] = useState<{ orderNumber: string; startDate: Date | null; endDate: Date | null }>({
     orderNumber: '',
     startDate: null,
@@ -399,40 +406,83 @@ const BuyListScreen = () => {
     }
   };
 
-  // Pay an existing unpaid order via BillGate. The order is already created;
-  // we ask the backend to sign a fresh billgatePaymentData payload, then
-  // hand it to the WebView screen.
   const handlePayUnpaidOrder = async (order: any) => {
+    setSelectedOrderForPayment(order);
+    setSelectedPaymentMethod('bank');
+    setDepositAmount('0');
+    setBankPayerName('');
+    setPaymentMethodModalVisible(true);
+  };
+
+  const handlePaymentMethodSelected = async (order: any, paymentMethod: string) => {
     const orderObjectId: string | undefined = order?._id ?? order?.id;
     if (!orderObjectId) {
       showToast('Missing order id', 'error');
       return;
     }
-    try {
-      const res = await orderApi.startBillgateOrderPayment(orderObjectId);
-      if (!res.success || !res.data?.billgatePaymentData) {
-        showToast(res.error || 'Failed to start payment', 'error');
+
+    if (paymentMethod === 'billgate') {
+      const amount = Number(depositAmount || '0');
+      if (Number.isNaN(amount) || amount <= 0) {
+        showToast(t('payment.depositAmountRequired') || 'Please enter a deposit amount greater than zero', 'error');
         return;
       }
-      (navigation as any).navigate('BillgatePayment', {
-        paymentData: res.data.billgatePaymentData,
-        orderId: orderObjectId,
-        onResult: (result: any) => {
-          if (result.status === 'success') {
-            showToast(t('payment.paymentCompleted') || 'Payment completed', 'success');
-            fetchOrdersRef.current();
-          } else if (result.status === 'cancel') {
-            showToast(t('payment.paymentCancelled') || 'Payment cancelled', 'info');
-          } else {
-            Alert.alert(
-              'Payment failed',
-              result.message || 'Could not complete payment. Please try again.',
-            );
-          }
-        },
-      });
+      try {
+        const res = await orderApi.startBillgateOrderPayment(orderObjectId, '0900');
+        if (!res.success || !res.data?.billgatePaymentData) {
+          showToast(res.error || 'Failed to start BillGate payment', 'error');
+          return;
+        }
+        (navigation as any).navigate('BillgatePayment', {
+          paymentData: res.data.billgatePaymentData,
+          orderId: orderObjectId,
+          depositAmountKRW: Math.round(amount),
+          onResult: (result: any) => {
+            if (result.status === 'success') {
+              showToast(t('payment.paymentCompleted') || 'Payment completed', 'success');
+              fetchOrdersRef.current();
+            } else if (result.status === 'cancel') {
+              showToast(t('payment.paymentCancelled') || 'Payment cancelled', 'info');
+            } else {
+              Alert.alert('Payment failed', result.message || 'Could not complete payment. Please try again.');
+            }
+          },
+        });
+      } catch (err: any) {
+        showToast(err?.message || 'Failed to start BillGate payment', 'error');
+      }
+      return;
+    }
+
+    const body: any = { paymentMethod };
+    
+    if (paymentMethod === 'bank') {
+      if (!bankPayerName.trim()) {
+        showToast(t('payment.payerNameRequired') || 'Please enter payer name', 'error');
+        return;
+      }
+      body.memberName = bankPayerName.trim();
+    }
+
+    if (paymentMethod === 'deposit') {
+      const amount = Number(depositAmount || '0');
+      if (Number.isNaN(amount) || amount <= 0) {
+        showToast(t('payment.depositAmountRequired') || 'Please enter a deposit amount greater than zero', 'error');
+        return;
+      }
+      body.depositAmountKRW = Math.round(amount);
+    }
+
+    try {
+      const payResponse = await orderApi.payOrder(orderObjectId, body);
+      if (!payResponse.success) {
+        showToast(payResponse.error || 'Failed to process payment', 'error');
+        return;
+      }
+      showToast(t('payment.paymentCompleted') || 'Payment completed', 'success');
+      fetchOrdersRef.current();
     } catch (err: any) {
-      showToast(err?.message || 'Failed to start payment', 'error');
+      showToast(err?.message || 'Failed to pay order', 'error');
     }
   };
 
@@ -849,6 +899,7 @@ const BuyListScreen = () => {
           trackingNumbers: order.trackingNumbers || [],
           statusHistory: order.statusHistory || [],
           paymentMethod: order.paymentMethod,
+          paymentStatus: order.paymentStatus,
           transferMethod: order.transferMethod,
           warehouseCode: order.warehouseCode,
           createdAt: order.createdAt,
@@ -1405,8 +1456,8 @@ const BuyListScreen = () => {
             <Text style={styles.secondaryButtonText}>{t('profile.refund') || 'Refund'}</Text>
           </TouchableOpacity>
 
-          {/* Primary button: Pay for unpaid/waiting settlement, Confirm receipt for shipped */}
-          {(order.status === 'unpaid' || order.progressStatus === 'WH_PAY_WAIT') ? (
+          {/* Primary button: Pay for pending payment, Confirm receipt for shipped */}
+          {order.paymentStatus === 'unpaid' ? (
             <TouchableOpacity
               style={styles.primaryButton}
               onPress={() => handlePayUnpaidOrder(order)}
@@ -2742,6 +2793,196 @@ const BuyListScreen = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Payment Method Selection Modal */}
+      <Modal
+        visible={paymentMethodModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPaymentMethodModalVisible(false)}
+      >
+        <View style={styles.paymentMethodModalOverlay}>
+          <View style={styles.paymentMethodModalContent}>
+            <View style={styles.paymentMethodModalHeader}>
+              <Text style={styles.paymentMethodModalTitle}>{t('payment.selectPaymentMethod') || 'Select Payment Method'}</Text>
+              <TouchableOpacity onPress={() => setPaymentMethodModalVisible(false)}>
+                <Icon name="close" size={22} color={COLORS.text.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.paymentMethodTabRow}>
+              {[
+                { id: 'bank', label: t('payment.bank') || 'Bank' },
+                { id: 'billgate', label: t('payment.creditCard') || 'Credit Card' },
+                { id: 'deposit', label: t('payment.deposit') || 'Deposit' },
+              ].map((method) => (
+                <TouchableOpacity
+                  key={method.id}
+                  style={[
+                    styles.paymentMethodTab,
+                    selectedPaymentMethod === method.id && styles.paymentMethodTabActive,
+                  ]}
+                  onPress={() => setSelectedPaymentMethod(method.id)}
+                >
+                  <Text style={[
+                    styles.paymentMethodTabText,
+                    selectedPaymentMethod === method.id && styles.paymentMethodTabTextActive,
+                  ]}>
+                    {method.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <ScrollView style={styles.paymentMethodModalBody}>
+              <View style={styles.paymentMethodSummaryCard}>
+                <Text style={styles.paymentMethodSummaryLabel}>{t('payment.paymentAmount') || 'Payment amount'}</Text>
+                <Text style={styles.paymentMethodSummaryAmount}>
+                  {formatPriceKRW((selectedOrderForPayment as any)?.totalAmount ?? 0)}
+                </Text>
+              </View>
+
+              {selectedPaymentMethod === 'bank' && (
+                <>
+                  <View style={styles.paymentMethodDepositRow}>
+                    <Text style={styles.paymentMethodDepositLabel}>{t('payment.depositAmount') || 'Deposit amount'}</Text>
+                    <TextInput
+                      style={styles.paymentMethodDepositInput}
+                      value={depositAmount}
+                      onChangeText={setDepositAmount}
+                      keyboardType="numeric"
+                      placeholder="0"
+                      placeholderTextColor={COLORS.text.secondary}
+                    />
+                  </View>
+                  <View style={styles.paymentMethodDepositActions}>
+                    <TouchableOpacity
+                      style={styles.paymentMethodUseFullDepositButton}
+                      onPress={() => {
+                        const balance = Number((user as any)?.depositBalance ?? (user as any)?.balance ?? 0);
+                        const total = Number((selectedOrderForPayment as any)?.totalAmount ?? 0);
+                        if (balance >= total) {
+                          setSelectedPaymentMethod('deposit');
+                          setDepositAmount(String(Math.round(Math.min(balance, total))));
+                        } else {
+                          (navigation as any).navigate('Deposit');
+                        }
+                      }}
+                    >
+                      <Text style={styles.paymentMethodUseFullDepositButtonText}>{t('payment.useFullDeposit') || 'Use full deposit'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.paymentMethodDepositBalance}>
+                    {t('payment.balance') || 'Balance'}: {formatPriceKRW((user as any)?.depositBalance ?? (user as any)?.balance ?? 0)}
+                  </Text>
+
+                  <View style={[styles.paymentMethodDepositRow, { marginTop: SPACING.md }]}>
+                    <Text style={styles.paymentMethodDepositLabel}>{t('payment.payerName') || 'Payer name'}</Text>
+                    <TextInput
+                      style={styles.paymentMethodDepositInput}
+                      placeholder={t('payment.enterPayerName') || 'Enter payer name'}
+                      placeholderTextColor={COLORS.text.secondary}
+                      value={bankPayerName}
+                      onChangeText={setBankPayerName}
+                    />
+                  </View>
+                </>
+              )}
+
+              {selectedPaymentMethod === 'billgate' && (
+                <>
+                  <View style={styles.paymentMethodDepositRow}>
+                    <Text style={styles.paymentMethodDepositLabel}>{t('payment.depositAmount') || 'Deposit amount'}</Text>
+                    <TextInput
+                      style={styles.paymentMethodDepositInput}
+                      value={depositAmount}
+                      onChangeText={setDepositAmount}
+                      keyboardType="numeric"
+                      placeholder="0"
+                      placeholderTextColor={COLORS.text.secondary}
+                    />
+                  </View>
+                  <View style={styles.paymentMethodDepositActions}>
+                    <TouchableOpacity
+                      style={styles.paymentMethodUseFullDepositButton}
+                      onPress={() => {
+                        const balance = Number((user as any)?.depositBalance ?? (user as any)?.balance ?? 0);
+                        const total = Number((selectedOrderForPayment as any)?.totalAmount ?? 0);
+                        if (balance >= total) {
+                          setSelectedPaymentMethod('deposit');
+                          setDepositAmount(String(Math.round(Math.min(balance, total))));
+                        } else {
+                          (navigation as any).navigate('Deposit');
+                        }
+                      }}
+                    >
+                      <Text style={styles.paymentMethodUseFullDepositButtonText}>{t('payment.useFullDeposit') || 'Use full deposit'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.paymentMethodDepositBalance}>
+                    {t('payment.balance') || 'Balance'}: {formatPriceKRW((user as any)?.depositBalance ?? (user as any)?.balance ?? 0)}
+                  </Text>
+                </>
+              )}
+
+              {selectedPaymentMethod === 'deposit' && (
+                <>
+                  <View style={styles.paymentMethodDepositRow}>
+                    <Text style={styles.paymentMethodDepositLabel}>{t('payment.depositAmount') || 'Deposit amount'}</Text>
+                    <TextInput
+                      style={styles.paymentMethodDepositInput}
+                      value={depositAmount}
+                      onChangeText={setDepositAmount}
+                      keyboardType="numeric"
+                      placeholder="0"
+                      placeholderTextColor={COLORS.text.secondary}
+                    />
+                  </View>
+                  <View style={styles.paymentMethodDepositActions}>
+                    <TouchableOpacity
+                      style={styles.paymentMethodUseFullDepositButton}
+                      onPress={() => {
+                        const balance = Number((user as any)?.depositBalance ?? (user as any)?.balance ?? 0);
+                        const total = Number((selectedOrderForPayment as any)?.totalAmount ?? 0);
+                        if (balance >= total) {
+                          setSelectedPaymentMethod('deposit');
+                          setDepositAmount(String(Math.round(Math.min(balance, total))));
+                        } else {
+                          (navigation as any).navigate('Deposit');
+                        }
+                      }}
+                    >
+                      <Text style={styles.paymentMethodUseFullDepositButtonText}>{t('payment.useFullDeposit') || 'Use full deposit'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.paymentMethodDepositBalance}>
+                    {t('payment.balance') || 'Balance'}: {formatPriceKRW((user as any)?.depositBalance ?? (user as any)?.balance ?? 0)}
+                  </Text>
+                </>
+              )}
+            </ScrollView>
+
+            <View style={styles.paymentMethodModalFooter}>
+              <TouchableOpacity
+                style={styles.paymentMethodCancelButton}
+                onPress={() => setPaymentMethodModalVisible(false)}
+              >
+                <Text style={styles.paymentMethodCancelButtonText}>{t('common.cancel') || 'Cancel'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.paymentMethodConfirmButton}
+                onPress={() => {
+                  setPaymentMethodModalVisible(false);
+                  handlePaymentMethodSelected(selectedOrderForPayment, selectedPaymentMethod);
+                }}
+              >
+                <Text style={styles.paymentMethodConfirmButtonText}>{t('common.confirm') || 'Confirm'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 };
@@ -4319,6 +4560,189 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes['2xs'],
     fontWeight: '700',
     color: COLORS.white,
+  },
+  paymentMethodModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  paymentMethodModalContent: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: BORDER_RADIUS.xl,
+    borderTopRightRadius: BORDER_RADIUS.xl,
+    padding: SPACING.md,
+    maxHeight: '60%',
+  },
+  paymentMethodModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  paymentMethodModalTitle: {
+    fontSize: FONTS.sizes.lg,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+  },
+  paymentMethodModalBody: {
+    maxHeight: 200,
+  },
+  paymentMethodOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    marginBottom: SPACING.sm,
+    backgroundColor: COLORS.white,
+  },
+  paymentMethodOptionSelected: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.gray[100],
+  },
+  paymentMethodOptionText: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.text.primary,
+  },
+  paymentMethodOptionTextSelected: {
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  paymentMethodTabRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray[200],
+    marginBottom: SPACING.md,
+  },
+  paymentMethodTab: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  paymentMethodTabActive: {
+    borderBottomColor: COLORS.primary,
+  },
+  paymentMethodTabText: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.text.secondary,
+    fontWeight: '600',
+  },
+  paymentMethodTabTextActive: {
+    color: COLORS.primary,
+  },
+  paymentMethodSummaryCard: {
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    backgroundColor: COLORS.white,
+    marginBottom: SPACING.md,
+  },
+  paymentMethodSummaryLabel: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
+    marginBottom: SPACING.xs,
+  },
+  paymentMethodSummaryAmount: {
+    fontSize: FONTS.sizes.xl,
+    color: COLORS.text.primary,
+    fontWeight: '700',
+  },
+  paymentMethodInfoBox: {
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    backgroundColor: COLORS.white,
+    marginBottom: SPACING.md,
+  },
+  paymentMethodInfoText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
+  },
+  paymentMethodDepositActions: {
+    marginTop: SPACING.sm,
+    alignItems: 'flex-end',
+  },
+  paymentMethodUseFullDepositButton: {
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+  },
+  paymentMethodUseFullDepositButtonText: {
+    color: COLORS.white,
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '600',
+  },
+  paymentMethodModalFooter: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray[100],
+    paddingTop: SPACING.md,
+  },
+  paymentMethodDepositRow: {
+    marginTop: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    backgroundColor: COLORS.white,
+  },
+  paymentMethodDepositLabel: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
+    marginBottom: SPACING.xs,
+  },
+  paymentMethodDepositInput: {
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    fontSize: FONTS.sizes.md,
+    color: COLORS.text.primary,
+    backgroundColor: COLORS.background,
+  },
+  paymentMethodDepositBalance: {
+    marginTop: SPACING.xs,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
+  },
+  paymentMethodCancelButton: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.gray[300],
+    alignItems: 'center',
+  },
+  paymentMethodCancelButtonText: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+  },
+  paymentMethodConfirmButton: {
+    flex: 2,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+  },
+  paymentMethodConfirmButtonText: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.white,
+    fontWeight: '700',
   },
 });
 

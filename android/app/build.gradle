@@ -95,10 +95,10 @@ android {
     }
     signingConfigs {
         debug {
-            storeFile file('debug.keystore')
-            storePassword 'android'
-            keyAlias 'androiddebugkey'
-            keyPassword 'android'
+            storeFile file('todaymall.keystore')
+            storePassword '123456'
+            keyAlias 'todaymall_alias'
+            keyPassword '123456'
         }
         release {
             storeFile file('todaymall.keystore')

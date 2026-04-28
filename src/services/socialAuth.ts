@@ -52,7 +52,7 @@ const digestString = async (algorithm: string, data: string, options: { encoding
 // Google OAuth Configuration
 // IMPORTANT: You need BOTH Web Client ID AND Android Client ID in Google Cloud Console
 // Web Client ID - for getting ID tokens
-const GOOGLE_WEB_CLIENT_ID = '423894069406-324q3p0piu0vefesdi5lv6cukjcac8qg.apps.googleusercontent.com';
+const GOOGLE_WEB_CLIENT_ID = '423894069406-dg45pobhema0u8noubb06baa46vn7t9j.apps.googleusercontent.com';
 const GOOGLE_REDIRECT_URI = "https://auth.expo.io/@roy_hensley/todaymall";
 
 // Configure Google Sign-In
