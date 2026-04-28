@@ -11,14 +11,11 @@ import {
   Dimensions,
   ActivityIndicator,
   StatusBar,
-  TextInput,
-  Platform,
   Alert,
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
-import LinearGradient from 'react-native-linear-gradient';
 import { launchCamera, launchImageLibrary, MediaType, ImagePickerResponse, CameraOptions, ImageLibraryOptions } from 'react-native-image-picker';
 import RNFS from 'react-native-fs';
 import { useNavigation } from '@react-navigation/native';
@@ -208,6 +205,7 @@ const CategoryTabScreen: React.FC = () => {
   const [unreadCount, setUnreadCount] = useState(25);
   const [imagePickerModalVisible, setImagePickerModalVisible] = useState(false);
   const [showRecommended, setShowRecommended] = useState(true);
+  const [showAllRecommended, setShowAllRecommended] = useState(false);
   const [forYouProducts, setForYouProducts] = useState<Product[]>([]);
   // Infinite-scroll bookkeeping for the For You list. We fetch in pages
   // of FOR_YOU_PAGE_SIZE, append on subsequent pages, and stop firing
@@ -224,13 +222,10 @@ const CategoryTabScreen: React.FC = () => {
   const [topCategories, setTopCategories] = useState<any[]>([]);
   const [childCategories, setChildCategories] = useState<any[]>([]);
 
-  const platforms = ['1688', 'taobao', 'myCompany'];
-
-  // Get categories tree from store to check if already loaded
-  const { categoriesTree } = usePlatformStore();
-  const hasFetchedRef = useRef<string | null>(null); // Track which platform we've fetched
-  const hasFetchedForYouRef = useRef<string | null>(null); // Track which category we've fetched for "For You"
-  const lastPlatformForCategoryRef = useRef<string | null>(null); // Track which platform we last set category for
+  const hasFetchedRef = useRef<string | null>(null);
+  const hasFetchedForYouRef = useRef<string | null>(null);
+  const lastPlatformForCategoryRef = useRef<string | null>(null);
+  const lastScrollYRef = useRef(0); // 스크롤 방향 판별용 — 위로 스크롤 중엔 load-more 차단
   const childCategoryCacheRef = useRef<Record<string, any[]>>({});
   const previewImageCacheRef = useRef<Record<string, string>>({});
   const activeChildRequestKeyRef = useRef<string | null>(null);
@@ -344,45 +339,57 @@ const CategoryTabScreen: React.FC = () => {
         childCategoryCacheRef.current[requestKey] = baseTree;
       }
 
-      // Enrich missing images in background.
+      // 이미지 보강을 한 항목씩 순차 처리 → API 동시 호출 방지 + 항목마다 즉시 UI 반영
       (async () => {
-        const enrichedTree = await Promise.all(
-          childCatsTree.map(async (level2: any) => {
-            const level2Name = getLocalizedCategoryName(level2);
-            const level3Children = Array.isArray(level2.children) ? level2.children : [];
+        const enrichedTree: any[] = [];
 
-            const enrichedChildren = await Promise.all(
-              level3Children.map(async (level3: any) => {
-                const level3Image = getCategoryImage(level3);
-                if (level3Image) return level3;
+        for (let i = 0; i < childCatsTree.length; i++) {
+          if (activeChildRequestKeyRef.current !== requestKey) return;
 
-                const level3Name = getLocalizedCategoryName(level3);
-                const previewImage = await fetchPreviewImage(level3Name);
-                return previewImage ? { ...level3, imageUrl: previewImage } : level3;
-              })
-            );
+          const level2 = childCatsTree[i];
+          const level2Name = getLocalizedCategoryName(level2);
+          const level3Children = Array.isArray(level2.children) ? level2.children : [];
 
-            const firstChildImage = enrichedChildren
-              .map((child: any) => getCategoryImage(child))
-              .find((img: string) => !!img);
+          // level3 자식도 순차 처리
+          const enrichedChildren: any[] = [];
+          for (const level3 of level3Children) {
+            const level3Image = getCategoryImage(level3);
+            if (level3Image) {
+              enrichedChildren.push(level3);
+            } else {
+              const level3Name = getLocalizedCategoryName(level3);
+              const previewImage = await fetchPreviewImage(level3Name);
+              enrichedChildren.push(previewImage ? { ...level3, imageUrl: previewImage } : level3);
+            }
+          }
 
-            const level2Image = getCategoryImage(level2) || firstChildImage || await fetchPreviewImage(level2Name);
-            return {
-              ...level2,
-              imageUrl: level2Image || level2.imageUrl || '',
-              children: enrichedChildren,
-            };
-          })
-        );
+          const firstChildImage = enrichedChildren
+            .map((child: any) => getCategoryImage(child))
+            .find((img: string) => !!img);
 
-        if (activeChildRequestKeyRef.current !== requestKey) {
-          return;
-        }
+          // 항목을 클릭하면 나오는 페이지의 첫 상품 이미지를 카드 이미지로 사용
+          // fetchPreviewImage 가 해당 카테고리명으로 상품을 검색해 첫 번째 상품 이미지를 반환
+          const productSearchImage = await fetchPreviewImage(level2Name);
+          const level2Image =
+            productSearchImage || getCategoryImage(level2) || firstChildImage;
 
-        setChildCategories(enrichedTree);
+          enrichedTree.push({
+            ...level2,
+            imageUrl: level2Image || level2.imageUrl || '',
+            children: enrichedChildren,
+          });
 
-        if (requestKey) {
-          childCategoryCacheRef.current[requestKey] = enrichedTree;
+          if (activeChildRequestKeyRef.current !== requestKey) return;
+
+          // 이 항목이 보강될 때마다 즉시 UI 갱신 (나머지는 baseTree 유지)
+          const partial = [
+            ...enrichedTree,
+            ...baseTree.slice(enrichedTree.length),
+          ];
+          setChildCategories(partial);
+          if (requestKey) {
+            childCategoryCacheRef.current[requestKey] = partial;
+          }
         }
       })();
     },
@@ -562,11 +569,16 @@ const CategoryTabScreen: React.FC = () => {
 
   // Fetch "For You" products when category or company is selected
   useEffect(() => {
+    // Never interrupt a load-more fetch — if we reset isLoadMoreRef here while
+    // a page-2+ request is in flight, onSuccess will treat the response as an
+    // initial load and REPLACE the list instead of appending to it.
+    if (isLoadMoreRef.current) return;
+
     if (locale && selectedCategory) {
       // Create a unique key for this combination of category and company
       const fetchKey = `${selectedCategory}-${selectedCompany}`;
       const alreadyFetched = hasFetchedForYouRef.current === fetchKey;
-      
+
       // Only fetch if we haven't fetched for this combination yet
       if (!alreadyFetched) {
         // Find the selected category to get its name
@@ -587,10 +599,6 @@ const CategoryTabScreen: React.FC = () => {
           // Different filter for Taobao vs 1688
           const searchFilter = platformSource === 'taobao' ? undefined : 'isQqyx';
           
-          // Page size kept small (6) so the For You list paints quickly
-          // when the user opens / switches a category. Was 20, but the
-          // larger payload + 20 image downloads delayed first paint —
-          // the rest of the list streams in via infinite-scroll below.
           isLoadMoreRef.current = false; // initial fetch — REPLACE list
           setForYouPage(1);
           setForYouHasMore(true);
@@ -630,9 +638,6 @@ const CategoryTabScreen: React.FC = () => {
         // Different filter for Taobao vs 1688
         const searchFilter = platformSource === 'taobao' ? undefined : 'isQqyx';
         
-        // Same small page size on pull-to-refresh — see the initial
-        // fetch above for context. Reset infinite-scroll bookkeeping
-        // back to page 1 so subsequent scroll-to-bottom starts fresh.
         isLoadMoreRef.current = false;
         setForYouPage(1);
         setForYouHasMore(true);
@@ -653,8 +658,13 @@ const CategoryTabScreen: React.FC = () => {
   };
 
   const handleCategoryPress = (categoryId: string) => {
-    // Just select the category - recommended subcategories will show automatically
+    if (categoryId === selectedCategory) return;
     setSelectedCategory(categoryId);
+    setChildCategories([]); // 즉시 비워서 스켈레톤이 바로 표시됨
+    setForYouProducts([]);
+    setForYouPage(1);
+    setForYouHasMore(true);
+    setShowAllRecommended(false);
   };
 
   // Helper function to convert image URI to base64
@@ -825,6 +835,8 @@ const CategoryTabScreen: React.FC = () => {
                   setForYouProducts([]);
                   setForYouPage(1);
                   setForYouHasMore(true);
+                  // Reset selected category so useTopCategoriesMutation.onSuccess auto-selects the first category of the new company
+                  setSelectedCategory('');
                 }}
               >
                 <Text style={[
@@ -885,14 +897,20 @@ const CategoryTabScreen: React.FC = () => {
     );
   };
 
-  const renderRecommendedItem = ({ item }: { item: any }) => {
-    // Pull whatever image field the API or the background enrichment
-    // populated. Then run it through the same CDN thumbnail transform
-    // the home page uses so the request is small + cacheable.
-    const rawImage = item.image || item.imageUrl || '';
+  const renderRecommendedItem = ({ item, index = 0 }: { item: any, index?: number }) => {
+     console.log('[CategoryTabScreen] Rendering recommended item:', item);
+    // 자식(subsubcategory) 중 이미지가 있는 첫 번째 항목의 이미지를 카드 이미지로 사용
+    const firstChildImage =
+      item.subsubcategories?.find((s: any) => s.image)?.image || '';
+      console.log('[CategoryTabScreen] First child image for item:', firstChildImage);
+    const rawImage = firstChildImage || item.image || '';
+    console.log('[CategoryTabScreen] Raw image URL for item:', rawImage, 'First child image:', firstChildImage, 'Item image:', item.image);
+    // URL이 있으면 즉시 표시 (순차 보강으로 자연스럽게 하나씩 나타남)
     const displayImage = rawImage
       ? buildProductDisplayImageUri(rawImage, IMAGE_CONFIG.HOME_GRID_IMAGE_PIXEL, 60)
       : '';
+    // 앞쪽 항목 우선 다운로드 (FastImage 내부 큐 관리)
+    const imagePriority = index < 4 ? FastImage.priority.high : FastImage.priority.low;
 
     return (
       <TouchableOpacity
@@ -933,7 +951,7 @@ const CategoryTabScreen: React.FC = () => {
         <View style={styles.recommendedImageContainer}>
           {displayImage ? (
             <FastImage
-              source={{ uri: displayImage, priority: FastImage.priority.normal }}
+              source={{ uri: displayImage, priority: imagePriority }}
               style={styles.recommendedImage}
               resizeMode={FastImage.resizeMode.cover}
             />
@@ -953,16 +971,24 @@ const CategoryTabScreen: React.FC = () => {
   };
 
   const renderForYouProducts = () => {
-    // Show loading state
-    if (isLoadingForYou) {
+    // 상품이 아직 없을 때만 전체 로딩 스피너 표시 (초기 로드).
+    // isLoadingForYou 는 load-more 중에도 true 가 되므로, 상품이 이미
+    // 있는 상태에서 이 조건을 쓰면 기존 목록이 스피너로 교체된다.
+    if (isLoadingForYou && forYouProducts.length === 0) {
+      // 스피너 대신 카드 구조(스켈레톤)를 먼저 보여주고, 그림은 데이터 도착 후 표시
       return (
         <View style={styles.forYouSection}>
           <View style={styles.forYouHeader}>
             <Text style={styles.forYouTitle}>{t('home.forYou')}</Text>
           </View>
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color={COLORS.primary} />
-            <Text style={styles.loadingText}>{t('category.loadingProducts')}</Text>
+          <View style={styles.forYouGrid}>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <View key={`fy-skel-${i}`} style={{ width: FOR_YOU_CARD_WIDTH }}>
+                <View style={styles.fySkeletonImage} />
+                <View style={styles.fySkeletonTitle} />
+                <View style={styles.fySkeletonPrice} />
+              </View>
+            ))}
           </View>
         </View>
       );
@@ -972,7 +998,7 @@ const CategoryTabScreen: React.FC = () => {
     if (!Array.isArray(forYouProducts) || forYouProducts.length === 0) {
       return null;
     }
-    
+
     return (
       <View style={styles.forYouSection}>
         <View style={styles.forYouHeader}>
@@ -1008,8 +1034,8 @@ const CategoryTabScreen: React.FC = () => {
             );
           })}
         </View>
-        {/* Footer spinner while infinite-scroll fetches the next page. */}
-        {isLoadingMoreForYou && (
+        {/* 하단 스피너: load-more 또는 추가 페이지 로딩 중 */}
+        {(isLoadingMoreForYou || isLoadingForYou) && (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color={COLORS.primary} />
           </View>
@@ -1018,83 +1044,58 @@ const CategoryTabScreen: React.FC = () => {
     );
   };
 
-  // Transform child categories to recommended items format (from API)
-  const allRecommendedItems = useMemo(() => childCategories.flatMap((level2: any) => {
-    const items: any[] = [];
-    const level3Children = Array.isArray(level2.children) ? level2.children : [];
-    const firstChildImage = level3Children
-      .map((child: any) => getCategoryImage(child))
-      .find((img: string) => !!img) || '';
-    
-    // Add level 2 category as an item
-    items.push({
-      id: level2._id,
-      name: typeof level2.name === 'object'
-        ? (level2.name[locale] || level2.name.en || level2.name.zh || 'Category')
-        : level2.name,
-      // Prefer the first image from the list that appears after tapping this item.
-      image: firstChildImage || getCategoryImage(level2) || '',
-      subsubcategories: level3Children.map((level3: any) => ({
-        id: level3._id,
-        name: typeof level3.name === 'object'
-          ? (level3.name[locale] || level3.name.en || level3.name.zh || 'Category')
-          : level3.name,
-        externalId: level3.externalId,
-        image: getCategoryImage(level3) || '',
-      })),
-    });
+  // 추천항목: level2 카테고리만 카드로 표시, level3는 subsubcategories로 전달
+  // 클릭 시 ProductDiscovery로 이동해 해당 이름으로 상품 검색 (검색창 검색과 동일)
+  const recommendedItems = useMemo(() => {
+    return childCategories.map((level2: any) => {
+      const level3Children = Array.isArray(level2.children) ? level2.children : [];
+      const firstChildImage = level3Children
+        .map((child: any) => getCategoryImage(child))
+        .find((img: string) => !!img) || '';
 
-    // Add level 3 categories as separate items
-    if (level3Children.length > 0) {
-      level3Children.forEach((level3: any, index: number) => {
-        items.push({
+      const level2Name = typeof level2.name === 'object'
+        ? (level2.name[locale] || level2.name.en || level2.name.zh || '')
+        : (level2.name || '');
+
+      return {
+        id: level2._id,
+        name: level2Name,
+        // fetchPreviewImage 가 level2.imageUrl 에 상품 검색 첫 이미지를 저장하므로
+        // getCategoryImage(level2) 를 firstChildImage 보다 먼저 확인해야 한다
+        image: getCategoryImage(level2) || firstChildImage || '',
+        subsubcategories: level3Children.map((level3: any) => ({
           id: level3._id,
           name: typeof level3.name === 'object'
-            ? (level3.name[locale] || level3.name.en || level3.name.zh || 'Category')
-            : level3.name,
-          // If this item has no own image, use the first image from the shown list.
-          image: getCategoryImage(level3) || (index === 0 ? firstChildImage : '') || '',
-          isLevel3: true,
-          parentId: level2._id,
-        });
-      });
-    }
-
-    return items;
-  }), [childCategories, locale, getCategoryImage]);
-  
-  // Show only first 9 subcategories as recommended. If a recommended
-  // card still has no image (because the background fetchPreviewImage
-  // search returned nothing for that category name), fall back to the
-  // first For You product image at the same index — those products are
-  // already loaded for the SAME category, so their images are
-  // representative and guaranteed to be available.
-  const recommendedItems = useMemo(() => {
-    const sliced = allRecommendedItems.slice(0, 9);
-    if (forYouProducts.length === 0) return sliced;
-    return sliced.map((item: any, idx: number) => {
-      if (item.image) return item;
-      const fallback = forYouProducts[idx % forYouProducts.length];
-      const fallbackImage =
-        (fallback as any)?.image ||
-        (fallback as any)?.imageUrl ||
-        '';
-      return fallbackImage ? { ...item, image: fallbackImage } : item;
-    });
-  }, [allRecommendedItems, forYouProducts]);
+            ? (level3.name[locale] || level3.name.en || level3.name.zh || '')
+            : (level3.name || ''),
+          externalId: level3.externalId,
+          image: getCategoryImage(level3) || '',
+        })),
+      };
+    }).filter((item: any) => item.name); // 이름 없는 항목 제거
+  }, [childCategories, locale, getCategoryImage]);
 
   // Infinite-scroll: fetch the next page of For You products and append
   // them to the existing list. Triggered by the parent ScrollView's
   // onScroll handler when the user is near the bottom of the screen.
   // Defined here (not earlier) so `categoriesToDisplay` is in scope.
   const loadMoreForYouProducts = useCallback(() => {
-    if (isLoadingMoreForYou || !forYouHasMore) return;
+    // isLoadMoreRef is a ref → synchronous, never stale across renders.
+    // Using state (isLoadingMoreForYou) here caused a race: React batches
+    // state updates, so a second scroll event 400 ms later could see the
+    // old false value and fire a duplicate request.
+    if (isLoadMoreRef.current || !forYouHasMore) return;
     if (!selectedCategory || !selectedCompany) return;
 
     const selectedCategoryData = categoriesToDisplay.find(
       (cat: any) => cat.id === selectedCategory,
     );
     if (!selectedCategoryData) return;
+
+    // Lock immediately — before any async work — so concurrent scroll
+    // events that fire before the next render are also blocked.
+    isLoadMoreRef.current = true;
+    setIsLoadingMoreForYou(true);
 
     const categoryName = selectedCategoryData.name;
     const platformSource = getPlatformFromCompany(selectedCompany);
@@ -1103,8 +1104,6 @@ const CategoryTabScreen: React.FC = () => {
 
     const nextPage = forYouPage + 1;
     setForYouPage(nextPage);
-    setIsLoadingMoreForYou(true);
-    isLoadMoreRef.current = true;
 
     searchForYouProducts(
       categoryName,
@@ -1120,8 +1119,6 @@ const CategoryTabScreen: React.FC = () => {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    isLoadingForYou,
-    isLoadingMoreForYou,
     forYouHasMore,
     selectedCategory,
     selectedCompany,
@@ -1165,13 +1162,15 @@ const CategoryTabScreen: React.FC = () => {
             refreshControl={
               <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
             }
-            // Detect approach to the bottom and fire load-more for the
-            // For You list. Threshold of 200px lets the next page start
-            // fetching just before the user actually hits the end.
             onScroll={({ nativeEvent }) => {
               const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+              const currentY = contentOffset.y;
+              const isScrollingDown = currentY > lastScrollYRef.current;
+              lastScrollYRef.current = currentY;
+              if (!isScrollingDown) return;
+
               const distanceFromEnd =
-                contentSize.height - layoutMeasurement.height - contentOffset.y;
+                contentSize.height - layoutMeasurement.height - currentY;
               if (distanceFromEnd < 200) {
                 loadMoreForYouProducts();
               }
@@ -1193,13 +1192,36 @@ const CategoryTabScreen: React.FC = () => {
               </TouchableOpacity>
               {showRecommended && (
                 <>
-                  <View style={styles.recommendedGrid}>
-                    {recommendedItems.map((item, index) => (
-                      <View key={`rec-${item.id || index}`}>
-                        {renderRecommendedItem({ item })}
+                  {(isLoadingChildCategories || (recommendedItems.length === 0 && !!selectedCategory)) ? (
+                    // 스켈레톤: 카테고리 전환 시 구조 먼저 표시
+                    <View style={styles.recommendedGrid}>
+                      {Array.from({ length: 6 }).map((_, i) => (
+                        <View key={`skel-${i}`} style={[styles.recommendedItem, { width: (dynWidth - 120 - SPACING.sm * 5) / 3 }]}>
+                          <View style={[styles.recommendedImageContainer, styles.skeletonBox]} />
+                          <View style={styles.skeletonText} />
+                        </View>
+                      ))}
+                    </View>
+                  ) : recommendedItems.length === 0 ? null : (
+                    <>
+                      <View style={styles.recommendedGrid}>
+                        {(showAllRecommended ? recommendedItems : recommendedItems.slice(0, 6)).map((item: any, index: number) => (
+                          <View key={`rec-${item.id || index}`}>
+                            {renderRecommendedItem({ item, index })}
+                          </View>
+                        ))}
                       </View>
-                    ))}
-                  </View>
+                      {!showAllRecommended && recommendedItems.length > 6 && (
+                        <TouchableOpacity
+                          style={styles.showMoreButton}
+                          onPress={() => setShowAllRecommended(true)}
+                        >
+                          <Text style={styles.showMoreText}>더보기 ({recommendedItems.length - 6}+)</Text>
+                          <Icon name="chevron-down" size={14} color={COLORS.text.secondary} />
+                        </TouchableOpacity>
+                      )}
+                    </>
+                  )}
                 </>
               )}
             </View>
@@ -1333,6 +1355,28 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: '500',
   },
+  skeletonBox: {
+    backgroundColor: COLORS.gray[200],
+  },
+  skeletonText: {
+    height: 10,
+    backgroundColor: COLORS.gray[200],
+    borderRadius: 4,
+    marginTop: SPACING.xs,
+    width: '70%',
+  },
+  showMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.sm,
+    gap: SPACING.xs,
+  },
+  showMoreText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
+    fontWeight: '500',
+  },
   forYouSection: {
     backgroundColor: COLORS.white,
     borderRadius: BORDER_RADIUS.md,
@@ -1366,6 +1410,26 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     fontSize: FONTS.sizes.sm,
     color: COLORS.text.secondary,
+  },
+  fySkeletonImage: {
+    width: '100%',
+    aspectRatio: 1,
+    backgroundColor: COLORS.gray[200],
+    borderRadius: BORDER_RADIUS.sm,
+    marginBottom: SPACING.xs,
+  },
+  fySkeletonTitle: {
+    height: 10,
+    backgroundColor: COLORS.gray[200],
+    borderRadius: 4,
+    marginBottom: SPACING.xs,
+    width: '85%',
+  },
+  fySkeletonPrice: {
+    height: 10,
+    backgroundColor: COLORS.gray[200],
+    borderRadius: 4,
+    width: '45%',
   },
   companyTabsContainer: {
     backgroundColor: COLORS.white,

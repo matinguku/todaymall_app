@@ -348,12 +348,33 @@ const ScheduleItem: React.FC<{ item: any; locale: 'en' | 'ko' | 'zh' }> = ({ ite
   const title = getLocalizedTitle(item, locale) || 'Live title here';
   const viewers = getViewerCount(item);
   const status = item.status || item.currentLiveStatus || 'scheduled';
+  const isLive = status?.toLowerCase() === 'live';
+
+  const BASE_AVATAR = 44;
+  const avatarSize = isLive ? Math.round(BASE_AVATAR * 1.2) : BASE_AVATAR; // live: 53px
+
+  // scheduled 항목은 날짜/시간 문자열을 부제목으로 표시
+  const tag = localeToTag(locale);
+  const reelStart = parseReelDateTime(item?.date, item?.timeFrom);
+  const reelEnd   = parseReelDateTime(item?.date, item?.timeTo);
+  const startAt   = reelStart ?? (item?.startAt ? new Date(item.startAt) : null);
+  const endAt     = reelEnd   ?? (startAt ? new Date(startAt.getTime() + 110 * 60000) : null);
+  const timeOpts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', hour12: true };
+  const dateTimeText = startAt
+    ? `${startAt.toLocaleDateString(tag, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} ${startAt.toLocaleTimeString(tag, timeOpts)}${endAt ? ` – ${endAt.toLocaleTimeString(tag, timeOpts)}` : ''}`
+    : title;
+
+  const subtitle = isLive ? title : dateTimeText;
 
   return (
     <View style={styles.scheduleItemRow}>
-      <View style={[styles.scheduleAvatarWrapper, status?.toLowerCase() === 'live' && { borderWidth: 2, borderColor: '#FF0000', borderRadius: BORDER_RADIUS.full }]}>
-        <Image source={{ uri: sellerData.avatar }} style={styles.scheduleAvatar} />
-        {status?.toLowerCase() === 'live' && (
+      <View style={[
+        styles.scheduleAvatarWrapper,
+        { width: avatarSize, height: avatarSize },
+        isLive && { borderWidth: 2, borderColor: '#FF0000', borderRadius: avatarSize / 2 },
+      ]}>
+        <Image source={{ uri: sellerData.avatar }} style={[styles.scheduleAvatar, { width: avatarSize, height: avatarSize }]} />
+        {isLive && (
           <View style={styles.scheduleLiveDot}>
             <Text style={styles.scheduleLiveDotText}>LIVE</Text>
           </View>
@@ -361,7 +382,7 @@ const ScheduleItem: React.FC<{ item: any; locale: 'en' | 'ko' | 'zh' }> = ({ ite
       </View>
       <View style={styles.scheduleItemInfo}>
         <Text style={styles.scheduleItemName} numberOfLines={1}>{sellerData.name}</Text>
-        <Text style={styles.scheduleItemTitle} numberOfLines={1}>{title}</Text>
+        <Text style={styles.scheduleItemTitle} numberOfLines={1}>{subtitle}</Text>
       </View>
       <View style={styles.scheduleItemRight}>
         <Text style={styles.scheduleItemViewers}>{viewers}</Text>
@@ -674,23 +695,26 @@ const LiveScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Live Stream Schedule */}
-        {/* {schedule.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>{t('live.liveStreamSchedule')}</Text>
-              {liveNowCount > 0 && (
-                <Text style={styles.liveNowCountText}>{liveNowCount} <Text style={{color: COLORS.text.primary}}>{t('live.liveNowStatus')}</Text></Text>
-              )}
-            </View>
-            {schedule.slice(0, 6).map((item: any, i: number) => (
-              <ScheduleItem key={item.id || i} item={item} locale={locale} />
-            ))}
-          </View>
-        )} */}
-
         {showHeavyContent ? (
           <>
+            {/* Live Stream Schedule — liveReels 아래, Top Seller 위 */}
+            {schedule.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionTitle}>{t('live.liveStreamSchedule')}</Text>
+                  {liveNowCount > 0 && (
+                    <Text style={styles.liveNowCountText}>
+                      {liveNowCount}{' '}
+                      <Text style={{ color: COLORS.text.secondary }}>{t('live.liveNowStatus')}</Text>
+                    </Text>
+                  )}
+                </View>
+                {schedule.slice(0, 6).map((item: any, i: number) => (
+                  <ScheduleItem key={item._id || item.id || i} item={item} locale={locale} />
+                ))}
+              </View>
+            )}
+
             {/* Top Seller */}
             {topSellers.length > 0 && (
               <View style={styles.section}>
