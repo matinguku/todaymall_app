@@ -204,28 +204,40 @@ const OrderConfirmationScreen: React.FC = () => {
   const renderOrderSummary = () => {
     if (!order) return null;
 
+    // Service fee = 1% of the product subtotal, rounded to the nearest
+    // integer (no fractional won amounts shown). Computed client-side
+    // and added on top of the backend-supplied order.total so the
+    // displayed total matches the rows above.
+    const serviceFee = Math.round((order.subtotal || 0) * 0.01);
+    const displayedTotal = (order.total || 0) + serviceFee;
+
     return (
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Order Summary</Text>
-        
+
         <View style={styles.summaryContainer}>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Subtotal</Text>
             <Text style={styles.summaryValue}>{formatPriceKRW(order.subtotal)}</Text>
           </View>
-          
+
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Service Fee</Text>
+            <Text style={styles.summaryValue}>{formatPriceKRW(serviceFee)}</Text>
+          </View>
+
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Shipping</Text>
             <Text style={styles.summaryValue}>
               {order.shipping === 0 ? 'Free' : formatPriceKRW(order.shipping)}
             </Text>
           </View>
-          
+
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Tax</Text>
             <Text style={styles.summaryValue}>{formatPriceKRW(order.tax)}</Text>
           </View>
-          
+
           {order.discount > 0 && (
             <View style={styles.summaryRow}>
               <Text style={[styles.summaryLabel, { color: COLORS.success }]}>Discount</Text>
@@ -234,10 +246,10 @@ const OrderConfirmationScreen: React.FC = () => {
               </Text>
             </View>
           )}
-          
+
           <View style={[styles.summaryRow, styles.totalRow]}>
             <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>{formatPriceKRW(order.total)}</Text>
+            <Text style={styles.totalValue}>{formatPriceKRW(displayedTotal)}</Text>
           </View>
         </View>
       </View>

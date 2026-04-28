@@ -3637,7 +3637,7 @@ Supports credit and check cards from various banks for recharging and payments.`
     product: {
       addToCart: '장바구니 담기',
       addingToCart: '추가 중...',
-      buyNow: '점검',
+      buyNow: '점  검',
       quantity: '수량',
       color: '색상',
       size: '사이즈',

@@ -25,8 +25,9 @@ import { useNavigation } from '@react-navigation/native';
 import { requestCameraPermission, requestPhotoLibraryPermission } from '../../utils/permissions';
 import { StackNavigationProp } from '@react-navigation/stack';
 
+import FastImage from '@d11/react-native-fast-image';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG } from '../../constants';
-import { getProductCardImageUri } from '../../utils/productImage';
+import { getProductCardImageUri, buildProductDisplayImageUri } from '../../utils/productImage';
 import { RootStackParamList, Product } from '../../types';
 import { SearchButton, NotificationBadge, ProductCard, ImagePickerModal } from '../../components';
 import NotificationIcon from '../../assets/icons/NotificationIcon';
@@ -208,6 +209,16 @@ const CategoryTabScreen: React.FC = () => {
   const [imagePickerModalVisible, setImagePickerModalVisible] = useState(false);
   const [showRecommended, setShowRecommended] = useState(true);
   const [forYouProducts, setForYouProducts] = useState<Product[]>([]);
+  // Infinite-scroll bookkeeping for the For You list. We fetch in pages
+  // of FOR_YOU_PAGE_SIZE, append on subsequent pages, and stop firing
+  // load-more once the API returns fewer items than a full page.
+  const FOR_YOU_PAGE_SIZE = 20;
+  const [forYouPage, setForYouPage] = useState(1);
+  const [forYouHasMore, setForYouHasMore] = useState(true);
+  const [isLoadingMoreForYou, setIsLoadingMoreForYou] = useState(false);
+  // Tracks whether the next mutation success should APPEND (load-more)
+  // or REPLACE (initial / category change / refresh) the list.
+  const isLoadMoreRef = useRef(false);
   const [companies, setCompanies] = useState<string[]>(['All', '1688', 'Taobao']);
   const [selectedCompany, setSelectedCompany] = useState<string>('All');
   const [topCategories, setTopCategories] = useState<any[]>([]);
@@ -286,7 +297,7 @@ const CategoryTabScreen: React.FC = () => {
             false
           );
           const firstProduct = response?.data?.data?.products?.[0];
-          const previewImage = (
+          const rawImage = (
             firstProduct?.image ||
             firstProduct?.imageUrl ||
             firstProduct?.mainImage ||
@@ -294,6 +305,17 @@ const CategoryTabScreen: React.FC = () => {
             firstProduct?.images?.[0] ||
             ''
           );
+          // Mirror the home page's image-loading pipeline: ask the CDN
+          // for a thumbnail-sized variant of the product image (smaller
+          // payload, faster to download/decode) instead of the full
+          // desktop-sized URL the search API returns.
+          const previewImage = rawImage
+            ? buildProductDisplayImageUri(
+                rawImage,
+                IMAGE_CONFIG.HOME_GRID_IMAGE_PIXEL,
+                60,
+              )
+            : '';
           previewImageCacheRef.current[cacheKey] = previewImage;
           return previewImage;
         } catch {
@@ -487,8 +509,17 @@ const CategoryTabScreen: React.FC = () => {
           (row as Product).image = getProductCardImageUri(row, undefined, 60) || '';
           return row;
         });
-        setForYouProducts(mappedProducts);
-        
+        // Append on load-more, replace on initial/refresh.
+        if (isLoadMoreRef.current) {
+          setForYouProducts((prev) => [...prev, ...mappedProducts]);
+        } else {
+          setForYouProducts(mappedProducts);
+        }
+        // No more pages to fetch once the server returns a partial page.
+        setForYouHasMore(mappedProducts.length >= FOR_YOU_PAGE_SIZE);
+        setIsLoadingMoreForYou(false);
+        isLoadMoreRef.current = false;
+
         // Extract unique company names from mapped products
         const uniqueCompanies = new Set<string>(['All']);
         mappedProducts.forEach((product: any) => {
@@ -505,9 +536,9 @@ const CategoryTabScreen: React.FC = () => {
         });
         // setCompanies(sortedCompanies);
         
-        // Mark this category as fetched
+        // Mark this category+company combination as fetched
         if (selectedCategory) {
-          hasFetchedForYouRef.current = selectedCategory;
+          hasFetchedForYouRef.current = `${selectedCategory}-${selectedCompany}`;
         }
       }
     },
@@ -520,6 +551,15 @@ const CategoryTabScreen: React.FC = () => {
     },
   });
 
+  // Use top categories for left column (from API)
+  const categoriesToDisplay = useMemo(() => topCategories.map((cat: any) => ({
+    id: cat._id,
+    name: typeof cat.name === 'object'
+      ? (cat.name[locale] || cat.name.en || cat.name.zh || 'Category')
+      : cat.name,
+    image: cat.imageUrl || '',
+  })), [topCategories, locale]);
+
   // Fetch "For You" products when category or company is selected
   useEffect(() => {
     if (locale && selectedCategory) {
@@ -527,8 +567,8 @@ const CategoryTabScreen: React.FC = () => {
       const fetchKey = `${selectedCategory}-${selectedCompany}`;
       const alreadyFetched = hasFetchedForYouRef.current === fetchKey;
       
-      // Only fetch if we haven't fetched for this combination yet and not currently loading
-      if (!alreadyFetched && !isLoadingForYou) {
+      // Only fetch if we haven't fetched for this combination yet
+      if (!alreadyFetched) {
         // Find the selected category to get its name
         const selectedCategoryData = categoriesToDisplay.find((cat: any) => cat.id === selectedCategory);
         
@@ -547,12 +587,19 @@ const CategoryTabScreen: React.FC = () => {
           // Different filter for Taobao vs 1688
           const searchFilter = platformSource === 'taobao' ? undefined : 'isQqyx';
           
+          // Page size kept small (6) so the For You list paints quickly
+          // when the user opens / switches a category. Was 20, but the
+          // larger payload + 20 image downloads delayed first paint —
+          // the rest of the list streams in via infinite-scroll below.
+          isLoadMoreRef.current = false; // initial fetch — REPLACE list
+          setForYouPage(1);
+          setForYouHasMore(true);
           searchForYouProducts(
             categoryName,
             platformSource,
             countryCode,
             1,
-            20,
+            FOR_YOU_PAGE_SIZE,
             '', // sort
             undefined, // priceStart
             undefined, // priceEnd
@@ -563,10 +610,11 @@ const CategoryTabScreen: React.FC = () => {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCategory, selectedCompany, locale]); // Depend on selectedCategory, selectedCompany, and locale
+  }, [selectedCategory, selectedCompany, locale, categoriesToDisplay]); // categoriesToDisplay needed so fetch fires after categories load
 
   const onRefresh = async () => {
     setRefreshing(true);
+    hasFetchedForYouRef.current = null;
     // Refresh For You products
     if (selectedPlatform && locale && selectedCategory) {
       const selectedCategoryData = categoriesToDisplay.find((cat: any) => cat.id === selectedCategory);
@@ -582,12 +630,18 @@ const CategoryTabScreen: React.FC = () => {
         // Different filter for Taobao vs 1688
         const searchFilter = platformSource === 'taobao' ? undefined : 'isQqyx';
         
+        // Same small page size on pull-to-refresh — see the initial
+        // fetch above for context. Reset infinite-scroll bookkeeping
+        // back to page 1 so subsequent scroll-to-bottom starts fresh.
+        isLoadMoreRef.current = false;
+        setForYouPage(1);
+        setForYouHasMore(true);
         searchForYouProducts(
           categoryName,
           platformSource,
           countryCode,
           1,
-          20,
+          FOR_YOU_PAGE_SIZE,
           '',
           undefined,
           undefined,
@@ -763,11 +817,14 @@ const CategoryTabScreen: React.FC = () => {
                   setSelectedPlatform(platform);
                   // console.log('[CategoryTabScreen] Company selected:', company, 'Platform updated to:', platform);
                   // Reset fetch refs to allow refetch with new company
-                  hasFetchedRef.current = null; // Reset category tree fetch ref
-                  hasFetchedForYouRef.current = null; // Reset products fetch ref
-                  lastPlatformForCategoryRef.current = null; // Reset platform ref so category gets set for new company
+                  hasFetchedRef.current = null;
+                  hasFetchedForYouRef.current = null;
+                  lastPlatformForCategoryRef.current = null;
+                  setTopCategories([]);
+                  setChildCategories([]);
                   setForYouProducts([]);
-                  // The useEffect will automatically set first category and refetch category tree and products when selectedCompany changes
+                  setForYouPage(1);
+                  setForYouHasMore(true);
                 }}
               >
                 <Text style={[
@@ -829,7 +886,13 @@ const CategoryTabScreen: React.FC = () => {
   };
 
   const renderRecommendedItem = ({ item }: { item: any }) => {
-    const displayImage = item.image;
+    // Pull whatever image field the API or the background enrichment
+    // populated. Then run it through the same CDN thumbnail transform
+    // the home page uses so the request is small + cacheable.
+    const rawImage = item.image || item.imageUrl || '';
+    const displayImage = rawImage
+      ? buildProductDisplayImageUri(rawImage, IMAGE_CONFIG.HOME_GRID_IMAGE_PIXEL, 60)
+      : '';
 
     return (
       <TouchableOpacity
@@ -869,10 +932,10 @@ const CategoryTabScreen: React.FC = () => {
       >
         <View style={styles.recommendedImageContainer}>
           {displayImage ? (
-            <Image
-              source={{ uri: displayImage }}
+            <FastImage
+              source={{ uri: displayImage, priority: FastImage.priority.normal }}
               style={styles.recommendedImage}
-              resizeMode="cover"
+              resizeMode={FastImage.resizeMode.cover}
             />
           ) : (
             <Image
@@ -945,18 +1008,15 @@ const CategoryTabScreen: React.FC = () => {
             );
           })}
         </View>
+        {/* Footer spinner while infinite-scroll fetches the next page. */}
+        {isLoadingMoreForYou && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color={COLORS.primary} />
+          </View>
+        )}
       </View>
     );
   };
-
-  // Use top categories for left column (from API)
-  const categoriesToDisplay = useMemo(() => topCategories.map((cat: any) => ({
-    id: cat._id,
-    name: typeof cat.name === 'object'
-      ? (cat.name[locale] || cat.name.en || cat.name.zh || 'Category')
-      : cat.name,
-    image: cat.imageUrl || '',
-  })), [topCategories, locale]);
 
   // Transform child categories to recommended items format (from API)
   const allRecommendedItems = useMemo(() => childCategories.flatMap((level2: any) => {
@@ -1003,8 +1063,72 @@ const CategoryTabScreen: React.FC = () => {
     return items;
   }), [childCategories, locale, getCategoryImage]);
   
-  // Show only first 9 subcategories as recommended
-  const recommendedItems = useMemo(() => allRecommendedItems.slice(0, 9), [allRecommendedItems]);
+  // Show only first 9 subcategories as recommended. If a recommended
+  // card still has no image (because the background fetchPreviewImage
+  // search returned nothing for that category name), fall back to the
+  // first For You product image at the same index — those products are
+  // already loaded for the SAME category, so their images are
+  // representative and guaranteed to be available.
+  const recommendedItems = useMemo(() => {
+    const sliced = allRecommendedItems.slice(0, 9);
+    if (forYouProducts.length === 0) return sliced;
+    return sliced.map((item: any, idx: number) => {
+      if (item.image) return item;
+      const fallback = forYouProducts[idx % forYouProducts.length];
+      const fallbackImage =
+        (fallback as any)?.image ||
+        (fallback as any)?.imageUrl ||
+        '';
+      return fallbackImage ? { ...item, image: fallbackImage } : item;
+    });
+  }, [allRecommendedItems, forYouProducts]);
+
+  // Infinite-scroll: fetch the next page of For You products and append
+  // them to the existing list. Triggered by the parent ScrollView's
+  // onScroll handler when the user is near the bottom of the screen.
+  // Defined here (not earlier) so `categoriesToDisplay` is in scope.
+  const loadMoreForYouProducts = useCallback(() => {
+    if (isLoadingMoreForYou || !forYouHasMore) return;
+    if (!selectedCategory || !selectedCompany) return;
+
+    const selectedCategoryData = categoriesToDisplay.find(
+      (cat: any) => cat.id === selectedCategory,
+    );
+    if (!selectedCategoryData) return;
+
+    const categoryName = selectedCategoryData.name;
+    const platformSource = getPlatformFromCompany(selectedCompany);
+    const countryCode = locale === 'zh' ? 'en' : locale;
+    const searchFilter = platformSource === 'taobao' ? undefined : 'isQqyx';
+
+    const nextPage = forYouPage + 1;
+    setForYouPage(nextPage);
+    setIsLoadingMoreForYou(true);
+    isLoadMoreRef.current = true;
+
+    searchForYouProducts(
+      categoryName,
+      platformSource,
+      countryCode,
+      nextPage,
+      FOR_YOU_PAGE_SIZE,
+      '',
+      undefined,
+      undefined,
+      searchFilter,
+      false,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isLoadingForYou,
+    isLoadingMoreForYou,
+    forYouHasMore,
+    selectedCategory,
+    selectedCompany,
+    locale,
+    forYouPage,
+    categoriesToDisplay,
+  ]);
   
   return (
     <SafeAreaView style={styles.container}>
@@ -1036,11 +1160,23 @@ const CategoryTabScreen: React.FC = () => {
         </View>
         
         <View style={styles.rightColumn}>
-          <ScrollView 
+          <ScrollView
             showsVerticalScrollIndicator={false}
             refreshControl={
               <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
             }
+            // Detect approach to the bottom and fire load-more for the
+            // For You list. Threshold of 200px lets the next page start
+            // fetching just before the user actually hits the end.
+            onScroll={({ nativeEvent }) => {
+              const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+              const distanceFromEnd =
+                contentSize.height - layoutMeasurement.height - contentOffset.y;
+              if (distanceFromEnd < 200) {
+                loadMoreForYouProducts();
+              }
+            }}
+            scrollEventThrottle={400}
           >
             {/* Recommended Section */}
             <View style={styles.recommendedSection}>

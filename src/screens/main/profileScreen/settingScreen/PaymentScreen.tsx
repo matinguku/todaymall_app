@@ -831,7 +831,12 @@ const PaymentScreen: React.FC = () => {
   const productCouponDiscount = selectedProductCoupon?.applicableDiscount ?? selectedProductCoupon?.amount ?? 0;
   const shippingCouponDiscount = selectedShippingCoupon?.applicableDiscount ?? selectedShippingCoupon?.amount ?? 0;
   const couponDiscount = productCouponDiscount + shippingCouponDiscount;
-  const finalTotal = productTotalKRW + shippingTotalKRW - pointsDiscount - couponDiscount;
+  // Service fee = 1% of the items total (productTotalKRW), rounded to
+  // the nearest whole won. Added to the displayed total so the math
+  // matches the rows in the breakdown panel.
+  const serviceFee = Math.round((productTotalKRW || 0) * 0.01);
+  const finalTotal =
+    productTotalKRW + serviceFee + shippingTotalKRW - pointsDiscount - couponDiscount;
 
   const renderPriceBreakdown = () => (
     <View style={styles.priceSection}>
@@ -874,6 +879,16 @@ const PaymentScreen: React.FC = () => {
           </ScrollView>
         </View>
       )}
+
+      {/* Service fee — 1% of the items total, rounded to the nearest
+          whole won. Sits between the items total and the shipping row
+          per spec; included in the final total computed above. */}
+      <View style={styles.priceRow}>
+        <Text style={styles.priceRowLabel}>서비스 수수료</Text>
+        <Text style={[styles.priceRowValue, { fontSize: FONTS.sizes.md }]}>
+          {formatPriceKRW(serviceFee)}
+        </Text>
+      </View>
 
       {/* Shipping */}
       <View style={styles.priceRow}>

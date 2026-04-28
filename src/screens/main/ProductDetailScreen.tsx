@@ -3904,8 +3904,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: SPACING.sm,
   },
+  // Add-to-cart and Buy-now share a fixed width so the two buttons
+  // visually form one continuous pill (left half = white, right half =
+  // red) of equal halves. The width comfortably fits "장바구니 담기"
+  // at the current font size.
   addToCartButton: {
-    // flex: 1,
+    width: 120,
     flexDirection: 'row',
     backgroundColor: COLORS.white,
     borderTopLeftRadius: BORDER_RADIUS.full, // Full round button
@@ -3924,20 +3928,25 @@ const styles = StyleSheet.create({
     padding: SPACING.sm,
   },
   buyNowButton: {
-    // flex: 1,
+    width: 120, // match addToCartButton for an equal-width pill
     backgroundColor: COLORS.red,
     borderTopRightRadius: BORDER_RADIUS.full, // Full round button
     borderBottomRightRadius: BORDER_RADIUS.full, // Full round button
     justifyContent: 'center',
+    alignItems: 'center', // center "점 검" horizontally inside the wider button
     borderWidth: 1,
     borderColor: '#00000033',
   },
   buyNowText: {
-    fontSize: FONTS.sizes.md,
+    fontSize: FONTS.sizes.lg,
     fontWeight: '700',
     color: COLORS.white,
-    letterSpacing: 0.5,
+    // Wider letterSpacing so the two characters of "점검" render with a
+    // visible gap between them ("점  검") — requested by the user. Other
+    // labels keep their normal 0.5 spacing.
+    letterSpacing: 6,
     padding: SPACING.sm,
+    textAlign: 'center',
   },
   disabledButton: {
     opacity: 0.5,
