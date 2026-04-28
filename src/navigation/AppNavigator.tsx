@@ -109,6 +109,7 @@ import CustomerServiceScreen from '../screens/main/profileScreen/CustomerService
 import OrderInquiryScreen from '../screens/main/profileScreen/OrderInquiryScreen';
 import ImageSearchScreen from '../screens/main/searchScreen/ImageSearchScreen';
 import ImageSearchCameraScreen from '../screens/main/searchScreen/ImageSearchCameraScreen';
+import BillgatePaymentScreen from '../screens/main/payment/BillgatePaymentScreen';
 // General Inquiry screens
 import GeneralInquiryListScreen from '../screens/main/profileScreen/GeneralInquiryListScreen';
 import MessageScreen from '../screens/main/MessageScreen';
@@ -593,7 +594,20 @@ const RootNavigator = () => {
             component={ImageSearchCameraScreen}
             options={{ headerShown: false }}
           />
-          <RootStack.Screen 
+          <RootStack.Screen
+            name="BillgatePayment"
+            component={BillgatePaymentScreen}
+            // Modal presentation: the BillGate WebView slides up over the
+            // current screen. gestureEnabled is off so a stray swipe-down
+            // can't kill the payment mid-flight.
+            options={{
+              headerShown: false,
+              gestureEnabled: false,
+              presentation: 'modal',
+              cardOverlayEnabled: true,
+            }}
+          />
+          <RootStack.Screen
             name="Search"
             component={SearchScreen}
             options={{ headerShown: false }}

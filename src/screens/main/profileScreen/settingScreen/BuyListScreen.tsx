@@ -399,6 +399,43 @@ const BuyListScreen = () => {
     }
   };
 
+  // Pay an existing unpaid order via BillGate. The order is already created;
+  // we ask the backend to sign a fresh billgatePaymentData payload, then
+  // hand it to the WebView screen.
+  const handlePayUnpaidOrder = async (order: any) => {
+    const orderObjectId: string | undefined = order?._id ?? order?.id;
+    if (!orderObjectId) {
+      showToast('Missing order id', 'error');
+      return;
+    }
+    try {
+      const res = await orderApi.startBillgateOrderPayment(orderObjectId);
+      if (!res.success || !res.data?.billgatePaymentData) {
+        showToast(res.error || 'Failed to start payment', 'error');
+        return;
+      }
+      (navigation as any).navigate('BillgatePayment', {
+        paymentData: res.data.billgatePaymentData,
+        orderId: orderObjectId,
+        onResult: (result: any) => {
+          if (result.status === 'success') {
+            showToast(t('payment.paymentCompleted') || 'Payment completed', 'success');
+            fetchOrdersRef.current();
+          } else if (result.status === 'cancel') {
+            showToast(t('payment.paymentCancelled') || 'Payment cancelled', 'info');
+          } else {
+            Alert.alert(
+              'Payment failed',
+              result.message || 'Could not complete payment. Please try again.',
+            );
+          }
+        },
+      });
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to start payment', 'error');
+    }
+  };
+
   const { mutate: addToCart } = useAddToCartMutation({
     onSuccess: () => {
       showToast(t('product.addedToCart') || 'Added to cart', 'success');
@@ -1372,7 +1409,7 @@ const BuyListScreen = () => {
           {(order.status === 'unpaid' || order.progressStatus === 'WH_PAY_WAIT') ? (
             <TouchableOpacity
               style={styles.primaryButton}
-              onPress={() => navigation.navigate('Payment' as never)}
+              onPress={() => handlePayUnpaidOrder(order)}
             >
               <Text style={styles.primaryButtonText}>{t('cart.pay') || 'Pay'}</Text>
             </TouchableOpacity>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -36,6 +36,8 @@ import { useCreateOrderDirectPurchaseMutation } from '../../../../hooks/useCreat
 import { useToast } from '../../../../context/ToastContext';
 import { formatPriceKRW, formatKRWDirect, formatDepositBalance } from '../../../../utils/i18nHelpers';
 import { addressApi } from '../../../../services/addressApi';
+import { orderApi } from '../../../../services/orderApi';
+import type { BillgateResult } from '../../../../lib/billgate/types';
 
 interface PaymentScreenParams {
   items: Array<{
@@ -133,6 +135,10 @@ const PaymentScreen: React.FC = () => {
 
   // Auth context
   const { user, updateUser } = useAuth();
+
+  // BillGate SERVICE_CODE chosen at handleConfirm time. handleOrderCreated
+  // runs in a different scope (the mutation callback) so we stash it here.
+  const billgateServiceCodeRef = useRef<string | undefined>(undefined);
 
   // State
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('bank');
@@ -314,10 +320,55 @@ const PaymentScreen: React.FC = () => {
     { id: 'amex', name: 'AMEX', color: '#006FCF', textColor: '#FFFFFF' },
   ];
 
+  const pickPositiveAmount = (...values: Array<number | undefined | null>) => {
+    for (const value of values) {
+      if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+        return value;
+      }
+    }
+    return 0;
+  };
+
+  const toFiniteNumber = (value: unknown): number => {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : 0;
+    }
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return 0;
+  };
+
   // Calculate pricing (use checkout API totals when available)
+  const rawCheckoutItems = Array.isArray(directPurchaseItems) ? directPurchaseItems : [];
   const subtotalFromItems = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const productTotalKRW = checkoutData?.productTotalKRW ?? subtotalFromItems;
-  const shippingTotalKRW = checkoutData?.shippingTotalKRW ?? estimatedShippingCost;
+  const derivedProductTotalKRW = rawCheckoutItems.reduce((sum, item: any) => {
+    const quantity = Math.max(1, toFiniteNumber(item.quantity) || 1);
+    const lineSubtotal = pickPositiveAmount(
+      toFiniteNumber(item.subtotal),
+      toFiniteNumber(item.userPrice) * quantity,
+      toFiniteNumber(item.previewFinalUnitPriceKRW) * quantity,
+    );
+    return sum + lineSubtotal;
+  }, 0);
+  const derivedShippingTotalKRW = Object.values(estimatedShippingCostBySeller || {}).reduce(
+    (sum, value) => sum + toFiniteNumber(value),
+    0,
+  );
+  const productTotalKRW = pickPositiveAmount(
+    derivedProductTotalKRW,
+    checkoutData?.productTotalKRW,
+    subtotalFromItems,
+    totalAmount,
+  );
+  const shippingTotalKRW = pickPositiveAmount(
+    derivedShippingTotalKRW,
+    checkoutData?.shippingTotalKRW,
+    estimatedShippingCost,
+  );
+  const serviceFeePercentage = toFiniteNumber(checkoutData?.serviceFeePercentage);
+  const serviceFeeAmountKRW = Math.round((productTotalKRW * serviceFeePercentage) / 100);
   const subtotal = productTotalKRW;
   const warehouseFee = 1.00;
   const areaTransport = 2.00;
@@ -831,7 +882,31 @@ const PaymentScreen: React.FC = () => {
   const productCouponDiscount = selectedProductCoupon?.applicableDiscount ?? selectedProductCoupon?.amount ?? 0;
   const shippingCouponDiscount = selectedShippingCoupon?.applicableDiscount ?? selectedShippingCoupon?.amount ?? 0;
   const couponDiscount = productCouponDiscount + shippingCouponDiscount;
-  const finalTotal = productTotalKRW + shippingTotalKRW - pointsDiscount - couponDiscount;
+  const finalTotal = Math.max(
+    0,
+    productTotalKRW + shippingTotalKRW + serviceFeeAmountKRW - pointsDiscount - couponDiscount,
+  );
+
+  const resolveCreatedOrder = (payload: any) => {
+    const candidate =
+      payload?.order ??
+      payload?.data?.order ??
+      (payload?._id || payload?.id || payload?.orderNumber ? payload : null) ??
+      (payload?.data?._id || payload?.data?.id || payload?.data?.orderNumber ? payload.data : null) ??
+      {};
+
+    return candidate;
+  };
+
+  const resolveBillgatePayload = (payload: any) => {
+    return (
+      payload?.billgatePaymentData ??
+      payload?.paymentData ??
+      payload?.data?.billgatePaymentData ??
+      payload?.data?.paymentData ??
+      null
+    );
+  };
 
   const renderPriceBreakdown = () => (
     <View style={styles.priceSection}>
@@ -880,6 +955,14 @@ const PaymentScreen: React.FC = () => {
         <Text style={styles.priceRowLabelGray}>{t('payment.shipping')}</Text>
         <Text style={styles.priceRowValue}>{formatPriceKRW(shippingTotalKRW)}</Text>
       </View>
+
+      {/* Service fee */}
+      {serviceFeeAmountKRW > 0 && (
+        <View style={styles.priceRow}>
+          <Text style={styles.priceRowLabelGray}>Service fee</Text>
+          <Text style={styles.priceRowValue}>{formatPriceKRW(serviceFeeAmountKRW)}</Text>
+        </View>
+      )}
 
       {/* Shipping coupon selector */}
       {shippingCoupons.length > 0 && (
@@ -971,24 +1054,91 @@ const PaymentScreen: React.FC = () => {
     </View>
   );
 
+  // Shared post-order navigation. The backend decides whether the order needs
+  // BillGate by including `billgatePaymentData` in the response — if it's
+  // there we open the WebView, otherwise the order is settled and we just
+  // bounce to BuyList.
+  const handleOrderCreated = async (data: any) => {
+    const order = resolveCreatedOrder(data);
+    const orderNumber = order.orderNumber;
+    const orderObjectId: string | undefined =
+      order._id?.toString?.() ?? order.id?.toString?.();
+    const launchServiceCode = billgateServiceCodeRef.current;
+    const selectedMethod = selectedPaymentMethod;
+
+    const billgatePaymentData = resolveBillgatePayload(data);
+    if (billgatePaymentData) {
+      // Forward the chosen serviceCode so the WebView overrides
+      // billgatePaymentData.SERVICE_CODE before submitting (matches web's
+      // useBillgatePayment behaviour).
+      navigation.navigate('BillgatePayment' as never, {
+        paymentData: billgatePaymentData,
+        serviceCode: launchServiceCode,
+        orderId: orderObjectId,
+        onResult: (result: BillgateResult) => {
+          if (result.status === 'success') {
+            showToast(orderNumber ? `Order ${orderNumber} paid` : 'Payment completed', 'success');
+          } else if (result.status === 'cancel') {
+            showToast(t('payment.paymentCancelled') || 'Payment cancelled', 'info');
+          } else {
+            showToast(result.message || 'Payment failed. Please try again.', 'error');
+          }
+          navigation.reset({ index: 0, routes: [{ name: 'BuyList' as never }] });
+        },
+      } as never);
+      return;
+    }
+
+    if (orderObjectId && launchServiceCode) {
+      const prepared = await orderApi.initiateBillGatePayment(orderObjectId, launchServiceCode);
+      if (prepared.success && prepared.data?.billgatePaymentData) {
+        navigation.navigate('BillgatePayment' as never, {
+          paymentData: prepared.data.billgatePaymentData,
+          serviceCode: launchServiceCode,
+          orderId: orderObjectId,
+          onResult: (result: BillgateResult) => {
+            if (result.status === 'success') {
+              showToast(orderNumber ? `Order ${orderNumber} paid` : 'Payment completed', 'success');
+            } else if (result.status === 'cancel') {
+              showToast(t('payment.paymentCancelled') || 'Payment cancelled', 'info');
+            } else {
+              showToast(result.message || 'Payment failed. Please try again.', 'error');
+            }
+            navigation.reset({ index: 0, routes: [{ name: 'BuyList' as never }] });
+          },
+        } as never);
+        return;
+      }
+
+      Alert.alert(
+        'Payment start failed',
+        prepared.error || 'Order was created, but Billgate payment data was not returned.',
+      );
+      return;
+    }
+
+    if (selectedMethod === 'credit_card' || selectedMethod === 'newcard' || selectedMethod === 'kakaopay' || selectedMethod === 'naverpay') {
+      Alert.alert(
+        'Payment start failed',
+        'Order was created, but Billgate payment could not be started from this response.',
+      );
+      return;
+    }
+
+    showToast(orderNumber ? `Order ${orderNumber} created` : 'Order created successfully', 'success');
+    navigation.reset({ index: 0, routes: [{ name: 'BuyList' as never }] });
+  };
+
   // Create order mutation
   const { mutate: createOrder, isLoading: isCreatingOrder } = useCreateOrderMutation({
-    onSuccess: (data) => {
-      const orderNumber = data?.order?.orderNumber;
-      showToast(orderNumber ? `Order ${orderNumber} created` : 'Order created successfully', 'success');
-      navigation.reset({ index: 0, routes: [{ name: 'BuyList' as never }] });
-    },
+    onSuccess: handleOrderCreated,
     onError: (error) => {
       Alert.alert('Error', error || 'Failed to create order. Please try again.');
     },
   });
 
   const { mutate: createOrderDirectPurchase, isLoading: isCreatingDirectOrder } = useCreateOrderDirectPurchaseMutation({
-    onSuccess: (data) => {
-      const orderNumber = data?.order?.orderNumber;
-      showToast(orderNumber ? `Order ${orderNumber} created` : 'Order created successfully', 'success');
-      navigation.reset({ index: 0, routes: [{ name: 'BuyList' as never }] });
-    },
+    onSuccess: handleOrderCreated,
     onError: (error) => {
       Alert.alert('Error', error || 'Failed to create order. Please try again.');
     },
@@ -1005,14 +1155,32 @@ const PaymentScreen: React.FC = () => {
       return;
     }
 
-    const paymentMethodMap: Record<string, 'deposit' | 'bank' | 'card'> = {
-      'deposit': 'deposit',
-      'bank': 'bank',
-      'credit_card': 'card',
-      'kakaopay': 'deposit',
-      'naverpay': 'deposit',
+    if (finalTotal <= 0) {
+      Alert.alert('Error', 'Order amount must be greater than 0');
+      return;
+    }
+
+    // Card-based methods route through BillGate; deposit/bank stay internal.
+    // The backend uses (paymentMethod, serviceCode) to decide whether to
+    // sign and return billgatePaymentData with the order. Per the web's
+    // BILLGATE_PAYMENT_OPTIONS, simple-pay codes (KAKAOPAY/NAVERPAY/...)
+    // ARE the SERVICE_CODE — no separate PAY_TYPE field.
+    const paymentMethodMap: Record<
+      string,
+      { paymentMethod: 'deposit' | 'bank' | 'billgate'; serviceCode?: string }
+    > = {
+      deposit: { paymentMethod: 'deposit' },
+      bank: { paymentMethod: 'bank' },
+      credit_card: { paymentMethod: 'billgate', serviceCode: '0900' },
+      newcard: { paymentMethod: 'billgate', serviceCode: '0900' },
+      kakaopay: { paymentMethod: 'billgate', serviceCode: 'KAKAOPAY' },
+      naverpay: { paymentMethod: 'billgate', serviceCode: 'NAVERPAY' },
     };
-    const paymentMethod = paymentMethodMap[selectedPaymentMethod] || 'bank';
+    const mapped = paymentMethodMap[selectedPaymentMethod] ?? { paymentMethod: 'bank' as const };
+    const paymentMethod = mapped.paymentMethod;
+    const billgateServiceCode = mapped.serviceCode;
+    // Stash for the mutation onSuccess callback (handleOrderCreated).
+    billgateServiceCodeRef.current = billgateServiceCode;
     const transferMethod: 'air' | 'ship' = selectedTransportType === 'ship' ? 'ship' : 'air';
     const couponUsageId = selectedProductCoupon?.usageId || selectedProductCoupon?.id;
     const shippingCouponUsageId = selectedShippingCoupon?.usageId || selectedShippingCoupon?.id;
@@ -1040,6 +1208,28 @@ const PaymentScreen: React.FC = () => {
         'rocket': 'Rocket',
       };
       const orderType = orderTypeMap[selectedDeliveryMethod] || 'General';
+      const itemDetails = items.reduce((acc, item) => {
+        const itemId = item._id || item.id;
+        if (!itemId) return acc;
+
+        const note = productNotes[item.id];
+        const directPurchaseMatch = rawCheckoutItems.find((raw: any) => {
+          const rawId = raw?._id?.toString?.() ?? raw?.id?.toString?.();
+          return rawId === itemId;
+        });
+        const designatedShooting = Array.isArray(directPurchaseMatch?.designatedShooting)
+          ? directPurchaseMatch.designatedShooting
+          : [];
+
+        if (note || designatedShooting.length > 0) {
+          acc[itemId] = {
+            ...(note ? { notes: note } : {}),
+            ...(designatedShooting.length > 0 ? { designatedShooting } : {}),
+          };
+        }
+
+        return acc;
+      }, {} as Record<string, { notes?: string; designatedShooting?: any[] }>);
       const allNotes = items
         .map(item => {
           const note = productNotes[item.id];
@@ -1053,6 +1243,8 @@ const PaymentScreen: React.FC = () => {
         quantities,
         estimatedShippingCostBySeller: estimatedShippingCostBySeller || {},
         netExpectedTotalKRW: Math.round(finalTotal),
+        depositAmountKRW: 0,
+        itemDetails,
         userCouponUsageId: couponUsageId || undefined,
         userShippingCouponUsageId: shippingCouponUsageId || '',
         orderType,
@@ -1061,8 +1253,9 @@ const PaymentScreen: React.FC = () => {
         paymentMethod,
         addressId: selectedAddress.id,
         ...(allNotes && { notes: allNotes }),
-        ...(enteredPoints > 0 && { pointsToUse: enteredPoints }),
+        pointsToUse: enteredPoints > 0 ? enteredPoints : 0,
         ...(paymentMethod === 'bank' && { memberName: memberName.trim() }),
+        ...(paymentMethod === 'billgate' && billgateServiceCode && { serviceCode: billgateServiceCode }),
       };
       createOrder(orderRequest);
       return;
@@ -1083,9 +1276,10 @@ const PaymentScreen: React.FC = () => {
       estimatedShippingCostBySeller: estimatedShippingCostBySeller || {},
       addressId: selectedAddress.id,
       paymentMethod,
-      serviceCode: '',
+      serviceCode: paymentMethod === 'billgate' ? billgateServiceCode ?? '' : '',
       transferMethod,
       flow: 'general' as const,
+      depositAmountKRW: 0,
       userCouponUsageId: couponUsageId || undefined,
       userShippingCouponUsageId: shippingCouponUsageId || '',
       pointsToUse: enteredPoints > 0 ? enteredPoints : 0,

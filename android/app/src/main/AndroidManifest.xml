@@ -43,6 +43,62 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
+        <!-- BillGate result deep-link: BillGate's return-URL HTML can redirect
+             to todaymall://billgate-result?... and the WebView intercepts it.
+             Listing the scheme here is also useful so external apps can wake
+             the merchant app via the same scheme if needed. -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="todaymall" />
+        </intent-filter>
       </activity>
     </application>
+
+    <!-- Android 11+ package visibility: Linking.canOpenURL must be able to
+         see Korean banking and simple-pay apps that BillGate launches via
+         intent:// URLs. Without these queries Linking.canOpenURL always
+         returns false on API 30+ and the launch silently fails. -->
+    <queries>
+        <!-- KakaoPay / KakaoTalk -->
+        <package android:name="com.kakao.talk" />
+        <package android:name="com.kakaopay.app" />
+        <!-- NaverPay / Naver -->
+        <package android:name="com.nhn.android.search" />
+        <package android:name="com.naver.android.npay" />
+        <!-- TossPay -->
+        <package android:name="viva.republica.toss" />
+        <!-- SamsungPay -->
+        <package android:name="com.samsung.android.spay" />
+        <package android:name="com.samsung.android.samsungpay.gear" />
+        <!-- Payco -->
+        <package android:name="com.nhnent.payapp" />
+        <!-- ISP / Shinhan / KB / Hana / Lotte / NH / Hyundai / BC card apps -->
+        <package android:name="kvp.jjy.MispAndroid320" />
+        <package android:name="com.kbcard.cxh.appcard" />
+        <package android:name="com.kbstar.kbbank" />
+        <package android:name="com.shinhancard.smartshinhan" />
+        <package android:name="com.shinhan.smartcaremgr" />
+        <package android:name="com.hanaskcard.paycla" />
+        <package android:name="com.hanaskcard.rocomo.potal" />
+        <package android:name="com.lcacApp" />
+        <package android:name="com.nh.cashcardapp" />
+        <package android:name="com.nonghyup.android.bank" />
+        <package android:name="nh.smart.nhallonepay" />
+        <package android:name="com.hyundaicard.appcard" />
+        <package android:name="com.wooricard.smartapp" />
+        <package android:name="com.wooribank.smart.npib" />
+        <package android:name="kr.co.citibank.citimobile" />
+        <package android:name="com.smg.spbs" />
+        <!-- Generic intent + market schemes the WebView may launch -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="intent" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="market" />
+        </intent>
+    </queries>
 </manifest>

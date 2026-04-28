@@ -118,6 +118,39 @@ const OrderDetailScreen: React.FC = () => {
     }
   };
 
+  // Pay an existing unpaid order via BillGate. Asks the backend to sign a
+  // fresh billgatePaymentData payload and hands it to the WebView screen.
+  const handlePayUnpaidOrder = async () => {
+    const orderObjectId: string | undefined = order?._id ?? order?.id;
+    if (!orderObjectId) {
+      showToast('Missing order id', 'error');
+      return;
+    }
+    try {
+      const res = await orderApi.startBillgateOrderPayment(orderObjectId);
+      if (!res.success || !res.data?.billgatePaymentData) {
+        showToast(res.error || 'Failed to start payment', 'error');
+        return;
+      }
+      navigation.navigate('BillgatePayment' as never, {
+        paymentData: res.data.billgatePaymentData,
+        orderId: orderObjectId,
+        onResult: (result: any) => {
+          if (result.status === 'success') {
+            showToast('Payment completed', 'success');
+            navigation.goBack();
+          } else if (result.status === 'cancel') {
+            showToast('Payment cancelled', 'info');
+          } else {
+            showToast(result.message || 'Payment failed', 'error');
+          }
+        },
+      } as never);
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to start payment', 'error');
+    }
+  };
+
   const storeGroups: Record<string, any[]> = {};
   (order.items || []).forEach((item: any) => {
     const key = item.companyName || 'Unknown Store';
@@ -245,7 +278,7 @@ const OrderDetailScreen: React.FC = () => {
       {/* Bottom action bar */}
       <View style={[styles.bottomBar, { paddingBottom: SPACING.md + insets.bottom }]}>
         {isPayCase ? (
-          <TouchableOpacity style={styles.payBtn} onPress={() => navigation.navigate('Payment' as never)}>
+          <TouchableOpacity style={styles.payBtn} onPress={handlePayUnpaidOrder}>
             <Text style={styles.payBtnText}>Pay</Text>
           </TouchableOpacity>
         ) : (

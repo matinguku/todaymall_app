@@ -63,5 +63,67 @@
 		<string>NotoSans-Medium.ttf</string>
 		<string>NotoSans-Regular.ttf</string>
 	</array>
+	<!-- BillGate result deep-link scheme. The merchant return-URL HTML can
+	     redirect to todaymall://billgate-result?... and the WebView intercepts
+	     it. Also lets BillGate's APPNAME parameter (todaymall://) pop the app
+	     back to the foreground after a card-app handles the auth step. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>kr.co.todaymall</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>todaymall</string>	
+				<string>com.googleusercontent.apps.423894069406-3augc7k9enfana32uqs743cm4b2gdomb</string>
+			</array>
+		</dict>
+	</array>
+	<!-- Korean banking and simple-pay app schemes BillGate may launch.
+	     UIApplication.canOpenURL: returns false on iOS 9+ for any scheme not
+	     declared here, so the WebView's external-app handoff would silently
+	     fail without these. -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<!-- KakaoPay / KakaoTalk -->
+		<string>kakaopay</string>
+		<string>kakaotalk</string>
+		<string>kakaolink</string>
+		<!-- NaverPay / Naver -->
+		<string>naversearchapp</string>
+		<string>naversearchthirdlogin</string>
+		<!-- TossPay -->
+		<string>supertoss</string>
+		<string>tosspay</string>
+		<!-- SamsungPay -->
+		<string>mysamsungpay</string>
+		<string>samsungpay</string>
+		<!-- Payco -->
+		<string>payco</string>
+		<!-- ApplePay rides on Apple Wallet — no scheme needed -->
+		<!-- ISP / banking card auth apps -->
+		<string>ispmobile</string>
+		<string>kb-bankpay</string>
+		<string>kb-acp</string>
+		<string>liivbank</string>
+		<string>shinhan-sr-ansimclick</string>
+		<string>shinhan-sr-ansimclick-naverpay</string>
+		<string>mpocket.online.ansimclick</string>
+		<string>nonghyupcardansimclick</string>
+		<string>hdcardappcardansimclick</string>
+		<string>lottesmartpay</string>
+		<string>lotteappcard</string>
+		<string>cloudpay</string>
+		<string>citimobileapp</string>
+		<string>wooripay</string>
+		<string>woorismart</string>
+		<string>hanawalletmembers</string>
+		<string>hanaskcardmobileportal</string>
+		<string>smshinhanansimclick</string>
+		<string>smhyundaiansimclick</string>
+		<!-- Generic schemes that often appear in PG redirects -->
+		<string>itms-appss</string>
+		<string>itmss</string>
+	</array>
 </dict>
 </plist>

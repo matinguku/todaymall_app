@@ -340,6 +340,19 @@ export type RootStackParamList = {
   EditFinanceAddress: { address: Address };
   PaymentMethods: undefined;
   AddPaymentMethod: undefined;
+  BillgatePayment: {
+    /** Form payload from `data.billgatePaymentData` (created-order response)
+     *  or from `apiClient.prepareBillgatePayment(...).paymentData` (existing
+     *  unpaid order). Same shape as the web's BillgatePaymentData. */
+    paymentData: import('../lib/billgate/types').BillgatePaymentData;
+    /** Overrides the form's SERVICE_CODE input. Default: '0900' (credit card).
+     *  Pass an empty string to show all payment methods on BillGate's page. */
+    serviceCode?: string;
+    /** Order id used by callers to refresh / route on completion. */
+    orderId?: string;
+    /** Synchronous callback fired the moment the WebView resolves. */
+    onResult?: (result: import('../lib/billgate/types').BillgateResult) => void;
+  };
   OrderHistory: undefined;
   Wishlist: undefined;
   Cart: undefined;

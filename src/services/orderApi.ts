@@ -32,7 +32,16 @@ export interface CreateOrderRequest {
   orderType: 'General' | 'VVIC' | 'Rocket';
   transferMethod: 'air' | 'ship';
   flow: 'general';
-  paymentMethod: 'deposit' | 'bank' | 'card';
+  paymentMethod: 'deposit' | 'bank' | 'billgate';
+  /** BillGate service code (e.g. '0900' credit, '1100' mobile, '1800' VA,
+   *  '1000' bank transfer, or 'KAKAOPAY' / 'NAVERPAY' / 'SAMSUNGPAY' /
+   *  'APPLEPAY' for simple-pay routes). Required when paymentMethod is
+   *  'billgate'; backend uses it to sign the billgatePaymentData payload.
+   *  An empty string means "show all methods on the BillGate window". */
+  serviceCode?: string;
+  /** Used by depositAmountKRW field in some flows (kept optional). */
+  depositAmountKRW?: number;
+  itemDetails?: Record<string, ItemDetails>;
   addressId: string;
   notes?: string;
   /**
@@ -71,7 +80,7 @@ export interface CreateOrderDirectPurchaseRequest {
   designatedShootingImageCount?: number;
   estimatedShippingCostBySeller?: Record<string, number>;
   addressId: string;
-  paymentMethod: 'deposit' | 'bank' | 'card';
+  paymentMethod: 'deposit' | 'bank' | 'billgate';
   serviceCode?: string;
   transferMethod: 'air' | 'ship';
   flow: 'general';
@@ -79,6 +88,7 @@ export interface CreateOrderDirectPurchaseRequest {
   userShippingCouponUsageId?: string;
   pointsToUse?: number;
   netExpectedTotalKRW: number;
+  depositAmountKRW?: number;
   /** Same purpose as CreateOrderRequest.liveCode — see that field's docs. */
   liveCode?: string;
 }
@@ -103,6 +113,10 @@ export interface OrderResponse {
     createdAt: string;
     updatedAt: string;
   };
+  /** Present when paymentMethod === 'billgate'. Forward verbatim to the
+   *  BillGate WebView (matches taoexpress-ui's `paymentData` field name on
+   *  prepareBillgatePayment). */
+  billgatePaymentData?: import('../lib/billgate/types').BillgatePaymentData;
 }
 
 export interface OrderItemSkuAttribute {
@@ -271,6 +285,137 @@ export interface OrderPreviewResponse {
 }
 
 export const orderApi = {
+  /**
+   * Pay an existing unpaid order. Mirrors `apiClient.payOrder` in the web's
+   * `lib/api/client.ts` — POST /orders/:id/pay with body { paymentMethod }.
+   * Backend updates the order's payment method (e.g. 'billgate', 'deposit',
+   * 'bank') and, for non-billgate flows, settles the payment internally.
+   */
+  payOrder: async (
+    orderId: string,
+    body: { paymentMethod: string },
+  ): Promise<ApiResponse<any>> => {
+    try {
+      const token = await getStoredToken();
+      if (!token) {
+        return { success: false, error: 'Authentication required. Please log in again.' };
+      }
+      const url = `${API_BASE_URL}/orders/${orderId}/pay`;
+      const signatureHeaders = await buildSignatureHeaders('POST', url, body);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+          ...signatureHeaders,
+        },
+        body: JSON.stringify(body),
+      });
+      const text = await response.text();
+      let parsed: any;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        return { success: false, error: 'Invalid response from server.' };
+      }
+      if (!response.ok || parsed?.status !== 'success') {
+        return { success: false, error: parsed?.message || `Request failed with status ${response.status}` };
+      }
+      return { success: true, data: parsed.data };
+    } catch (error: any) {
+      logDevApiFailure('payOrder', error);
+      return { success: false, error: error?.message || 'Failed to pay order.' };
+    }
+  },
+
+  /**
+   * Prepare a BillGate payment payload for an existing order. Used when the
+   * create-order response did not include `billgatePaymentData` (e.g. the
+   * "Pay" button on an already-created BUY_PAY_WAIT order). Mirrors the
+   * web's `apiClient.prepareBillgatePayment`:
+   *   POST /payments/billgate/prepare with body { orderId, serviceCode? }.
+   */
+  prepareBillgatePayment: async (
+    orderId: string,
+    serviceCode: string = '0900',
+  ): Promise<ApiResponse<{ paymentData: import('../lib/billgate/types').BillgatePaymentData }>> => {
+    try {
+      const token = await getStoredToken();
+      if (!token) {
+        return { success: false, error: 'Authentication required. Please log in again.' };
+      }
+      const url = `${API_BASE_URL}/payments/billgate/prepare`;
+      const body = { orderId, serviceCode };
+      const signatureHeaders = await buildSignatureHeaders('POST', url, body);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+          ...signatureHeaders,
+        },
+        body: JSON.stringify(body),
+      });
+      const text = await response.text();
+      let parsed: any;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        return { success: false, error: 'Invalid response from server.' };
+      }
+      if (!response.ok || parsed?.status !== 'success') {
+        return { success: false, error: parsed?.message || `Request failed with status ${response.status}` };
+      }
+      return { success: true, data: parsed.data };
+    } catch (error: any) {
+      logDevApiFailure('prepareBillgatePayment', error);
+      return { success: false, error: error?.message || 'Failed to prepare BillGate payment.' };
+    }
+  },
+
+  /**
+   * Backward-compatible alias used by some mobile screens.
+   * Returns the payload under `billgatePaymentData`, matching create-order.
+   */
+  initiateBillGatePayment: async (
+    orderId: string,
+    serviceCode: string = '0900',
+  ): Promise<ApiResponse<{ billgatePaymentData: import('../lib/billgate/types').BillgatePaymentData }>> => {
+    const response = await orderApi.prepareBillgatePayment(orderId, serviceCode);
+    if (!response.success || !response.data?.paymentData) {
+      return { success: false, error: response.error || response.message || 'Failed to prepare BillGate payment.' };
+    }
+
+    return {
+      success: true,
+      data: {
+        billgatePaymentData: response.data.paymentData,
+      },
+    };
+  },
+
+  /**
+   * Existing unpaid-order BillGate flow:
+   *   1. Tell backend this order is being paid via BillGate
+   *   2. Ask backend to sign and return BillGate paymentData
+   */
+  startBillgateOrderPayment: async (
+    orderId: string,
+    serviceCode: string = '0900',
+  ): Promise<ApiResponse<{ billgatePaymentData: import('../lib/billgate/types').BillgatePaymentData }>> => {
+    const payResponse = await orderApi.payOrder(orderId, { paymentMethod: 'billgate' });
+    if (!payResponse.success) {
+      return {
+        success: false,
+        error: payResponse.error || payResponse.message || 'Failed to set payment method to BillGate.',
+      };
+    }
+
+    return orderApi.initiateBillGatePayment(orderId, serviceCode);
+  },
+
   getOrders: async (params?: GetOrdersParams | number, pageSize?: number): Promise<ApiResponse<GetOrdersResponse>> => {
     try {
       let token = await getStoredToken();
