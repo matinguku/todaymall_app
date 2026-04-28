@@ -52,13 +52,20 @@ const CategoryTabScreen: React.FC = () => {
   const navigation = useNavigation<CategoryTabScreenNavigationProp>();
   const { width: dynWidth } = useWindowDimensions();
   const RIGHT_COLUMN_WIDTH = dynWidth - LEFT_COLUMN_WIDTH - SPACING.md * 2;
+  // 태블릿(600px 이상)은 4열, 폰은 3열
+  const RECOMMENDED_COLS = dynWidth >= 600 ? 4 : 3;
+  const RECOMMENDED_ITEM_WIDTH = Math.floor(
+    (dynWidth - 120 - SPACING.sm * (RECOMMENDED_COLS + 2)) / RECOMMENDED_COLS,
+  );
+  // 추천 상품: 태블릿 4열, 폰 2열
+  const FOR_YOU_COLS = dynWidth >= 600 ? 4 : 2;
   // Match the actual forYou layout:
   //   forYouSection.paddingHorizontal = SPACING.md  → 2 * SPACING.md outer
   //   forYouGrid.gap = SPACING.sm                   → 1 * SPACING.sm between 2 cols
   // Using the wrong spacing here made the two cards overflow the container,
   // which triggered flexWrap and broke image layout.
   const FOR_YOU_CARD_WIDTH = Math.floor(
-    (RIGHT_COLUMN_WIDTH - SPACING.md * 2 - SPACING.sm) / 2,
+    (RIGHT_COLUMN_WIDTH - SPACING.md * 2 - SPACING.sm * (FOR_YOU_COLS - 1)) / FOR_YOU_COLS,
   );
   const { user, isGuest } = useAuth();
   // Use wishlist status hook to check if products are liked based on external IDs
@@ -914,7 +921,7 @@ const CategoryTabScreen: React.FC = () => {
 
     return (
       <TouchableOpacity
-        style={[styles.recommendedItem, { width: (dynWidth - 120 - SPACING.sm * 5) / 3 }]}
+        style={[styles.recommendedItem, { width: RECOMMENDED_ITEM_WIDTH }]}
         onPress={() => {
           const selectedCategoryData = categoriesToDisplay.find(cat => cat.id === selectedCategory);
           
@@ -1196,7 +1203,7 @@ const CategoryTabScreen: React.FC = () => {
                     // 스켈레톤: 카테고리 전환 시 구조 먼저 표시
                     <View style={styles.recommendedGrid}>
                       {Array.from({ length: 6 }).map((_, i) => (
-                        <View key={`skel-${i}`} style={[styles.recommendedItem, { width: (dynWidth - 120 - SPACING.sm * 5) / 3 }]}>
+                        <View key={`skel-${i}`} style={[styles.recommendedItem, { width: RECOMMENDED_ITEM_WIDTH }]}>
                           <View style={[styles.recommendedImageContainer, styles.skeletonBox]} />
                           <View style={styles.skeletonText} />
                         </View>

@@ -9,6 +9,7 @@ import {
   FlatList,
   TextInput,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
@@ -213,7 +214,8 @@ const NoticeBanner: React.FC<{ text?: string }> = ({ text }) => (
 );
 
 // ─── Featured Live Carousel ──────────────────────────────
-const FeaturedLiveCarousel: React.FC<{ items: any[]; locale: 'en' | 'ko' | 'zh'; t: (key: string) => string }> = ({ items, locale, t }) => {
+const FeaturedLiveCarousel: React.FC<{ items: any[]; locale: 'en' | 'ko' | 'zh'; t: (key: string) => string; containerWidth?: number; containerStyle?: any }> = ({ items, locale, t, containerWidth, containerStyle }) => {
+  const itemWidth = containerWidth ?? CAROUSEL_WIDTH;
   const [activeIndex, setActiveIndex] = useState(0);
   // Index of the item whose video the user explicitly started via the watch
   // button. `null` = no item is playing, thumbnails are shown everywhere.
@@ -222,11 +224,11 @@ const FeaturedLiveCarousel: React.FC<{ items: any[]; locale: 'en' | 'ko' | 'zh';
   console.log('🎬 [FeaturedLiveCarousel] Items:', items);
   const onScroll = useCallback((event: any) => {
     const x = event.nativeEvent.contentOffset.x;
-    const index = Math.round(x / CAROUSEL_WIDTH);
+    const index = Math.round(x / itemWidth);
     setActiveIndex(index);
     // Stop playback when the user swipes away from the playing card.
     setPlayingIndex((prev) => (prev !== null && prev !== index ? null : prev));
-  }, []);
+  }, [itemWidth]);
 
   const displayItems = items.length > 0 ? items : [null]; // Show placeholder if empty
 
@@ -250,7 +252,7 @@ const FeaturedLiveCarousel: React.FC<{ items: any[]; locale: 'en' | 'ko' | 'zh';
     const status = item?.status || item?.currentLiveStatus || 'live';
 
     return (
-      <View style={styles.carouselItem}>
+      <View style={[styles.carouselItem, { width: itemWidth }]}>
         {/* Seller info bar */}
         <View style={styles.carouselSellerBar}>
           <Image source={{ uri: sellerData.avatar }} style={styles.carouselSellerAvatar} />
@@ -290,7 +292,7 @@ const FeaturedLiveCarousel: React.FC<{ items: any[]; locale: 'en' | 'ko' | 'zh';
         {/* Watch button — toggles video playback in place.
             Only rendered when the item has a playable videoUrl. */}
         {item?.videoUrl && (
-          <View style={styles.carouselWatchButtonContainer}>
+          <View style={[styles.carouselWatchButtonContainer, { width: itemWidth }]}>
             <TouchableOpacity
               style={styles.watchButton}
               activeOpacity={0.8}
@@ -310,7 +312,7 @@ const FeaturedLiveCarousel: React.FC<{ items: any[]; locale: 'en' | 'ko' | 'zh';
   };
 
   return (
-    <View style={styles.carouselContainer}>
+    <View style={[styles.carouselContainer, containerStyle]}>
       <FlatList
         ref={scrollRef}
         data={displayItems}
@@ -321,7 +323,7 @@ const FeaturedLiveCarousel: React.FC<{ items: any[]; locale: 'en' | 'ko' | 'zh';
         showsHorizontalScrollIndicator={false}
         onScroll={onScroll}
         scrollEventThrottle={16}
-        snapToInterval={CAROUSEL_WIDTH}
+        snapToInterval={itemWidth}
         decelerationRate="fast"
         contentContainerStyle={{ paddingHorizontal: 0 }}
       />
@@ -489,7 +491,7 @@ const PopularItemCard: React.FC<{ item: any; locale: 'en' | 'ko' | 'zh'; rank?: 
 };
 
 // ─── Point Partner Seller Card ────────────────────────────
-const PointPartnerSellerCard: React.FC<{ seller: any; locale: 'en' | 'ko' | 'zh'; onPress?: () => void; t: (key: string) => string }> = ({ seller, locale, onPress, t }) => {
+const PointPartnerSellerCard: React.FC<{ seller: any; locale: 'en' | 'ko' | 'zh'; onPress?: () => void; t: (key: string) => string; cardStyle?: any }> = ({ seller, locale, onPress, t, cardStyle }) => {
   const name = seller.userName || seller.nickname || 'Seller';
   const avatar = seller.picUrl || 'https://via.placeholder.com/80.png?text=S';
   const viewers = seller.totalViews ?? 0;
@@ -497,7 +499,7 @@ const PointPartnerSellerCard: React.FC<{ seller: any; locale: 'en' | 'ko' | 'zh'
   const liveStatuses = seller.currentLiveStatuses || [];
 
   return (
-    <TouchableOpacity style={styles.partnerCard} activeOpacity={0.8} onPress={onPress}>
+    <TouchableOpacity style={[styles.partnerCard, cardStyle]} activeOpacity={0.8} onPress={onPress}>
       {/* Avatar with LIVE ring */}
       <View style={styles.partnerAvatarWrapper}>
         <View style={[styles.partnerAvatarRing, isLive && styles.partnerAvatarRingLive]}>
@@ -541,12 +543,42 @@ const PointPartnerSellerCard: React.FC<{ seller: any; locale: 'en' | 'ko' | 'zh'
   );
 };
 
+// ─── Tablet Top Seller Row ────────────────────────────────
+const TabletTopSellerRow: React.FC<{ seller: any; rank: number; onPress?: () => void }> = ({ seller, rank, onPress }) => {
+  const sellerObj = seller?.seller || seller;
+  const name = sellerObj?.nickname || sellerObj?.userName || sellerObj?.name || seller?.sellerName || 'Seller';
+  const avatar = sellerObj?.picUrl || sellerObj?.avatar || seller?.sellerAvatar || 'https://via.placeholder.com/40.png?text=S';
+  const totalSold = seller?.totalItemsSold ?? sellerObj?.totalItemsSold ?? seller?.totalSold ?? 0;
+  return (
+    <TouchableOpacity style={styles.tabletTSRow} activeOpacity={0.7} onPress={onPress}>
+      <Image source={{ uri: avatar }} style={styles.tabletTSAvatar} />
+      <Text style={styles.tabletTSName} numberOfLines={1}>{name}</Text>
+      <Text style={styles.tabletTSSold}>{totalSold.toLocaleString()}</Text>
+      <View style={styles.tabletTSBadge}>
+        <Text style={styles.tabletTSBadgeText}>🏆 #{rank}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
 // ─── Main Screen ──────────────────────────────────────────
 const LiveScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const locale = useAppSelector((s) => s.i18n.locale) as 'en' | 'ko' | 'zh';
   const { t } = useTranslation();
   const [searchText, setSearchText] = useState('');
+  const { width: dynWidth } = useWindowDimensions();
+  const isTablet = dynWidth >= 600;
+  // Tablet flex ratio: schedule(2) : topSeller(2) : carousel(7) = 11 units total
+  const tabletTotalWidth = dynWidth - SPACING.sm * 2; // outer horizontal margin
+  const availWidth = tabletTotalWidth - SPACING.sm * 2; // subtract 2 inter-panel gaps
+  const tabletCarouselWidth = Math.floor(availWidth * 7 / 11);
+
+  // Point Partner Seller grid: 4 columns on tablet, 2 on phone
+  const PARTNER_COLS = isTablet ? 4 : 2;
+  const partnerCardWidth = Math.floor(
+    (dynWidth - SPACING.md * 2 - SPACING.smmd * (PARTNER_COLS - 1)) / PARTNER_COLS,
+  );
 
   const {
     mutate: fetchLiveCommerce,
@@ -610,6 +642,20 @@ const LiveScreen: React.FC = () => {
     const id = requestAnimationFrame(() => setShowHeavyContent(true));
     return () => cancelAnimationFrame(id);
   }, []);
+
+  // Tablet 3-panel height equalizer: measure each panel's natural height, then
+  // lock all three to the minimum so the smallest card defines the row height.
+  const tabletPanelNaturalHeights = useRef<(number | null)[]>([null, null, null]);
+  const tabletMinHeightLocked = useRef(false);
+  const [tabletMinHeight, setTabletMinHeight] = useState<number | undefined>();
+  const handleTabletPanelLayout = (index: number) => (e: any) => {
+    if (tabletMinHeightLocked.current) return;
+    tabletPanelNaturalHeights.current[index] = e.nativeEvent.layout.height;
+    if (tabletPanelNaturalHeights.current.every(h => h !== null)) {
+      tabletMinHeightLocked.current = true;
+      setTabletMinHeight(Math.min(...(tabletPanelNaturalHeights.current as number[])));
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -676,16 +722,15 @@ const LiveScreen: React.FC = () => {
           </ScrollView>
         )} */}
 
-        {/* Featured Live Carousel — heaviest above-the-fold image component.
-            On first paint render a 420px placeholder so the page structure
-            (and the image area) is visible during navigation; the real
-            carousel mounts on the next frame. */}
-        {showHeavyContent ? (
-          featuredItems.length > 0 && (
-            <FeaturedLiveCarousel items={featuredItems.slice(0, 5)} locale={locale} t={t} />
+        {/* Featured Live Carousel — mobile only; tablet uses 3-panel row below */}
+        {!isTablet && (
+          showHeavyContent ? (
+            featuredItems.length > 0 && (
+              <FeaturedLiveCarousel items={featuredItems.slice(0, 5)} locale={locale} t={t} />
+            )
+          ) : (
+            <View style={liveSkeletonStyles.featuredPlaceholder} />
           )
-        ) : (
-          <View style={liveSkeletonStyles.featuredPlaceholder} />
         )}
 
         {/* Error */}
@@ -697,8 +742,92 @@ const LiveScreen: React.FC = () => {
 
         {showHeavyContent ? (
           <>
-            {/* Live Stream Schedule — liveReels 아래, Top Seller 위 */}
-            {schedule.length > 0 && (
+            {/* Tablet: 3-panel horizontal row (Schedule | Top Seller | Carousel) */}
+            {isTablet && (
+              <View style={styles.tabletPanelRow}>
+                {schedule.length > 0 && (
+                  <View
+                    style={[
+                      styles.section,
+                      styles.tabletSchedulePanel,
+                      tabletMinHeight ? { height: tabletMinHeight } : {},
+                    ]}
+                    onLayout={handleTabletPanelLayout(0)}
+                  >
+                    <View style={styles.sectionHeaderRow}>
+                      <Text style={styles.sectionTitle}>{t('live.liveStreamSchedule')}</Text>
+                      {liveNowCount > 0 && (
+                        <Text style={styles.liveNowCountText}>
+                          {liveNowCount}{' '}
+                          <Text style={{ color: COLORS.text.secondary }}>{t('live.liveNowStatus')}</Text>
+                        </Text>
+                      )}
+                    </View>
+                    <ScrollView
+                      style={{ flex: 1 }}
+                      showsVerticalScrollIndicator={false}
+                      nestedScrollEnabled
+                    >
+                      {schedule.map((item: any, i: number) => (
+                        <ScheduleItem key={item._id || item.id || i} item={item} locale={locale} />
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+                {topSellers.length > 0 && (
+                  <View
+                    style={[
+                      styles.section,
+                      styles.tabletTopSellerPanel,
+                      tabletMinHeight ? { height: tabletMinHeight } : {},
+                    ]}
+                    onLayout={handleTabletPanelLayout(1)}
+                  >
+                    <View style={styles.topSellerHeader}>
+                      <Text style={styles.sectionTitle}>{t('live.topSeller')}</Text>
+                    </View>
+                    <ScrollView
+                      style={{ flex: 1 }}
+                      showsVerticalScrollIndicator={false}
+                      nestedScrollEnabled
+                    >
+                      {topSellers.map((seller: any, i: number) => (
+                        <TabletTopSellerRow
+                          key={seller._id || i}
+                          seller={seller}
+                          rank={i + 1}
+                          onPress={() => navigation.navigate('LiveSellerDetail', {
+                            sellerId: seller._id || seller.id || '',
+                            sellerName: seller.nickname || seller.userName || '',
+                            source: 'ownmall',
+                          })}
+                        />
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+                {featuredItems.length > 0 && (
+                  <View
+                    style={[
+                      styles.tabletCarouselPanel,
+                      tabletMinHeight ? { height: tabletMinHeight, overflow: 'hidden' } : {},
+                    ]}
+                    onLayout={handleTabletPanelLayout(2)}
+                  >
+                    <FeaturedLiveCarousel
+                      items={featuredItems.slice(0, 5)}
+                      locale={locale}
+                      t={t}
+                      containerWidth={tabletCarouselWidth}
+                      containerStyle={{ marginTop: 0, marginHorizontal: 0 }}
+                    />
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Mobile: Live Stream Schedule */}
+            {!isTablet && schedule.length > 0 && (
               <View style={styles.section}>
                 <View style={styles.sectionHeaderRow}>
                   <Text style={styles.sectionTitle}>{t('live.liveStreamSchedule')}</Text>
@@ -715,8 +844,8 @@ const LiveScreen: React.FC = () => {
               </View>
             )}
 
-            {/* Top Seller */}
-            {topSellers.length > 0 && (
+            {/* Mobile: Top Seller */}
+            {!isTablet && topSellers.length > 0 && (
               <View style={styles.section}>
                 <View style={styles.topSellerHeader}>
                   <Text style={styles.sectionTitle}>{t('live.topSeller')}</Text>
@@ -792,6 +921,7 @@ const LiveScreen: React.FC = () => {
                         source: 'ownmall',
                       })}
                       t={t}
+                      cardStyle={{ width: partnerCardWidth }}
                     />
                   ))}
                 </View>
@@ -827,8 +957,8 @@ const LiveScreen: React.FC = () => {
             <View>
               <Text style={[styles.sectionTitle, { marginVertical: SPACING.sm }]}>{t('live.pointPartnerSeller')}</Text>
               <View style={styles.partnerGrid}>
-                {[0, 1, 2, 3].map((i) => (
-                  <View key={i} style={liveSkeletonStyles.partnerCard} />
+                {Array.from({ length: PARTNER_COLS }).map((_, i) => (
+                  <View key={i} style={[liveSkeletonStyles.partnerCard, { width: partnerCardWidth }]} />
                 ))}
               </View>
             </View>
@@ -1606,6 +1736,62 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: '#FF0000',
+  },
+
+  // Tablet 3-panel horizontal layout
+  tabletPanelRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: SPACING.lg,
+    marginHorizontal: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  tabletSchedulePanel: {
+    flex: 2,
+    marginTop: 0,
+    marginHorizontal: 0,
+  },
+  tabletTopSellerPanel: {
+    flex: 2,
+    marginTop: 0,
+    marginHorizontal: 0,
+  },
+  tabletCarouselPanel: {
+    flex: 7,
+  },
+  tabletTSRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xssm,
+    gap: SPACING.xs,
+  },
+  tabletTSAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.gray[200],
+  },
+  tabletTSName: {
+    flex: 1,
+    fontSize: FONTS.sizes.xs,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+  },
+  tabletTSSold: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.text.secondary,
+  },
+  tabletTSBadge: {
+    backgroundColor: '#FFDD00',
+    borderRadius: BORDER_RADIUS.sm,
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: 2,
+  },
+  tabletTSBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.text.primary,
   },
 
   // Empty & Error states
