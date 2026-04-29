@@ -51,7 +51,11 @@ interface FormFile {
   updatedAt: string;
 }
 
-const MessageScreen: React.FC = () => {
+interface MessageScreenProps {
+  initialTabOverride?: TabType;
+}
+
+const MessageScreen: React.FC<MessageScreenProps> = ({ initialTabOverride }) => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
@@ -86,7 +90,7 @@ const MessageScreen: React.FC = () => {
     return undefined;
   };
 
-  const initialTab = route.params?.initialTab === 'general' ? 'general' : 'order';
+  const initialTab = initialTabOverride ?? (route.params?.initialTab === 'general' ? 'general' : 'order');
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
 
   // If navigated with orderId (from BuyList ? button), go directly to Chat

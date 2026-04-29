@@ -38,6 +38,14 @@ import { usePlatformStore } from '../../../store/platformStore';
 import { formatPriceKRW, formatDepositBalance } from '../../../utils/i18nHelpers';
 import { logDevApiFailure } from '../../../utils/devLog';
 import { useGetOrdersMutation } from '../../../hooks/useGetOrdersMutation';
+import BuyListScreen from './settingScreen/BuyListScreen';
+import CouponScreen from './depositScreen/CouponScreen';
+import PointDetailScreen from './depositScreen/PointDetailScreen';
+import WishlistScreen from '../WishlistScreen';
+import FollowedStoreScreen from './FollowedStoreScreen';
+import ViewedProductsScreen from './ViewedProductsScreen';
+import DepositScreen from './depositScreen/DepositScreen';
+import MessageScreen from '../MessageScreen';
 import HeadsetMicIcon from '../../../assets/icons/HeadsetMicIcon';
 import LocationIcon from '../../../assets/icons/LocationIcon';
 import SettingsIcon from '../../../assets/icons/SettingsIcon';
@@ -253,6 +261,35 @@ const ProfileScreen: React.FC = () => {
     problemProducts: 0,
   }); // Order counts from API
   const [tabletSection, setTabletSection] = useState('overview');
+  // When the user taps "All" in the My Orders card on tablet,
+  // render the BuyList screen inside the dashboard panel.
+  const [embeddedOrdersOpen, setEmbeddedOrdersOpen] = useState(false);
+  const [embeddedOrdersInitialTab, setEmbeddedOrdersInitialTab] = useState<string>('purchase_agency');
+  const [embeddedCouponPointOpen, setEmbeddedCouponPointOpen] = useState(false);
+  const [embeddedCouponPointTab, setEmbeddedCouponPointTab] = useState<'coupon' | 'point'>('coupon');
+
+  // If the embedded orders view is open, but the user navigates to any other
+  // sidebar section (e.g. Coupon/Point), close the embedded orders panel so
+  // the dashboard card reappears.
+  // Debounced to avoid transient state races when opening orders.
+  useEffect(() => {
+    if (!embeddedOrdersOpen) return;
+    if (tabletSection === 'orders') return;
+    const id = setTimeout(() => setEmbeddedOrdersOpen(false), 80);
+    return () => clearTimeout(id);
+  }, [tabletSection, embeddedOrdersOpen]);
+
+  useEffect(() => {
+    // Always embed Coupon/Point page when the sidebar section is selected,
+    // so the extra dashboard stat cards don't appear.
+    if (tabletSection === 'coupon_point') {
+      setEmbeddedCouponPointOpen(true);
+      return;
+    }
+    if (!embeddedCouponPointOpen) return;
+    const id = setTimeout(() => setEmbeddedCouponPointOpen(false), 80);
+    return () => clearTimeout(id);
+  }, [tabletSection, embeddedCouponPointOpen]);
 
   const [wishlistCount, setWishlistCount] = useState(0);
   const [wishlistFirstImage, setWishlistFirstImage] = useState<string>('');
@@ -857,7 +894,15 @@ const ProfileScreen: React.FC = () => {
         <View style={styles.myOrder}>
           <TouchableOpacity 
             style={styles.myOrderHeader}
-            onPress={() => navigation.navigate('BuyList', { initialTab: 'all' })}
+            onPress={() => {
+              if (pIsTabletLandscape) {
+                setTabletSection('orders');
+                setEmbeddedOrdersInitialTab('purchase_agency');
+                setEmbeddedOrdersOpen(true);
+              } else {
+                navigation.navigate('BuyList', { initialTab: 'purchase_agency' });
+              }
+            }}
           >
             <Text style={styles.myOrderHeaderText}>{t('profile.myOrders')}{">"}</Text>
             <Text style={styles.myOrderHeaderTextSub}>{t('profile.viewAll')}{' >'}</Text>
@@ -1100,6 +1145,17 @@ const ProfileScreen: React.FC = () => {
   };
 
   // Render More to Love item
+  // IMPORTANT: the grid sits inside the tablet dashboard panel, so card width must
+  // be computed from the panel width (excluding sidebar) to prevent horizontal overflow.
+  const moreToLoveSidebarWidth = pIsTabletLandscape ? 220 : 0;
+  const moreToLovePanelWidth = pWinWidth - moreToLoveSidebarWidth;
+  const moreToLoveOuterHorizontalPadding = SPACING.xs * 2; // styles.moreToLoveSection paddingHorizontal
+  const moreToLoveAvailableWidth = Math.max(0, moreToLovePanelWidth - moreToLoveOuterHorizontalPadding);
+  const moreToLoveColWidth = moreToLoveAvailableWidth / Math.max(1, pGridCols);
+  // ProductCard(moreToLove) renders the image as width = cardW + 1px.
+  // Subtract extra pixels to prevent even 1px overflow in RN layout.
+  const moreToLoveCardWidth = Math.max(105, Math.floor(moreToLoveColWidth) - 10);
+
   const renderMoreToLoveItem = useCallback(({ item: product, index }: { item: Product; index: number }) => {
     if (!product || !product.id) {
       return null;
@@ -1121,7 +1177,7 @@ const ProfileScreen: React.FC = () => {
         key={`moretolove-${product.id || index}`}
         product={product}
         variant="moreToLove"
-        cardWidth={pCardWidth}
+        cardWidth={moreToLoveCardWidth}
         onPress={() => handleProductPress(product)}
         onLikePress={handleLike}
         isLiked={isProductLiked(product)}
@@ -1130,7 +1186,7 @@ const ProfileScreen: React.FC = () => {
         showRating={true}
       />
     );
-  }, [user, isGuest, toggleWishlist, handleProductPress, isProductLiked, pCardWidth]);
+  }, [user, isGuest, toggleWishlist, handleProductPress, isProductLiked, moreToLoveCardWidth]);
 
   // Render footer for "More to Love" loading indicator
   const renderMoreToLoveFooter = () => {
@@ -1285,16 +1341,16 @@ const ProfileScreen: React.FC = () => {
     const feedbackBadge = notesCount + inquiryCount;
 
     const navItems: Array<{ key: string; label: string; iconName: string; badge?: number }> = [
-      { key: 'overview', label: '내 계정', iconName: 'person-circle-outline' },
+      { key: 'overview', label: '내 계정', iconName: 'person' },
       { key: 'orders', label: t('profile.myOrders') || '주문', iconName: 'receipt-outline' },
-      { key: 'coupon_point', label: `${t('profile.coupons') || '쿠폰'}/${t('profile.points') || '포인트'}`, iconName: 'pricetag-outline' },
+      { key: 'coupon_point', label: `${t('profile.coupons') || '쿠폰'}/${t('profile.points') || '포인트'}`, iconName: '' },
       { key: 'wishlist', label: t('profile.wishlist') || '위시리스트', iconName: 'heart-outline', badge: wishlistCount || undefined },
-      { key: 'following', label: t('profile.followedStores') || '스토어 팔로우', iconName: 'storefront-outline' },
+      { key: 'following', label: t('profile.followedStores') || '스토어 팔로우', iconName: '  ' },
       { key: 'viewed', label: t('profile.viewed') || '조회한 상품', iconName: 'eye-outline', badge: viewedCount || undefined },
       { key: 'billing', label: t('profile.deposit') || '내 청구서', iconName: 'wallet-outline' },
       { key: 'feedback', label: t('profile.suggestion') || '피드백', iconName: 'chatbubble-outline', badge: feedbackBadge || undefined },
-      { key: 'returns', label: t('profile.toRefunds') || '반품/환불', iconName: 'return-down-back-outline', badge: orderCounts.refunds || undefined },
-      { key: 'settings', label: '계정 설정', iconName: 'settings-outline' },
+      { key: 'returns', label: t('profile.toRefunds') || '반품/환불', iconName: ' ', badge: orderCounts.refunds || undefined },
+      { key: 'settings', label: '계정 설정', iconName: ' ' },
     ];
 
     return (
@@ -1317,7 +1373,21 @@ const ProfileScreen: React.FC = () => {
             <TouchableOpacity
               key={item.key}
               style={[styles.sidebarNavItem, tabletSection === item.key && styles.sidebarNavItemActive]}
-              onPress={() => setTabletSection(item.key)}
+              onPress={() => {
+                setTabletSection(item.key);
+                if (item.key === 'orders') {
+                  setEmbeddedOrdersInitialTab('purchase_agency');
+                  setEmbeddedOrdersOpen(true);
+                  setEmbeddedCouponPointOpen(false);
+                } else if (item.key === 'coupon_point') {
+                  setEmbeddedCouponPointTab('coupon');
+                  setEmbeddedCouponPointOpen(true);
+                  setEmbeddedOrdersOpen(false);
+                } else {
+                  setEmbeddedOrdersOpen(false);
+                  setEmbeddedCouponPointOpen(false);
+                }
+              }}
               activeOpacity={0.7}
             >
               {tabletSection === item.key && <View style={styles.sidebarActiveBar} />}
@@ -1369,44 +1439,104 @@ const ProfileScreen: React.FC = () => {
             {dashCard(
               <>
                 <View style={styles.myOrderContent}>
-                  <TouchableOpacity style={styles.myOrderItem} onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'purchase_agency' })}>
+                  <TouchableOpacity
+                    style={styles.myOrderItem}
+                    onPress={() => {
+                      setTabletSection('orders');
+                      setEmbeddedOrdersInitialTab('purchase_agency');
+                      setEmbeddedOrdersOpen(true);
+                    }}
+                  >
                     <Text style={styles.myOrderItemCount}>{orderCounts.unpaid}</Text>
                     <Text style={styles.myOrderItemText}>{t('profile.toPay')}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.myOrderItem} onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'warehouse' })}>
+                  <TouchableOpacity
+                    style={styles.myOrderItem}
+                    onPress={() => {
+                      setTabletSection('orders');
+                      setEmbeddedOrdersInitialTab('warehouse');
+                      setEmbeddedOrdersOpen(true);
+                    }}
+                  >
                     <Text style={styles.myOrderItemCount}>{orderCounts.to_be_shipped}</Text>
                     <Text style={styles.myOrderItemText}>{t('profile.toShip')}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.myOrderItem} onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'international_shipping' })}>
+                  <TouchableOpacity
+                    style={styles.myOrderItem}
+                    onPress={() => {
+                      setTabletSection('orders');
+                      setEmbeddedOrdersInitialTab('international_shipping');
+                      setEmbeddedOrdersOpen(true);
+                    }}
+                  >
                     <Text style={styles.myOrderItemCount}>{orderCounts.shipped}</Text>
                     <Text style={styles.myOrderItemText}>{t('profile.shipped')}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.myOrderItem} onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'international_shipping' })}>
+                  <TouchableOpacity
+                    style={styles.myOrderItem}
+                    onPress={() => {
+                      setTabletSection('orders');
+                      setEmbeddedOrdersInitialTab('international_shipping');
+                      setEmbeddedOrdersOpen(true);
+                    }}
+                  >
                     <Text style={styles.myOrderItemCount}>{orderCounts.shipping_delay}</Text>
                     <Text style={styles.myOrderItemText}>{t('profile.toShippingDelay')}</Text>
                   </TouchableOpacity>
                 </View>
                 <View style={styles.myOrderContent}>
-                  <TouchableOpacity style={styles.myOrderItem} onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'international_shipping' })}>
+                  <TouchableOpacity
+                    style={styles.myOrderItem}
+                    onPress={() => {
+                      setTabletSection('orders');
+                      setEmbeddedOrdersInitialTab('international_shipping');
+                      setEmbeddedOrdersOpen(true);
+                    }}
+                  >
                     <Text style={styles.myOrderItemCount}>{orderCounts.processed}</Text>
                     <Text style={styles.myOrderItemText}>{t('profile.toReview')}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.myOrderItem} onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'purchase_agency' })}>
+                  <TouchableOpacity
+                    style={styles.myOrderItem}
+                    onPress={() => {
+                      setTabletSection('orders');
+                      setEmbeddedOrdersInitialTab('purchase_agency');
+                      setEmbeddedOrdersOpen(true);
+                    }}
+                  >
                     <Text style={styles.myOrderItemCount}>{orderCounts.problemProducts}</Text>
                     <Text style={styles.myOrderItemText}>{t('profile.toProblem')}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.myOrderItem} onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'error' })}>
+                  <TouchableOpacity
+                    style={styles.myOrderItem}
+                    onPress={() => {
+                      setTabletSection('orders');
+                      setEmbeddedOrdersInitialTab('error');
+                      setEmbeddedOrdersOpen(true);
+                    }}
+                  >
                     <Text style={styles.myOrderItemCount}>{orderCounts.error}</Text>
                     <Text style={styles.myOrderItemText}>{t('profile.toErrorIn')}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.myOrderItem} onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'error' })}>
+                  <TouchableOpacity
+                    style={styles.myOrderItem}
+                    onPress={() => {
+                      setTabletSection('orders');
+                      setEmbeddedOrdersInitialTab('error');
+                      setEmbeddedOrdersOpen(true);
+                    }}
+                  >
                     <Text style={styles.myOrderItemCount}>{orderCounts.refunds}</Text>
                     <Text style={styles.myOrderItemText}>{t('profile.toRefunds')}</Text>
                   </TouchableOpacity>
                 </View>
               </>,
               t('profile.myOrders'),
-              () => navigation.navigate('BuyList', { initialTab: 'all' })
+              () => {
+                setTabletSection('orders');
+                setEmbeddedOrdersInitialTab('purchase_agency');
+                setEmbeddedOrdersOpen(true);
+              }
             )}
           </View>
         );
@@ -1416,14 +1546,30 @@ const ProfileScreen: React.FC = () => {
           <View style={styles.tabletDashboardContent}>
             {dashCard(
               <View style={styles.dashStatRow}>
-                <TouchableOpacity style={styles.dashStatItem} onPress={() => navigation.navigate('Coupon')}>
+                <TouchableOpacity
+                  style={styles.dashStatItem}
+                  onPress={() => {
+                    setTabletSection('coupon_point');
+                    setEmbeddedCouponPointTab('coupon');
+                    setEmbeddedCouponPointOpen(true);
+                    setEmbeddedOrdersOpen(false);
+                  }}
+                >
                   <CouponIcon width={36} height={36} color={COLORS.primary} />
                   <Text style={styles.dashStatValue}>
                     {(() => { const c = (user as any)?.coupon; return typeof c === 'number' ? String(c) : typeof c === 'string' ? c : '0'; })()}
                   </Text>
                   <Text style={styles.dashStatLabel}>{t('profile.coupons')}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.dashStatItem} onPress={() => navigation.navigate('PointDetail' as never)}>
+                <TouchableOpacity
+                  style={styles.dashStatItem}
+                  onPress={() => {
+                    setTabletSection('coupon_point');
+                    setEmbeddedCouponPointTab('point');
+                    setEmbeddedCouponPointOpen(true);
+                    setEmbeddedOrdersOpen(false);
+                  }}
+                >
                   <PointIcon width={36} height={36} color={COLORS.primary} />
                   <Text style={styles.dashStatValue}>
                     {(() => { const p = (user as any)?.points ?? 0; return typeof p === 'number' ? String(p) : typeof p === 'string' ? p : '0'; })()}
@@ -1437,139 +1583,25 @@ const ProfileScreen: React.FC = () => {
         );
 
       case 'wishlist':
-        return (
-          <View style={styles.tabletDashboardContent}>
-            {dashCard(
-              <TouchableOpacity style={styles.dashSummaryRow} onPress={() => navigation.navigate('Wishlist')}>
-                {wishlistFirstImage ? (
-                  <Image source={{ uri: wishlistFirstImage }} style={styles.dashSummaryImage} resizeMode="cover" />
-                ) : (
-                  <Image source={require('../../../assets/icons/wishlist.png')} style={[styles.dashSummaryImage, { opacity: 0.45 }]} resizeMode="contain" />
-                )}
-                <View style={styles.dashSummaryText}>
-                  <Text style={styles.dashSummaryCount}>{wishlistCount}</Text>
-                  <Text style={styles.dashSummaryLabel}>{t('profile.wishlist')}</Text>
-                </View>
-                <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
-              </TouchableOpacity>,
-              t('profile.wishlist')
-            )}
-          </View>
-        );
+        // Render the actual wishlist page in the right panel.
+        // (Matches what you'd see after tapping the dashboard card.)
+        return <WishlistScreen embedded />;
 
       case 'following':
-        return (
-          <View style={styles.tabletDashboardContent}>
-            {dashCard(
-              <TouchableOpacity style={styles.dashLinkRow} onPress={() => navigation.navigate('FollowedStore' as never)}>
-                <SellerShopIcon width={24} height={24} color={COLORS.primary} />
-                <Text style={styles.dashLinkText}>{t('profile.followedStores')}</Text>
-                <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
-              </TouchableOpacity>,
-              t('profile.followedStores')
-            )}
-          </View>
-        );
+        return <FollowedStoreScreen embedded />;
 
       case 'viewed':
-        return (
-          <View style={styles.tabletDashboardContent}>
-            {dashCard(
-              <TouchableOpacity style={styles.dashSummaryRow} onPress={() => navigation.navigate('ViewedProducts' as never)}>
-                {viewedFirstImage ? (
-                  <Image source={{ uri: viewedFirstImage }} style={styles.dashSummaryImage} resizeMode="cover" />
-                ) : (
-                  <ViewedIcon width={60} height={60} color={COLORS.text.secondary} />
-                )}
-                <View style={styles.dashSummaryText}>
-                  <Text style={styles.dashSummaryCount}>{viewedCount}</Text>
-                  <Text style={styles.dashSummaryLabel}>{t('profile.viewed')}</Text>
-                </View>
-                <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
-              </TouchableOpacity>,
-              t('profile.viewed')
-            )}
-          </View>
-        );
+        return <ViewedProductsScreen embedded />;
 
       case 'billing':
-        return (
-          <View style={styles.tabletDashboardContent}>
-            {dashCard(
-              <TouchableOpacity style={styles.dashSummaryRow} onPress={() => navigation.navigate('Deposit')}>
-                <CoinIcon width={52} height={52} color={COLORS.primary} />
-                <View style={styles.dashSummaryText}>
-                  <Text style={styles.dashStatValue}>
-                    {(() => {
-                      const depositBalance = (user as any)?.depositBalance ?? (user as any)?.deposit;
-                      if (typeof depositBalance === 'number') return formatDepositBalance(depositBalance);
-                      if (typeof depositBalance === 'string') {
-                        const numValue = parseFloat(depositBalance);
-                        return isNaN(numValue) ? depositBalance : formatDepositBalance(numValue);
-                      }
-                      return formatDepositBalance(0);
-                    })()}
-                  </Text>
-                  <Text style={styles.dashSummaryLabel}>{t('profile.deposit')}</Text>
-                </View>
-                <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
-              </TouchableOpacity>,
-              t('profile.deposit')
-            )}
-          </View>
-        );
+        return <DepositScreen embedded />;
 
       case 'feedback': {
-        const fbTotal = (Array.isArray(broadcastNotes) ? broadcastNotes.length : 0) + (typeof generalInquiryUnreadCount === 'number' ? generalInquiryUnreadCount : 0);
-        return (
-          <View style={styles.tabletDashboardContent}>
-            {dashCard(
-              <>
-                <TouchableOpacity style={styles.dashLinkRow} onPress={() => (navigation as any).navigate('Message', { initialTab: 'general' })}>
-                  <FeedbackIcon width={24} height={24} color={COLORS.primary} />
-                  <Text style={styles.dashLinkText}>{t('profile.suggestion')}</Text>
-                  {fbTotal > 0 && (
-                    <View style={styles.sidebarNavBadge}>
-                      <Text style={styles.sidebarNavBadgeText}>{fbTotal}</Text>
-                    </View>
-                  )}
-                  <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.dashLinkRow, styles.dashLinkRowBorder]} onPress={() => navigation.navigate('HelpCenter' as never)}>
-                  <OfficialSupportIcon width={24} height={24} color={COLORS.primary} />
-                  <Text style={styles.dashLinkText}>{t('profile.helpCenter')}</Text>
-                  <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.dashLinkRow, styles.dashLinkRowBorder]} onPress={() => navigation.navigate('CustomerService' as never)}>
-                  <CustomerSupportIcon width={24} height={24} color={COLORS.primary} />
-                  <Text style={styles.dashLinkText}>{t('profile.customerSupport')}</Text>
-                  <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
-                </TouchableOpacity>
-              </>,
-              t('profile.suggestion')
-            )}
-          </View>
-        );
+        return <MessageScreen initialTabOverride="general" />;
       }
 
       case 'returns':
-        return (
-          <View style={styles.tabletDashboardContent}>
-            {dashCard(
-              <TouchableOpacity style={styles.dashLinkRow} onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'error' })}>
-                <UndoIcon width={24} height={24} color={COLORS.primary} />
-                <View style={{ flex: 1, marginLeft: SPACING.sm }}>
-                  <Text style={styles.dashLinkText}>{t('profile.toRefunds')}</Text>
-                  {orderCounts.refunds > 0 && (
-                    <Text style={styles.dashStatLabel}>{orderCounts.refunds}건 진행 중</Text>
-                  )}
-                </View>
-                <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
-              </TouchableOpacity>,
-              t('profile.toRefunds')
-            )}
-          </View>
-        );
+        return <BuyListScreen embedded initialTabOverride="error" />;
 
       case 'settings':
         return (
@@ -1617,13 +1649,89 @@ const ProfileScreen: React.FC = () => {
         // Tablet landscape: 2-panel split view
         <View style={styles.tabletSplitContainer}>
           {isAuthenticated && renderTabletSidebar()}
-          <ScrollView
-            style={styles.tabletDashboardPanel}
-            showsVerticalScrollIndicator={false}
-          >
-            {isAuthenticated && renderTabletDashboard()}
-            {showHeavyContent && isAuthenticated && !isGuest && tabletSection === 'overview' && renderMoreToLove()}
-          </ScrollView>
+          {embeddedOrdersOpen ? (
+            <View style={styles.tabletDashboardPanel}>
+              <BuyListScreen embedded initialTabOverride={embeddedOrdersInitialTab} />
+            </View>
+          ) : embeddedCouponPointOpen ? (
+            <View style={styles.tabletDashboardPanel}>
+              {embeddedCouponPointTab === 'coupon' ? (
+                <CouponScreen
+                  embedded
+                  onMainTabChange={(tab) => {
+                    setEmbeddedCouponPointTab(tab);
+                    setTabletSection('coupon_point');
+                  }}
+                />
+              ) : (
+                <PointDetailScreen
+                  embedded
+                  onMainTabChange={(tab) => {
+                    setEmbeddedCouponPointTab(tab);
+                    setTabletSection('coupon_point');
+                  }}
+                />
+              )}
+            </View>
+          ) : tabletSection === 'wishlist' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <WishlistScreen embedded />
+            </View>
+          ) : tabletSection === 'following' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <FollowedStoreScreen embedded />
+            </View>
+          ) : tabletSection === 'viewed' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <ViewedProductsScreen embedded />
+            </View>
+          ) : tabletSection === 'billing' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <DepositScreen embedded />
+            </View>
+          ) : tabletSection === 'feedback' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <MessageScreen initialTabOverride="general" />
+            </View>
+          ) : tabletSection === 'returns' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <BuyListScreen embedded initialTabOverride="error" />
+            </View>
+          ) : (
+            <ScrollView
+              style={styles.tabletDashboardPanel}
+              showsVerticalScrollIndicator={false}
+              onScroll={(event) => {
+                const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+                const scrollPosition = contentOffset.y;
+                const scrollHeight = contentSize.height;
+                const screenHeight = layoutMeasurement.height;
+                const distanceFromBottom = scrollHeight - scrollPosition - screenHeight;
+
+                if (
+                  recommendationsHasMore &&
+                  !recommendationsLoading &&
+                  !isLoadingMoreRecommendationsRef.current &&
+                  distanceFromBottom < 240 &&
+                  isAuthenticated &&
+                  !isGuest &&
+                  user?.id
+                ) {
+                  isLoadingMoreRecommendationsRef.current = true;
+                  const nextPage = currentRecommendationsPageRef.current + 1;
+                  currentRecommendationsPageRef.current = nextPage;
+                  setRecommendationsOffset(nextPage);
+                  const country = currentLocale === 'zh' ? 'en' : currentLocale;
+                  const outId = user.memberId || user.userUniqueNo || (user as any).userUniqueId;
+                  fetchRecommendationsRef.current?.(country, outId, nextPage, PAGINATION.FEED_MORE_PAGE_SIZE, selectedPlatform);
+                }
+              }}
+              scrollEventThrottle={16}
+            >
+              {isAuthenticated && renderTabletDashboard()}
+              {showHeavyContent && isAuthenticated && !isGuest && tabletSection === 'overview' && renderMoreToLove()}
+            </ScrollView>
+          )}
         </View>
       ) : (
         // Phone / tablet portrait: single-column layout
@@ -2149,6 +2257,10 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.lg,
     marginBottom: SPACING.xl,
   },
+  moreToLoveCardWrap: {
+    // Wrapper used to apply explicit inter-card spacing and prevent overflow.
+    alignItems: 'flex-start',
+  },
   sectionTitle: {
     fontSize: FONTS.sizes.md,
     fontWeight: '700',
@@ -2187,7 +2299,7 @@ const styles = StyleSheet.create({
   },
   productRow: {
     justifyContent: 'space-between',
-    paddingHorizontal: SPACING.xs,
+    paddingHorizontal: 0,
   },
   loadingMoreContainer: {
     paddingVertical: SPACING.lg,

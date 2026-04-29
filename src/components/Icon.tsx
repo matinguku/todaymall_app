@@ -141,17 +141,25 @@ const iconComponentMap: { [key: string]: React.ComponentType<any> } = {
   'cart-outline': CartIcon,
   'cart': CartIcon,
   'wallet': WalletIcon,
+  'wallet-outline': WalletIcon,
   'chatbubble': ChatBubbleIcon,
+  'chatbubble-outline': ChatBubbleIcon,
   'chatbubbles': ChatBubbleIcon,
   'chatbubbles-outline': ChatBubbleIcon,
   'card': CardIcon,
+  'card-outline': CardIcon,
   'airplane': AirplaneIcon,
   'cube': CubeIcon,
   'call': CallIcon,
+  'call-outline': CallIcon,
   'document': DocumentIcon,
+  'document-outline': DocumentIcon,
   'document-text': DocumentIcon,
   'document-text-outline': DocumentIcon,
   'person': PersonIcon,
+  'person-outline': PersonIcon,
+  'people-outline': PersonIcon,
+  'person-circle-outline': PersonIcon,
   'send': SendIcon,
   'trash': TrashIcon,
   'trash-outline': TrashIcon,
@@ -159,6 +167,13 @@ const iconComponentMap: { [key: string]: React.ComponentType<any> } = {
   'chevron-back': ChevronBackIcon,
   'time-outline': TimeIcon,
   'mail-outline': MailIcon,
+  'headset': CallIcon,
+  'headset-mic': CallIcon,
+  'lock-closed-outline': WarningIcon,
+  'keypad-outline': NotificationIcon,
+  'log-in-outline': ArrowForwardIcon,
+  'copy-outline': ContentCopyIcon,
+  'print-outline': DocumentIcon,
   'thumbs-up': ThumbsUpIcon,
   'thumbs-down': ThumbsDownIcon,
   'receipt-outline': ReceiptIcon,
@@ -200,6 +215,8 @@ const iconNameMap: { [key: string]: { name: string; library: 'material' | 'mater
   'ellipsis-vertical': { name: 'more-vert', library: 'material' },
   'menu': { name: 'menu', library: 'material' },
   'filter': { name: 'filter-list', library: 'material' },
+  'grid': { name: 'grid-view', library: 'material' },
+  'alert-circle': { name: 'error-outline', library: 'material' },
   
   // Media
   'camera-outline': { name: 'camera-alt', library: 'material' },
@@ -215,12 +232,37 @@ const iconNameMap: { [key: string]: { name: string; library: 'material' | 'mater
   // Shopping
   'basket-outline': { name: 'shopping-basket', library: 'material' },
   'cart-outline': { name: 'shopping-cart', library: 'material' },
+  'pricetag-outline': { name: 'local-offer', library: 'material' },
+  'storefront-outline': { name: 'storefront', library: 'material' },
+  'wallet-outline': { name: 'account-balance-wallet', library: 'material' },
   
   // Security
   'shield-checkmark-outline': { name: 'verified-user', library: 'material' },
   
   // Notifications
   'notifications-outline': { name: 'notifications-none', library: 'material' },
+
+  // Sidebar/profile specific
+  'settings-outline': { name: 'settings', library: 'material' },
+  'headset': { name: 'headset-mic', library: 'material' },
+  'headset-mic': { name: 'headset-mic', library: 'material' },
+  'lock-closed-outline': { name: 'lock-outline', library: 'material' },
+  'keypad-outline': { name: 'dialpad', library: 'material' },
+  'log-in-outline': { name: 'login', library: 'material' },
+  'people-outline': { name: 'account-group-outline', library: 'materialCommunity' },
+  'copy-outline': { name: 'content-copy', library: 'material' },
+  'print-outline': { name: 'print', library: 'material' },
+  'card-outline': { name: 'credit-card', library: 'material' },
+  'chatbubble-outline': { name: 'chat-bubble-outline', library: 'material' },
+  'return-down-back-outline': { name: 'undo', library: 'material' },
+};
+
+const materialGlyphMap = (MaterialIcons as any).getRawGlyphMap?.() ?? {};
+const materialCommunityGlyphMap = (MaterialCommunityIcons as any).getRawGlyphMap?.() ?? {};
+
+const hasGlyph = (library: 'material' | 'materialCommunity', icon: string) => {
+  const glyphMap = library === 'material' ? materialGlyphMap : materialCommunityGlyphMap;
+  return !!glyphMap?.[icon];
 };
 
 /**
@@ -268,8 +310,19 @@ const Icon: React.FC<IconProps> = ({
   const iconMapping = iconNameMap[iconName];
   
   if (iconMapping) {
-    const VectorIconComponent = iconMapping.library === 'material' 
-      ? MaterialIcons 
+    const preferredLibrary = iconMapping.library;
+    const alternateLibrary: 'material' | 'materialCommunity' =
+      preferredLibrary === 'material' ? 'materialCommunity' : 'material';
+    const resolvedLibrary = hasGlyph(preferredLibrary, iconMapping.name)
+      ? preferredLibrary
+      : hasGlyph(alternateLibrary, iconMapping.name)
+      ? alternateLibrary
+      : null;
+
+    if (!resolvedLibrary) return null;
+
+    const VectorIconComponent = resolvedLibrary === 'material'
+      ? MaterialIcons
       : MaterialCommunityIcons;
     
     return (
@@ -282,15 +335,8 @@ const Icon: React.FC<IconProps> = ({
     );
   }
   
-  // Final fallback: try MaterialIcons with the original name
-  return (
-    <MaterialIcons 
-      name={name as any} 
-      size={resolvedSize} 
-      color={color} 
-      style={style}
-    />
-  );
+  // Unknown icon name: render nothing instead of a "?" glyph.
+  return null;
 };
 
 export default Icon;

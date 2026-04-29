@@ -29,7 +29,11 @@ interface ViewedProduct {
   platform: string;
 }
 
-const ViewedProductsScreen: React.FC = () => {
+interface ViewedProductsScreenProps {
+  embedded?: boolean;
+}
+
+const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = false }) => {
   const navigation = useNavigation();
   const locale = useAppSelector((s) => s.i18n.locale);
   const { showToast } = useToast();
@@ -384,12 +388,14 @@ const ViewedProductsScreen: React.FC = () => {
   const renderHeader = () => (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
-        </TouchableOpacity>
+        {!embedded && (
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
+          </TouchableOpacity>
+        )}
         <Text style={styles.headerTitle}>{t('profile.viewedProducts')}</Text>
       </View>
       <View style={styles.headerRight}>

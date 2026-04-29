@@ -12,6 +12,7 @@ import {
   Alert,
   TextInput,
   Modal,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
@@ -259,8 +260,22 @@ const mapOrderStatusMeta = (order: ApiOrder): Pick<Order, 'status' | 'statusGrou
 
 const ORDER_BATCH_SIZE = 4;
 
-const BuyListScreen = () => {
+interface BuyListScreenProps {
+  /**
+   * When embedded (not navigated as its own route), allow overriding the
+   * initial tab without relying on react-navigation params.
+   */
+  initialTabOverride?: string;
+  /**
+   * Render without SafeAreaView so the screen can be embedded inside another
+   * panel (e.g. tablet dashboard).
+   */
+  embedded?: boolean;
+}
+
+const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embedded }) => {
   const navigation = useNavigation<BuyListScreenNavigationProp>();
+  const { width: screenWidth } = useWindowDimensions();
   const route = useRoute<BuyListScreenRouteProp>();
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
@@ -270,9 +285,10 @@ const BuyListScreen = () => {
   const { isProductLiked } = useWishlistStatus();
   const { onMessageReceived, isConnected, connect, unreadCount: socketUnreadCount, generalInquiryUnreadCount } = useSocket();
   const totalMessageUnread = socketUnreadCount + generalInquiryUnreadCount;
+  const moreToLoveCardWidth = Math.max(150, (screenWidth - SPACING.md * 2 - SPACING.md) / 2);
   
   // Get initial tab from route params, default to 'all' (purchase_agency group)
-  const initialTab = (route.params?.initialTab as Order['status']) || 'purchase_agency';
+  const initialTab = initialTabOverride || (route.params?.initialTab as any) || 'purchase_agency';
   const [activeTab, setActiveTab] = useState<string>(initialTab);
   const [selectedStatusGroup, setSelectedStatusGroup] = useState<Order['statusGroup'] | null>(null);
   const [expandedStatusGroup, setExpandedStatusGroup] = useState<Order['statusGroup'] | null>(null);
@@ -280,10 +296,14 @@ const BuyListScreen = () => {
   
   // Update active tab when route params change
   useEffect(() => {
+    if (initialTabOverride) {
+      setActiveTab(initialTabOverride);
+      return;
+    }
     if (route.params?.initialTab) {
       setActiveTab(route.params.initialTab as string);
     }
-  }, [route.params?.initialTab]);
+  }, [route.params?.initialTab, initialTabOverride]);
   const [unreadCounts, setUnreadCounts] = useState<{ [inquiryId: string]: number }>({});
   const [selectedCustomsMethod, setSelectedCustomsMethod] = useState<string | null>(null);
   const [selectedTransportMethod, setSelectedTransportMethod] = useState<string | null>(null);
@@ -1132,19 +1152,30 @@ const BuyListScreen = () => {
     };
     
     return (
-      <ProductCard
-        key={`moretolove-${product.id || index}`}
-        product={product}
-        variant="moreToLove"
-        onPress={() => handleProductPress(product)}
-        onLikePress={handleLike}
-        isLiked={isProductLiked(product)}
-        showLikeButton={true}
-        showDiscountBadge={true}
-        showRating={true}
-      />
+      <View
+        style={[
+          styles.moreToLoveCardWrap,
+          {
+            width: moreToLoveCardWidth,
+            marginRight: index % 2 === 0 ? SPACING.md : 0,
+          },
+        ]}
+      >
+        <ProductCard
+          key={`moretolove-${product.id || index}`}
+          product={product}
+          variant="moreToLove"
+          cardWidth={moreToLoveCardWidth}
+          onPress={() => handleProductPress(product)}
+          onLikePress={handleLike}
+          isLiked={isProductLiked(product)}
+          showLikeButton={true}
+          showDiscountBadge={true}
+          showRating={true}
+        />
+      </View>
     );
-  }, [user, isGuest, toggleWishlist, handleProductPress, isProductLiked]);
+  }, [user, isGuest, toggleWishlist, handleProductPress, isProductLiked, moreToLoveCardWidth]);
 
   // Render More to Love section (same as HomeScreen)
   const renderMoreToLove = () => {
@@ -1781,22 +1812,26 @@ const BuyListScreen = () => {
 </body>
 </html>`;
 
+  const Container = embedded ? View : SafeAreaView;
+
   return (
-    <SafeAreaView style={styles.container}>
+    <Container style={styles.container}>
       {/* Header */}
       <View style={styles.header} onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => {
-            if (navigation.canGoBack()) {
-              navigation.goBack();
-            } else {
-              navigation.navigate('Main' as never);
-            }
-          }}
-        >
-          <Icon name="chevron-back" size={24} color={COLORS.text.primary} />
-        </TouchableOpacity>
+        {!embedded && (
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => {
+              if (navigation.canGoBack()) {
+                navigation.goBack();
+              } else {
+                navigation.navigate('Main' as never);
+              }
+            }}
+          >
+            <Icon name="chevron-back" size={24} color={COLORS.text.primary} />
+          </TouchableOpacity>
+        )}
         
         {/* Order number search input */}
         <View style={styles.headerCenter}>
@@ -2456,7 +2491,7 @@ const BuyListScreen = () => {
                   </View>
                 ), label: 'Message', onPress: () => navigation.navigate('Message' as never) },
                 { icon: <HomeIcon width={28} color={COLORS.text.primary} />, label: 'Main', onPress: () => navigation.navigate('Home' as never) },
-                { icon: <AccountIcon width={28} color={COLORS.text.primary} />, label: 'My Account', onPress: () => navigation.navigate('ProfileSettings' as never) },
+                { icon: <AccountIcon width={28} color={COLORS.text.primary} />, label: 'My Account', hideIcon: true, onPress: () => navigation.navigate('ProfileSettings' as never) },
                 { icon: <CartIcon width={28} color={COLORS.text.primary} />, label: 'Cart', onPress: () => navigation.navigate('Cart' as never) },
                 { icon: <ReceiptIcon width={28} color={COLORS.text.primary} />, label: 'My Orders', onPress: () => setShowNavModal(false) },
                 { icon: <ViewedIcon width={28} height={28} color={COLORS.text.primary} />, label: 'Viewed Products', onPress: () => navigation.navigate('ViewedProducts' as never) },
@@ -2470,7 +2505,7 @@ const BuyListScreen = () => {
                   style={styles.navModalGridItem}
                   onPress={() => { setShowNavModal(false); item.onPress(); }}
                 >
-                  <View style={styles.navModalIconBox}>{item.icon}</View>
+                  {!item.hideIcon && <View style={styles.navModalIconBox}>{item.icon}</View>}
                   <Text style={styles.navModalItemText} numberOfLines={2}>{item.label}</Text>
                 </TouchableOpacity>
               ))}
@@ -3068,7 +3103,7 @@ const BuyListScreen = () => {
         </View>
       </Modal>
 
-    </SafeAreaView>
+    </Container>
   );
 };
 
@@ -3781,7 +3816,10 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.lg,
   },
   productRow: {
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
+    marginBottom: SPACING.md,
+  },
+  moreToLoveCardWrap: {
     marginBottom: SPACING.md,
   },
   // New styles for store grouping

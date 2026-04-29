@@ -158,10 +158,10 @@ const DeleteAccountModal: React.FC<DeleteAccountModalProps> = ({
               <View {...panResponder.panHandlers} style={styles.handleContainer}>
                 <View style={styles.handle} />
               </View>
-          {/* Warning Icon */}
+          {/* Warning badge (text-based to avoid icon glyph issues) */}
           <View style={styles.iconContainer}>
             <View style={styles.iconCircle}>
-              <Icon name="warning" size={40} color="#FF6B9D" />
+              <Text style={styles.iconBadgeText}>!</Text>
             </View>
           </View>
 
@@ -176,15 +176,15 @@ const DeleteAccountModal: React.FC<DeleteAccountModalProps> = ({
           {/* Warning List */}
           <View style={styles.warningList}>
             <View style={styles.warningItem}>
-              <Icon name="close-circle" size={18} color="#FF6B9D" />
+              <View style={styles.warningDot} />
               <Text style={styles.warningText}>{t('profile.allDataLost')}</Text>
             </View>
             <View style={styles.warningItem}>
-              <Icon name="close-circle" size={18} color="#FF6B9D" />
+              <View style={styles.warningDot} />
               <Text style={styles.warningText}>{t('profile.orderHistoryDeleted')}</Text>
             </View>
             <View style={styles.warningItem}>
-              <Icon name="close-circle" size={18} color="#FF6B9D" />
+              <View style={styles.warningDot} />
               <Text style={styles.warningText}>{t('profile.cannotRecoverAccount')}</Text>
             </View>
           </View>
@@ -289,6 +289,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  iconBadgeText: {
+    fontSize: 36,
+    lineHeight: 40,
+    fontWeight: '800',
+    color: '#FF6B9D',
+  },
   title: {
     fontSize: 24,
     fontWeight: '700',
@@ -318,6 +324,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: SPACING.sm,
+  },
+  warningDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FF6B9D',
+    marginLeft: 4,
   },
   warningText: {
     fontSize: FONTS.sizes.sm,
