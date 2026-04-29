@@ -257,6 +257,8 @@ const mapOrderStatusMeta = (order: ApiOrder): Pick<Order, 'status' | 'statusGrou
   };
 };
 
+const ORDER_BATCH_SIZE = 4;
+
 const BuyListScreen = () => {
   const navigation = useNavigation<BuyListScreenNavigationProp>();
   const route = useRoute<BuyListScreenRouteProp>();
@@ -348,8 +350,14 @@ const BuyListScreen = () => {
   });
   const [orders, setOrders] = useState<Order[]>([]);
   const [viewFilterCounts, setViewFilterCounts] = useState<Record<string, number>>({});
+  const [unpaidTotalCount, setUnpaidTotalCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const pageRef = useRef(1);
+  // ordersReady: false until the first fetch completes (success or error).
+  // Prevents the empty-state flash that occurs on the first render before
+  // the useEffect fires and isLoading becomes true.
+  const [ordersReady, setOrdersReady] = useState(false); // tracks which page was last requested (for append vs. replace in onSuccess)
 
   // Recommendations state for "More to Love"
   const [recommendationsProducts, setRecommendationsProducts] = useState<Product[]>([]);
@@ -358,6 +366,7 @@ const BuyListScreen = () => {
   const isRecommendationsRefreshingRef = React.useRef(false); // Prevent loading during refresh
   const currentRecommendationsPageRef = React.useRef<number>(1); // Track current page for callbacks
   const isLoadingMoreRecommendationsRef = React.useRef(false); // Prevent multiple simultaneous loads
+  const isLoadingMoreOrdersRef = useRef(false); // Prevent duplicate auto-load requests
 
   // Translation function
   const t = (key: string) => {
@@ -906,9 +915,16 @@ const BuyListScreen = () => {
           paidAmount: order.paidAmount,
         };
       });
-      setOrders(mappedOrders);
-      setHasMore(data.pagination?.page < data.pagination?.totalPages);
+      if (pageRef.current === 1) {
+        setOrders(mappedOrders);
+      } else {
+        setOrders(prev => [...prev, ...mappedOrders]);
+      }
+      setCurrentPage(data.pagination?.page ?? 1);
+      setHasMore((data.pagination?.page ?? 1) < (data.pagination?.totalPages ?? 1));
       if (data.viewFilterCounts) setViewFilterCounts(data.viewFilterCounts);
+      setOrdersReady(true);
+      isLoadingMoreOrdersRef.current = false;
 
       // Fetch inquiries and unread counts (non-blocking)
       try {
@@ -929,12 +945,17 @@ const BuyListScreen = () => {
           });
         }
         setUnreadCounts(unreadCountsMap);
-        const ordersWithInquiries = mappedOrders.map((order: any) => ({
+        const ordersWithInquiries: Order[] = mappedOrders.map((order: Order) => ({
           ...order,
           inquiryId: inquiryMap.get(order.id) || null,
           unreadCount: inquiryMap.get(order.id) ? (unreadCountsMap[inquiryMap.get(order.id)!] || 0) : 0,
         }));
-        setOrders(ordersWithInquiries);
+        const inquiryEnhancedMap = new Map<string, Order>(
+          ordersWithInquiries.map((order: Order) => [order.id, order] as const)
+        );
+        setOrders(prevOrders =>
+          prevOrders.map(order => inquiryEnhancedMap.get(order.id) ?? order)
+        );
       } catch {
         // silently fail — orders already set
       }
@@ -943,6 +964,8 @@ const BuyListScreen = () => {
       logDevApiFailure('BuyListScreen.fetchOrders', error);
       showToast(error || 'Failed to fetch orders', 'error');
       setOrders([]);
+      setOrdersReady(true);
+      isLoadingMoreOrdersRef.current = false;
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [locale]);
@@ -952,7 +975,10 @@ const BuyListScreen = () => {
   const getOrdersRef = useRef(getOrders);
   getOrdersRef.current = getOrders;
 
-  const fetchOrders = useCallback(() => {
+  const fetchOrders = useCallback((page = 1) => {
+    pageRef.current = page;
+    if (page === 1) setOrdersReady(false);
+
     const hasSimplifiedClearance =
       selectedCustomsMethod === '간이통관' ? true :
       selectedCustomsMethod === '일반통관' ? false :
@@ -967,8 +993,8 @@ const BuyListScreen = () => {
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
     getOrdersRef.current({
-      page: 1,
-      pageSize: 20,
+      page,
+      pageSize: ORDER_BATCH_SIZE,
       search: filters.orderNumber || undefined,
       datePeriod: 'last_6_months',
       platform: filterPlatform || undefined,
@@ -984,6 +1010,12 @@ const BuyListScreen = () => {
 
   const fetchOrdersRef = useRef(fetchOrders);
   fetchOrdersRef.current = fetchOrders;
+
+  const loadMoreOrders = useCallback(() => {
+    if (!hasMore || isLoading || isLoadingMoreOrdersRef.current) return;
+    isLoadingMoreOrdersRef.current = true;
+    fetchOrders(currentPage + 1);
+  }, [hasMore, isLoading, currentPage, fetchOrders]);
 
   // Fetch orders from API when tab, filters, or platform change (not on every render)
   useEffect(() => {
@@ -1537,6 +1569,9 @@ const BuyListScreen = () => {
   // (date/platform/customs/transport/search) still affect this count because
   // they're applied at the API layer.
   const getGroupOrderCount = (groupKey: string): number => {
+    if (groupKey === 'purchase_agency') {
+      return unpaidTotalCount;
+    }
     const group = STATUS_GROUPS.find(g => g.key === groupKey);
     if (!group) return 0;
     return orders.filter(order => {
@@ -1546,6 +1581,29 @@ const BuyListScreen = () => {
       return false;
     }).length;
   };
+
+  const fetchUnpaidTotalCount = useCallback(async () => {
+    if (isGuest || !user) {
+      setUnpaidTotalCount(0);
+      return;
+    }
+    try {
+      const response = await orderApi.getOrders({
+        page: 1,
+        pageSize: 1,
+        viewFilter: 'unpaid',
+      });
+      if (response.success && response.data?.pagination) {
+        setUnpaidTotalCount(response.data.pagination.total ?? 0);
+      }
+    } catch {
+      // silently fail
+    }
+  }, [isGuest, user]);
+
+  useEffect(() => {
+    fetchUnpaidTotalCount();
+  }, [fetchUnpaidTotalCount]);
 
   const renderCategoryStatusFilters = () => {
     const groups = STATUS_GROUPS;
@@ -1830,20 +1888,40 @@ const BuyListScreen = () => {
           if (distanceFromBottom < 200 && hasMoreRecommendations && !recommendationsLoading && !isRecommendationsRefreshingRef.current && !isLoadingMoreRecommendationsRef.current) {
             setRecommendationsOffset(prev => prev + 1);
           }
+          if (distanceFromBottom < 280 && hasMore && !isLoading) {
+            loadMoreOrders();
+          }
         }}
         scrollEventThrottle={400}
       >
         <View style={styles.content}>
 
-          {/* Loading State */}
-          {isLoading && orders.length === 0 ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={COLORS.primary} />
-              <Text style={styles.loadingText}>{t('home.buyListLoadingOrders')}</Text>
+          {/* Loading / Skeleton State — shown while first fetch is in-flight or
+              before the initial useEffect has even fired (ordersReady=false).
+              This prevents the empty-state flash on first render. */}
+          {!ordersReady || (isLoading && orders.length === 0) ? (
+            <View style={styles.ordersContainer}>
+              {[0, 1, 2].map(i => (
+                <View key={i} style={styles.skeletonOrderCard}>
+                  <View style={styles.skeletonOrderHeader}>
+                    <View style={[styles.skeletonBar, { width: '55%' }]} />
+                    <View style={[styles.skeletonBar, { width: '28%' }]} />
+                  </View>
+                  {[0, 1].map(j => (
+                    <View key={j} style={styles.skeletonOrderItem}>
+                      <View style={styles.skeletonOrderImage} />
+                      <View style={{ flex: 1, gap: 6 }}>
+                        <View style={[styles.skeletonBar, { width: '80%' }]} />
+                        <View style={[styles.skeletonBar, { width: '45%' }]} />
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              ))}
             </View>
           ) : (
             <>
-              {/* Orders List or Empty State */}
+              {/* Orders List or Empty State — only shown after first fetch completes */}
               {filteredOrders.length === 0 && groupedOrdersForCategory.length === 0 ? (
                 <View style={styles.emptyState}>
                   <Icon name="basket-outline" size={80} color="#CCC" />
@@ -1853,6 +1931,13 @@ const BuyListScreen = () => {
               ) : (
                 <View style={styles.ordersContainer}>
                   {filteredOrders.map((order) => renderOrderWithStoreGrouping(order, true))}
+                  {hasMore && (
+                    isLoading ? (
+                      <View style={styles.loadMoreOrdersButton}>
+                        <ActivityIndicator size="small" color={COLORS.primary} />
+                      </View>
+                    ) : null
+                  )}
                 </View>
               )}
             </>
@@ -3631,6 +3716,47 @@ const styles = StyleSheet.create({
   loadingMoreText: {
     fontSize: FONTS.sizes.md,
     color: COLORS.text.secondary,
+  },
+  skeletonOrderCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.gray[100],
+  },
+  skeletonOrderHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+  },
+  skeletonBar: {
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: COLORS.gray[200],
+  },
+  skeletonOrderItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.xs,
+  },
+  skeletonOrderImage: {
+    width: 60,
+    height: 60,
+    borderRadius: BORDER_RADIUS.sm,
+    backgroundColor: COLORS.gray[200],
+  },
+  loadMoreOrdersButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  loadMoreOrdersText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '600',
+    color: COLORS.text.primary,
   },
   endOfListContainer: {
     paddingVertical: SPACING.lg,

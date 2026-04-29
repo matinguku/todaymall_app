@@ -229,7 +229,9 @@ const ProfileScreen: React.FC = () => {
   const navigation = useNavigation<ProfileScreenNavigationProp>();
   const { width: pWinWidth, height: pWinHeight } = useWindowDimensions();
   const pIsTablet = Math.min(pWinWidth, pWinHeight) >= 600;
-  const pGridCols = pIsTablet ? (pWinWidth > pWinHeight ? 4 : 3) : 2;
+  const pIsLandscape = pWinWidth > pWinHeight;
+  const pIsTabletLandscape = pIsTablet && pIsLandscape;
+  const pGridCols = pIsTablet ? (pIsLandscape ? 4 : 3) : 2;
   const pCardWidth = (pWinWidth - SPACING.md * 2 * (pGridCols - 1)) / pGridCols;
   const { user, isAuthenticated, isGuest } = useAuth();
   const currentLocale = useAppSelector((state) => state.i18n.locale);
@@ -250,6 +252,7 @@ const ProfileScreen: React.FC = () => {
     refunds: 0,
     problemProducts: 0,
   }); // Order counts from API
+  const [tabletSection, setTabletSection] = useState('overview');
 
   const [wishlistCount, setWishlistCount] = useState(0);
   const [wishlistFirstImage, setWishlistFirstImage] = useState<string>('');
@@ -326,7 +329,7 @@ const ProfileScreen: React.FC = () => {
       };
       fetchUnreadCounts();
 
-      // Get order counts from API (fetch larger page size to calculate accurate counts)
+      // Get order counts from API
       getOrders({ page: 1, pageSize: 100 });
 
       // Set wishlist and viewed counts from API
@@ -1276,6 +1279,330 @@ const ProfileScreen: React.FC = () => {
     );
   };
 
+  const renderTabletSidebar = () => {
+    const notesCount = Array.isArray(broadcastNotes) ? broadcastNotes.length : 0;
+    const inquiryCount = typeof generalInquiryUnreadCount === 'number' ? generalInquiryUnreadCount : 0;
+    const feedbackBadge = notesCount + inquiryCount;
+
+    const navItems: Array<{ key: string; label: string; iconName: string; badge?: number }> = [
+      { key: 'overview', label: '내 계정', iconName: 'person-circle-outline' },
+      { key: 'orders', label: t('profile.myOrders') || '주문', iconName: 'receipt-outline' },
+      { key: 'coupon_point', label: `${t('profile.coupons') || '쿠폰'}/${t('profile.points') || '포인트'}`, iconName: 'pricetag-outline' },
+      { key: 'wishlist', label: t('profile.wishlist') || '위시리스트', iconName: 'heart-outline', badge: wishlistCount || undefined },
+      { key: 'following', label: t('profile.followedStores') || '스토어 팔로우', iconName: 'storefront-outline' },
+      { key: 'viewed', label: t('profile.viewed') || '조회한 상품', iconName: 'eye-outline', badge: viewedCount || undefined },
+      { key: 'billing', label: t('profile.deposit') || '내 청구서', iconName: 'wallet-outline' },
+      { key: 'feedback', label: t('profile.suggestion') || '피드백', iconName: 'chatbubble-outline', badge: feedbackBadge || undefined },
+      { key: 'returns', label: t('profile.toRefunds') || '반품/환불', iconName: 'return-down-back-outline', badge: orderCounts.refunds || undefined },
+      { key: 'settings', label: '계정 설정', iconName: 'settings-outline' },
+    ];
+
+    return (
+      <View style={styles.tabletSidebar}>
+        <View style={styles.sidebarUserMini}>
+          <Image
+            source={
+              user?.avatar && typeof user.avatar === 'string' && user.avatar.trim() !== ''
+                ? { uri: user.avatar }
+                : require('../../../assets/images/avatar.png')
+            }
+            style={styles.sidebarAvatar}
+          />
+          <Text style={styles.sidebarUserName} numberOfLines={1}>{user?.name || ''}</Text>
+          <Text style={styles.sidebarUserId} numberOfLines={1}>{user?.userUniqueId || ''}</Text>
+        </View>
+        <View style={styles.sidebarDivider} />
+        <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+          {navItems.map((item) => (
+            <TouchableOpacity
+              key={item.key}
+              style={[styles.sidebarNavItem, tabletSection === item.key && styles.sidebarNavItemActive]}
+              onPress={() => setTabletSection(item.key)}
+              activeOpacity={0.7}
+            >
+              {tabletSection === item.key && <View style={styles.sidebarActiveBar} />}
+              <Icon name={item.iconName as any} size={18} color={tabletSection === item.key ? COLORS.primary : COLORS.text.secondary} />
+              <Text style={[styles.sidebarNavLabel, tabletSection === item.key && styles.sidebarNavLabelActive]} numberOfLines={1}>
+                {item.label}
+              </Text>
+              {!!item.badge && item.badge > 0 && (
+                <View style={styles.sidebarNavBadge}>
+                  <Text style={styles.sidebarNavBadgeText}>{item.badge > 99 ? '99+' : item.badge}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  };
+
+  const renderTabletDashboard = () => {
+    const dashCard = (children: React.ReactNode, title?: string, onMore?: () => void) => (
+      <View style={styles.dashCard}>
+        {(title || onMore) && (
+          <View style={styles.dashCardHeader}>
+            {title && <Text style={styles.dashCardTitle}>{title}</Text>}
+            {onMore && (
+              <TouchableOpacity onPress={onMore}>
+                <Text style={styles.dashCardMore}>{t('profile.viewAll') || '전체 보기'} {'>'}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+        {children}
+      </View>
+    );
+
+    switch (tabletSection) {
+      case 'overview':
+        return (
+          <View style={styles.tabletDashboardContent}>
+            {renderStatsSection()}
+            {renderQuickAccessSection()}
+          </View>
+        );
+
+      case 'orders':
+        return (
+          <View style={styles.tabletDashboardContent}>
+            {dashCard(
+              <>
+                <View style={styles.myOrderContent}>
+                  <TouchableOpacity style={styles.myOrderItem} onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'purchase_agency' })}>
+                    <Text style={styles.myOrderItemCount}>{orderCounts.unpaid}</Text>
+                    <Text style={styles.myOrderItemText}>{t('profile.toPay')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.myOrderItem} onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'warehouse' })}>
+                    <Text style={styles.myOrderItemCount}>{orderCounts.to_be_shipped}</Text>
+                    <Text style={styles.myOrderItemText}>{t('profile.toShip')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.myOrderItem} onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'international_shipping' })}>
+                    <Text style={styles.myOrderItemCount}>{orderCounts.shipped}</Text>
+                    <Text style={styles.myOrderItemText}>{t('profile.shipped')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.myOrderItem} onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'international_shipping' })}>
+                    <Text style={styles.myOrderItemCount}>{orderCounts.shipping_delay}</Text>
+                    <Text style={styles.myOrderItemText}>{t('profile.toShippingDelay')}</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.myOrderContent}>
+                  <TouchableOpacity style={styles.myOrderItem} onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'international_shipping' })}>
+                    <Text style={styles.myOrderItemCount}>{orderCounts.processed}</Text>
+                    <Text style={styles.myOrderItemText}>{t('profile.toReview')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.myOrderItem} onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'purchase_agency' })}>
+                    <Text style={styles.myOrderItemCount}>{orderCounts.problemProducts}</Text>
+                    <Text style={styles.myOrderItemText}>{t('profile.toProblem')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.myOrderItem} onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'error' })}>
+                    <Text style={styles.myOrderItemCount}>{orderCounts.error}</Text>
+                    <Text style={styles.myOrderItemText}>{t('profile.toErrorIn')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.myOrderItem} onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'error' })}>
+                    <Text style={styles.myOrderItemCount}>{orderCounts.refunds}</Text>
+                    <Text style={styles.myOrderItemText}>{t('profile.toRefunds')}</Text>
+                  </TouchableOpacity>
+                </View>
+              </>,
+              t('profile.myOrders'),
+              () => navigation.navigate('BuyList', { initialTab: 'all' })
+            )}
+          </View>
+        );
+
+      case 'coupon_point':
+        return (
+          <View style={styles.tabletDashboardContent}>
+            {dashCard(
+              <View style={styles.dashStatRow}>
+                <TouchableOpacity style={styles.dashStatItem} onPress={() => navigation.navigate('Coupon')}>
+                  <CouponIcon width={36} height={36} color={COLORS.primary} />
+                  <Text style={styles.dashStatValue}>
+                    {(() => { const c = (user as any)?.coupon; return typeof c === 'number' ? String(c) : typeof c === 'string' ? c : '0'; })()}
+                  </Text>
+                  <Text style={styles.dashStatLabel}>{t('profile.coupons')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.dashStatItem} onPress={() => navigation.navigate('PointDetail' as never)}>
+                  <PointIcon width={36} height={36} color={COLORS.primary} />
+                  <Text style={styles.dashStatValue}>
+                    {(() => { const p = (user as any)?.points ?? 0; return typeof p === 'number' ? String(p) : typeof p === 'string' ? p : '0'; })()}
+                  </Text>
+                  <Text style={styles.dashStatLabel}>{t('profile.points')}</Text>
+                </TouchableOpacity>
+              </View>,
+              `${t('profile.coupons') || '쿠폰'}/${t('profile.points') || '포인트'}`
+            )}
+          </View>
+        );
+
+      case 'wishlist':
+        return (
+          <View style={styles.tabletDashboardContent}>
+            {dashCard(
+              <TouchableOpacity style={styles.dashSummaryRow} onPress={() => navigation.navigate('Wishlist')}>
+                {wishlistFirstImage ? (
+                  <Image source={{ uri: wishlistFirstImage }} style={styles.dashSummaryImage} resizeMode="cover" />
+                ) : (
+                  <Image source={require('../../../assets/icons/wishlist.png')} style={[styles.dashSummaryImage, { opacity: 0.45 }]} resizeMode="contain" />
+                )}
+                <View style={styles.dashSummaryText}>
+                  <Text style={styles.dashSummaryCount}>{wishlistCount}</Text>
+                  <Text style={styles.dashSummaryLabel}>{t('profile.wishlist')}</Text>
+                </View>
+                <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
+              </TouchableOpacity>,
+              t('profile.wishlist')
+            )}
+          </View>
+        );
+
+      case 'following':
+        return (
+          <View style={styles.tabletDashboardContent}>
+            {dashCard(
+              <TouchableOpacity style={styles.dashLinkRow} onPress={() => navigation.navigate('FollowedStore' as never)}>
+                <SellerShopIcon width={24} height={24} color={COLORS.primary} />
+                <Text style={styles.dashLinkText}>{t('profile.followedStores')}</Text>
+                <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
+              </TouchableOpacity>,
+              t('profile.followedStores')
+            )}
+          </View>
+        );
+
+      case 'viewed':
+        return (
+          <View style={styles.tabletDashboardContent}>
+            {dashCard(
+              <TouchableOpacity style={styles.dashSummaryRow} onPress={() => navigation.navigate('ViewedProducts' as never)}>
+                {viewedFirstImage ? (
+                  <Image source={{ uri: viewedFirstImage }} style={styles.dashSummaryImage} resizeMode="cover" />
+                ) : (
+                  <ViewedIcon width={60} height={60} color={COLORS.text.secondary} />
+                )}
+                <View style={styles.dashSummaryText}>
+                  <Text style={styles.dashSummaryCount}>{viewedCount}</Text>
+                  <Text style={styles.dashSummaryLabel}>{t('profile.viewed')}</Text>
+                </View>
+                <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
+              </TouchableOpacity>,
+              t('profile.viewed')
+            )}
+          </View>
+        );
+
+      case 'billing':
+        return (
+          <View style={styles.tabletDashboardContent}>
+            {dashCard(
+              <TouchableOpacity style={styles.dashSummaryRow} onPress={() => navigation.navigate('Deposit')}>
+                <CoinIcon width={52} height={52} color={COLORS.primary} />
+                <View style={styles.dashSummaryText}>
+                  <Text style={styles.dashStatValue}>
+                    {(() => {
+                      const depositBalance = (user as any)?.depositBalance ?? (user as any)?.deposit;
+                      if (typeof depositBalance === 'number') return formatDepositBalance(depositBalance);
+                      if (typeof depositBalance === 'string') {
+                        const numValue = parseFloat(depositBalance);
+                        return isNaN(numValue) ? depositBalance : formatDepositBalance(numValue);
+                      }
+                      return formatDepositBalance(0);
+                    })()}
+                  </Text>
+                  <Text style={styles.dashSummaryLabel}>{t('profile.deposit')}</Text>
+                </View>
+                <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
+              </TouchableOpacity>,
+              t('profile.deposit')
+            )}
+          </View>
+        );
+
+      case 'feedback': {
+        const fbTotal = (Array.isArray(broadcastNotes) ? broadcastNotes.length : 0) + (typeof generalInquiryUnreadCount === 'number' ? generalInquiryUnreadCount : 0);
+        return (
+          <View style={styles.tabletDashboardContent}>
+            {dashCard(
+              <>
+                <TouchableOpacity style={styles.dashLinkRow} onPress={() => (navigation as any).navigate('Message', { initialTab: 'general' })}>
+                  <FeedbackIcon width={24} height={24} color={COLORS.primary} />
+                  <Text style={styles.dashLinkText}>{t('profile.suggestion')}</Text>
+                  {fbTotal > 0 && (
+                    <View style={styles.sidebarNavBadge}>
+                      <Text style={styles.sidebarNavBadgeText}>{fbTotal}</Text>
+                    </View>
+                  )}
+                  <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.dashLinkRow, styles.dashLinkRowBorder]} onPress={() => navigation.navigate('HelpCenter' as never)}>
+                  <OfficialSupportIcon width={24} height={24} color={COLORS.primary} />
+                  <Text style={styles.dashLinkText}>{t('profile.helpCenter')}</Text>
+                  <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.dashLinkRow, styles.dashLinkRowBorder]} onPress={() => navigation.navigate('CustomerService' as never)}>
+                  <CustomerSupportIcon width={24} height={24} color={COLORS.primary} />
+                  <Text style={styles.dashLinkText}>{t('profile.customerSupport')}</Text>
+                  <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
+                </TouchableOpacity>
+              </>,
+              t('profile.suggestion')
+            )}
+          </View>
+        );
+      }
+
+      case 'returns':
+        return (
+          <View style={styles.tabletDashboardContent}>
+            {dashCard(
+              <TouchableOpacity style={styles.dashLinkRow} onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'error' })}>
+                <UndoIcon width={24} height={24} color={COLORS.primary} />
+                <View style={{ flex: 1, marginLeft: SPACING.sm }}>
+                  <Text style={styles.dashLinkText}>{t('profile.toRefunds')}</Text>
+                  {orderCounts.refunds > 0 && (
+                    <Text style={styles.dashStatLabel}>{orderCounts.refunds}건 진행 중</Text>
+                  )}
+                </View>
+                <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
+              </TouchableOpacity>,
+              t('profile.toRefunds')
+            )}
+          </View>
+        );
+
+      case 'settings':
+        return (
+          <View style={styles.tabletDashboardContent}>
+            {dashCard(
+              <>
+                {[
+                  { label: '보안 정보', onPress: () => navigation.navigate('ProfileSettings') },
+                  { label: '개인 정보', onPress: () => navigation.navigate('ProfileSettings') },
+                  { label: '배송 주소', onPress: () => navigation.navigate('ProfileSettings') },
+                  { label: '개인 거래 설정', onPress: () => navigation.navigate('ProfileSettings') },
+                  { label: '선불 잔액', onPress: () => navigation.navigate('Deposit') },
+                ].map((item, idx) => (
+                  <TouchableOpacity
+                    key={idx}
+                    style={[styles.dashLinkRow, idx > 0 && styles.dashLinkRowBorder]}
+                    onPress={item.onPress}
+                  >
+                    <Text style={styles.dashLinkText}>{item.label}</Text>
+                    <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
+                  </TouchableOpacity>
+                ))}
+              </>,
+              '계정 설정'
+            )}
+          </View>
+        );
+
+      default:
+        return null;
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Top half linear gradient background */}
@@ -1283,46 +1610,59 @@ const ProfileScreen: React.FC = () => {
         colors={['#FFE1D4', '#FAFAFA']}
         style={styles.gradientBackground}
       />
-      
-      {renderHeader()}
-      <ScrollView 
-        style={styles.scrollView} 
-        showsVerticalScrollIndicator={false}
-        onScroll={(event) => {
-          const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-          
-          // Check if user has scrolled near the bottom (within 200px)
-          const scrollPosition = contentOffset.y;
-          const scrollHeight = contentSize.height;
-          const screenHeight = layoutMeasurement.height;
-          const distanceFromBottom = scrollHeight - scrollPosition - screenHeight;
 
-          if (
-            recommendationsHasMore &&
-            !recommendationsLoading &&
-            !isLoadingMoreRecommendationsRef.current &&
-            distanceFromBottom < 240 &&
-            isAuthenticated &&
-            !isGuest &&
-            user?.id
-          ) {
-            isLoadingMoreRecommendationsRef.current = true;
-            const nextPage = currentRecommendationsPageRef.current + 1;
-            currentRecommendationsPageRef.current = nextPage;
-            setRecommendationsOffset(nextPage);
-            const country = currentLocale === 'zh' ? 'en' : currentLocale;
-            const outId = user.memberId || user.userUniqueNo || (user as any).userUniqueId;
-            fetchRecommendationsRef.current?.(country, outId, nextPage, PAGINATION.FEED_MORE_PAGE_SIZE, selectedPlatform);
-          }
-        }}
-        scrollEventThrottle={16}
-      >
-        {/* {renderUserSection()} */}
-        {isAuthenticated && renderStatsSection()}
-        {isAuthenticated && renderMenuItems()}
-        {isAuthenticated && renderQuickAccessSection()}
-        {showHeavyContent && isAuthenticated && !isGuest && renderMoreToLove()}
-      </ScrollView>
+      {renderHeader()}
+
+      {pIsTabletLandscape ? (
+        // Tablet landscape: 2-panel split view
+        <View style={styles.tabletSplitContainer}>
+          {isAuthenticated && renderTabletSidebar()}
+          <ScrollView
+            style={styles.tabletDashboardPanel}
+            showsVerticalScrollIndicator={false}
+          >
+            {isAuthenticated && renderTabletDashboard()}
+            {showHeavyContent && isAuthenticated && !isGuest && tabletSection === 'overview' && renderMoreToLove()}
+          </ScrollView>
+        </View>
+      ) : (
+        // Phone / tablet portrait: single-column layout
+        <ScrollView
+          style={styles.scrollView}
+          showsVerticalScrollIndicator={false}
+          onScroll={(event) => {
+            const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+            const scrollPosition = contentOffset.y;
+            const scrollHeight = contentSize.height;
+            const screenHeight = layoutMeasurement.height;
+            const distanceFromBottom = scrollHeight - scrollPosition - screenHeight;
+
+            if (
+              recommendationsHasMore &&
+              !recommendationsLoading &&
+              !isLoadingMoreRecommendationsRef.current &&
+              distanceFromBottom < 240 &&
+              isAuthenticated &&
+              !isGuest &&
+              user?.id
+            ) {
+              isLoadingMoreRecommendationsRef.current = true;
+              const nextPage = currentRecommendationsPageRef.current + 1;
+              currentRecommendationsPageRef.current = nextPage;
+              setRecommendationsOffset(nextPage);
+              const country = currentLocale === 'zh' ? 'en' : currentLocale;
+              const outId = user.memberId || user.userUniqueNo || (user as any).userUniqueId;
+              fetchRecommendationsRef.current?.(country, outId, nextPage, PAGINATION.FEED_MORE_PAGE_SIZE, selectedPlatform);
+            }
+          }}
+          scrollEventThrottle={16}
+        >
+          {isAuthenticated && renderStatsSection()}
+          {isAuthenticated && renderMenuItems()}
+          {isAuthenticated && renderQuickAccessSection()}
+          {showHeavyContent && isAuthenticated && !isGuest && renderMoreToLove()}
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 };
@@ -1878,7 +2218,180 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.sm,
     color: COLORS.text.secondary,
     fontWeight: '500',
-    
+  },
+  // ── Tablet landscape 2-panel styles ─────────────────────────────────────
+  tabletSplitContainer: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  tabletSidebar: {
+    width: 220,
+    backgroundColor: COLORS.white,
+    borderRightWidth: 1,
+    borderRightColor: COLORS.border,
+  },
+  tabletDashboardPanel: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  sidebarUserMini: {
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+  },
+  sidebarAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    marginBottom: SPACING.xs,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+  },
+  sidebarUserName: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '600',
+    color: COLORS.text.primary,
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  sidebarUserId: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.text.secondary,
+    textAlign: 'center',
+  },
+  sidebarDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+  },
+  sidebarNavItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+    position: 'relative',
+    gap: SPACING.sm,
+  },
+  sidebarNavItemActive: {
+    backgroundColor: COLORS.primary + '15',
+  },
+  sidebarActiveBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    backgroundColor: COLORS.primary,
+    borderRadius: 2,
+  },
+  sidebarNavLabel: {
+    flex: 1,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
+  },
+  sidebarNavLabelActive: {
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  sidebarNavBadge: {
+    backgroundColor: COLORS.error,
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  sidebarNavBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
+  tabletDashboardContent: {
+    padding: SPACING.md,
+  },
+  dashCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    marginBottom: SPACING.md,
+    overflow: 'hidden',
+  },
+  dashCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  dashCardTitle: {
+    fontSize: FONTS.sizes.base,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+  },
+  dashCardMore: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.primary,
+  },
+  dashStatRow: {
+    flexDirection: 'row',
+    paddingVertical: SPACING.lg,
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.md,
+  },
+  dashStatItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  dashStatValue: {
+    fontSize: FONTS.sizes.xl,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+  },
+  dashStatLabel: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.text.secondary,
+  },
+  dashSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING.md,
+    gap: SPACING.md,
+  },
+  dashSummaryImage: {
+    width: 60,
+    height: 60,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.surface,
+  },
+  dashSummaryText: {
+    flex: 1,
+  },
+  dashSummaryCount: {
+    fontSize: FONTS.sizes.xl,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+  },
+  dashSummaryLabel: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
+  },
+  dashLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    gap: SPACING.sm,
+  },
+  dashLinkRowBorder: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  dashLinkText: {
+    flex: 1,
+    fontSize: FONTS.sizes.base,
+    color: COLORS.text.primary,
   },
 });
 
