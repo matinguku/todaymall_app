@@ -952,6 +952,11 @@ For return assistance, please contact our customer service team with your order 
       history: 'History',
       payment: 'Payment',
       loading: 'Loading...',
+      sellerInfoScreen: {
+        linkDashboard: 'Sales Dashboard',
+        linkOrdersRefunds: 'Orders & Refunds',
+        linkTeam: 'Team Performance',
+      },
       // Quick Access Section
       expressDelivery: 'Express delivery',
       itemsPendingShipment: '{count} items pending shipment',
@@ -2492,6 +2497,11 @@ Supports credit and check cards from various banks for recharging and payments.`
       history: '历史',
       payment: '支付',
       loading: '加载中...',
+      sellerInfoScreen: {
+        linkDashboard: '销售仪表盘',
+        linkOrdersRefunds: '订单与退款',
+        linkTeam: '团队业绩',
+      },
       // Quick Access Section
       expressDelivery: '快递配送',
       itemsPendingShipment: '{count} 件商品待发货',
@@ -4280,6 +4290,11 @@ Supports credit and check cards from various banks for recharging and payments.`
       history: '내역',
       payment: '결제',
       loading: '로딩 중...',
+      sellerInfoScreen: {
+        linkDashboard: '매출 대시보드',
+        linkOrdersRefunds: '주문 및 환불',
+        linkTeam: '팀 실적',
+      },
       // Quick Access Section
       expressDelivery: '특급 배송',
       itemsPendingShipment: '배송 대기 중인 {count}개 상품',

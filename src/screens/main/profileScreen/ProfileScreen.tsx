@@ -46,6 +46,15 @@ import FollowedStoreScreen from './FollowedStoreScreen';
 import ViewedProductsScreen from './ViewedProductsScreen';
 import DepositScreen from './depositScreen/DepositScreen';
 import MessageScreen from '../MessageScreen';
+import AddressBookScreen from './settingScreen/addressScreen/AddressBookScreen';
+import SecuritySettingsScreen from './myPageScreen/SecuritySettingsScreen';
+import EditProfileScreen from './myPageScreen/EditProfileScreen';
+import AffiliateMarketingScreen from './myPageScreen/AffiliateMarketingScreen';
+import SellerPageScreen from './settingScreen/sellerInfoScreen/SellerPageScreen';
+import SellerSalesRefundInfoScreen from './settingScreen/sellerInfoScreen/sellerSalesRefundInfoScreen';
+import SellerTeamInfoScreen from './settingScreen/sellerInfoScreen/SellerTeamInfoScreen';
+import HelpCenterScreen from './settingScreen/helpScreen/HelpCenterScreen';
+import AboutUsScreen from './AboutUsScreen';
 import HeadsetMicIcon from '../../../assets/icons/HeadsetMicIcon';
 import LocationIcon from '../../../assets/icons/LocationIcon';
 import SettingsIcon from '../../../assets/icons/SettingsIcon';
@@ -76,6 +85,17 @@ import AffiliateMarketingIcon from '../../../assets/icons/AffiliateMarketingIcon
 
 
 type ProfileScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Main'>;
+type EmbeddedSettingsPage =
+  | 'shippingAddress'
+  | 'securitySettings'
+  | 'personalInformation'
+  | 'affiliateMarketing'
+  | 'sellerDashboard'
+  | 'sellerOrdersRefunds'
+  | 'sellerTeamPerformance'
+  | 'helpCenter'
+  | 'todayMallIntroduction'
+  | null;
 
 /** API may return a flat `wishlist` or grouped `wishlistByStore`; Profile must match WishlistScreen semantics. */
 function getGroupItemArray(group: unknown): unknown[] {
@@ -267,6 +287,11 @@ const ProfileScreen: React.FC = () => {
   const [embeddedOrdersInitialTab, setEmbeddedOrdersInitialTab] = useState<string>('purchase_agency');
   const [embeddedCouponPointOpen, setEmbeddedCouponPointOpen] = useState(false);
   const [embeddedCouponPointTab, setEmbeddedCouponPointTab] = useState<'coupon' | 'point'>('coupon');
+  const [settingsExpanded, setSettingsExpanded] = useState(false);
+  const [accountSecurityExpanded, setAccountSecurityExpanded] = useState(false);
+  const [sellerInfoExpanded, setSellerInfoExpanded] = useState(false);
+  const [introductionExpanded, setIntroductionExpanded] = useState(false);
+  const [embeddedSettingsPage, setEmbeddedSettingsPage] = useState<EmbeddedSettingsPage>(null);
 
   // If the embedded orders view is open, but the user navigates to any other
   // sidebar section (e.g. Coupon/Point), close the embedded orders panel so
@@ -1343,14 +1368,14 @@ const ProfileScreen: React.FC = () => {
     const navItems: Array<{ key: string; label: string; iconName: string; badge?: number }> = [
       { key: 'overview', label: '내 계정', iconName: 'person' },
       { key: 'orders', label: t('profile.myOrders') || '주문', iconName: 'receipt-outline' },
-      { key: 'coupon_point', label: `${t('profile.coupons') || '쿠폰'}/${t('profile.points') || '포인트'}`, iconName: '' },
+      { key: 'coupon_point', label: `${t('profile.coupons') || '쿠폰'}/${t('profile.points') || '포인트'}`, iconName: 'pricetag-outline' },
       { key: 'wishlist', label: t('profile.wishlist') || '위시리스트', iconName: 'heart-outline', badge: wishlistCount || undefined },
-      { key: 'following', label: t('profile.followedStores') || '스토어 팔로우', iconName: '  ' },
+      { key: 'following', label: t('profile.followedStores') || '스토어 팔로우', iconName: 'storefront-outline' },
       { key: 'viewed', label: t('profile.viewed') || '조회한 상품', iconName: 'eye-outline', badge: viewedCount || undefined },
       { key: 'billing', label: t('profile.deposit') || '내 청구서', iconName: 'wallet-outline' },
       { key: 'feedback', label: t('profile.suggestion') || '피드백', iconName: 'chatbubble-outline', badge: feedbackBadge || undefined },
-      { key: 'returns', label: t('profile.toRefunds') || '반품/환불', iconName: ' ', badge: orderCounts.refunds || undefined },
-      { key: 'settings', label: '계정 설정', iconName: ' ' },
+      { key: 'returns', label: t('profile.toRefunds') || '반품/환불', iconName: 'return-down-back-outline', badge: orderCounts.refunds || undefined },
+      { key: 'settings', label: '계정 설정', iconName: 'settings-outline' },
     ];
 
     return (
@@ -1370,37 +1395,227 @@ const ProfileScreen: React.FC = () => {
         <View style={styles.sidebarDivider} />
         <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
           {navItems.map((item) => (
-            <TouchableOpacity
-              key={item.key}
-              style={[styles.sidebarNavItem, tabletSection === item.key && styles.sidebarNavItemActive]}
-              onPress={() => {
-                setTabletSection(item.key);
-                if (item.key === 'orders') {
-                  setEmbeddedOrdersInitialTab('purchase_agency');
-                  setEmbeddedOrdersOpen(true);
-                  setEmbeddedCouponPointOpen(false);
-                } else if (item.key === 'coupon_point') {
-                  setEmbeddedCouponPointTab('coupon');
-                  setEmbeddedCouponPointOpen(true);
-                  setEmbeddedOrdersOpen(false);
-                } else {
-                  setEmbeddedOrdersOpen(false);
-                  setEmbeddedCouponPointOpen(false);
-                }
-              }}
-              activeOpacity={0.7}
-            >
-              {tabletSection === item.key && <View style={styles.sidebarActiveBar} />}
-              <Icon name={item.iconName as any} size={18} color={tabletSection === item.key ? COLORS.primary : COLORS.text.secondary} />
-              <Text style={[styles.sidebarNavLabel, tabletSection === item.key && styles.sidebarNavLabelActive]} numberOfLines={1}>
-                {item.label}
-              </Text>
-              {!!item.badge && item.badge > 0 && (
-                <View style={styles.sidebarNavBadge}>
-                  <Text style={styles.sidebarNavBadgeText}>{item.badge > 99 ? '99+' : item.badge}</Text>
-                </View>
+            <React.Fragment key={item.key}>
+              <TouchableOpacity
+                style={[styles.sidebarNavItem, tabletSection === item.key && styles.sidebarNavItemActive]}
+                onPress={() => {
+                  setTabletSection(item.key);
+                  if (item.key === 'settings') {
+                    if (settingsExpanded) {
+                      // Pressing parent again: collapse and disable all child sections.
+                      setSettingsExpanded(false);
+                      setAccountSecurityExpanded(false);
+                      setSellerInfoExpanded(false);
+                      setIntroductionExpanded(false);
+                      setEmbeddedSettingsPage(null);
+                    } else {
+                      // Opening parent always starts with children collapsed.
+                      setSettingsExpanded(true);
+                      setAccountSecurityExpanded(false);
+                      setSellerInfoExpanded(false);
+                      setIntroductionExpanded(false);
+                      setEmbeddedSettingsPage(null);
+                    }
+                    setEmbeddedOrdersOpen(false);
+                    setEmbeddedCouponPointOpen(false);
+                    return;
+                  }
+                  setSettingsExpanded(false);
+                  setAccountSecurityExpanded(false);
+                  setSellerInfoExpanded(false);
+                  setIntroductionExpanded(false);
+                  setEmbeddedSettingsPage(null);
+                  if (item.key === 'orders') {
+                    setEmbeddedOrdersInitialTab('purchase_agency');
+                    setEmbeddedOrdersOpen(true);
+                    setEmbeddedCouponPointOpen(false);
+                  } else if (item.key === 'coupon_point') {
+                    setEmbeddedCouponPointTab('coupon');
+                    setEmbeddedCouponPointOpen(true);
+                    setEmbeddedOrdersOpen(false);
+                  } else {
+                    setEmbeddedOrdersOpen(false);
+                    setEmbeddedCouponPointOpen(false);
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                {tabletSection === item.key && <View style={styles.sidebarActiveBar} />}
+                <Icon name={item.iconName as any} size={18} color={tabletSection === item.key ? COLORS.primary : COLORS.text.secondary} />
+                <Text style={[styles.sidebarNavLabel, tabletSection === item.key && styles.sidebarNavLabelActive]} numberOfLines={1}>
+                  {item.label}
+                </Text>
+                {!!item.badge && item.badge > 0 && (
+                  <View style={styles.sidebarNavBadge}>
+                    <Text style={styles.sidebarNavBadgeText}>{item.badge > 99 ? '99+' : item.badge}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              {item.key === 'settings' && settingsExpanded && (
+                <>
+                  <TouchableOpacity
+                    style={styles.sidebarSubItem}
+                    onPress={() => {
+                      setAccountSecurityExpanded(prev => {
+                        const next = !prev;
+                        if (!next && (
+                          embeddedSettingsPage === 'shippingAddress' ||
+                          embeddedSettingsPage === 'securitySettings' ||
+                          embeddedSettingsPage === 'personalInformation' ||
+                          embeddedSettingsPage === 'affiliateMarketing'
+                        )) {
+                          setEmbeddedSettingsPage(null);
+                        }
+                        return next;
+                      });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.sidebarSubLabel}>{t('profile.accountandsecurity') || 'Account Security'}</Text>
+                  </TouchableOpacity>
+                  {accountSecurityExpanded && (
+                    <>
+                      <TouchableOpacity
+                        style={styles.sidebarSubSubItem}
+                        onPress={() => {
+                          setEmbeddedSettingsPage('shippingAddress');
+                          setTabletSection('settings');
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.sidebarSubSubLabel}>{t('profile.shippingAddress') || 'Shipping Address'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.sidebarSubSubItem}
+                        onPress={() => {
+                          setEmbeddedSettingsPage('securitySettings');
+                          setTabletSection('settings');
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.sidebarSubSubLabel}>{t('profile.securitySettings') || 'Security Settings'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.sidebarSubSubItem}
+                        onPress={() => {
+                          setEmbeddedSettingsPage('personalInformation');
+                          setTabletSection('settings');
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.sidebarSubSubLabel}>{t('profile.personalInformation') || 'Personal Information'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.sidebarSubSubItem}
+                        onPress={() => {
+                          setEmbeddedSettingsPage('affiliateMarketing');
+                          setTabletSection('settings');
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.sidebarSubSubLabel}>{t('profile.affiliateMarketing') || 'Affiliate Marketing'}</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                  <TouchableOpacity
+                    style={styles.sidebarSubItem}
+                    onPress={() => {
+                      setSellerInfoExpanded(prev => {
+                        const next = !prev;
+                        if (!next && (
+                          embeddedSettingsPage === 'sellerDashboard' ||
+                          embeddedSettingsPage === 'sellerOrdersRefunds' ||
+                          embeddedSettingsPage === 'sellerTeamPerformance'
+                        )) {
+                          setEmbeddedSettingsPage(null);
+                        }
+                        return next;
+                      });
+                      setIntroductionExpanded(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.sidebarSubLabel}>{t('profile.sellerInfo') || 'Seller Info'}</Text>
+                  </TouchableOpacity>
+                  {sellerInfoExpanded && (
+                    <>
+                      <TouchableOpacity
+                        style={styles.sidebarSubSubItem}
+                        onPress={() => {
+                          setEmbeddedSettingsPage('sellerDashboard');
+                          setTabletSection('settings');
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.sidebarSubSubLabel}>{t('profile.Sellerpage') || 'Sales Dashboard'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.sidebarSubSubItem}
+                        onPress={() => {
+                          setEmbeddedSettingsPage('sellerOrdersRefunds');
+                          setTabletSection('settings');
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.sidebarSubSubLabel}>{t('profile.SellerSalesRefundInfo') || 'Orders and Refunds'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.sidebarSubSubItem}
+                        onPress={() => {
+                          setEmbeddedSettingsPage('sellerTeamPerformance');
+                          setTabletSection('settings');
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.sidebarSubSubLabel}>{t('profile.sellerTeamInfo') || 'Team Performance'}</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                  <TouchableOpacity
+                    style={styles.sidebarSubItem}
+                    onPress={() => {
+                      setIntroductionExpanded(prev => {
+                        const next = !prev;
+                        if (!next && (
+                          embeddedSettingsPage === 'helpCenter' ||
+                          embeddedSettingsPage === 'todayMallIntroduction'
+                        )) {
+                          setEmbeddedSettingsPage(null);
+                        }
+                        return next;
+                      });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.sidebarSubLabel}>{t('profile.aboutUs') || 'Introduction'}</Text>
+                  </TouchableOpacity>
+                  {introductionExpanded && (
+                    <>
+                      <TouchableOpacity
+                        style={styles.sidebarSubSubItem}
+                        onPress={() => {
+                          setEmbeddedSettingsPage('helpCenter');
+                          setTabletSection('settings');
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.sidebarSubSubLabel}>{t('profile.helpCenter') || 'Help Center'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.sidebarSubSubItem}
+                        onPress={() => {
+                          setEmbeddedSettingsPage('todayMallIntroduction');
+                          setTabletSection('settings');
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.sidebarSubSubLabel}>{t('profile.aboutUs') || 'Today Mall Introduction'}</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </>
               )}
-            </TouchableOpacity>
+            </React.Fragment>
           ))}
         </ScrollView>
       </View>
@@ -1609,11 +1824,27 @@ const ProfileScreen: React.FC = () => {
             {dashCard(
               <>
                 {[
-                  { label: '보안 정보', onPress: () => navigation.navigate('ProfileSettings') },
-                  { label: '개인 정보', onPress: () => navigation.navigate('ProfileSettings') },
-                  { label: '배송 주소', onPress: () => navigation.navigate('ProfileSettings') },
-                  { label: '개인 거래 설정', onPress: () => navigation.navigate('ProfileSettings') },
-                  { label: '선불 잔액', onPress: () => navigation.navigate('Deposit') },
+                  {
+                    label: t('profile.accountandsecurity') || 'Account Security',
+                    onPress: () => {
+                      setTabletSection('settings');
+                      setEmbeddedSettingsPage('securitySettings');
+                    },
+                  },
+                  {
+                    label: t('profile.sellerInfo') || 'Seller Info',
+                    onPress: () => {
+                      setTabletSection('settings');
+                      setEmbeddedSettingsPage('sellerDashboard');
+                    },
+                  },
+                  {
+                    label: t('profile.aboutUs') || 'Introduction',
+                    onPress: () => {
+                      setTabletSection('settings');
+                      setEmbeddedSettingsPage('todayMallIntroduction');
+                    },
+                  },
                 ].map((item, idx) => (
                   <TouchableOpacity
                     key={idx}
@@ -1625,7 +1856,7 @@ const ProfileScreen: React.FC = () => {
                   </TouchableOpacity>
                 ))}
               </>,
-              '계정 설정'
+              t('profile.settings') || 'Settings'
             )}
           </View>
         );
@@ -1696,6 +1927,42 @@ const ProfileScreen: React.FC = () => {
           ) : tabletSection === 'returns' ? (
             <View style={styles.tabletDashboardPanel}>
               <BuyListScreen embedded initialTabOverride="error" />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'shippingAddress' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <AddressBookScreen />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'securitySettings' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <SecuritySettingsScreen />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'personalInformation' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <EditProfileScreen />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'affiliateMarketing' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <AffiliateMarketingScreen />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'sellerDashboard' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <SellerPageScreen />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'sellerOrdersRefunds' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <SellerSalesRefundInfoScreen />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'sellerTeamPerformance' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <SellerTeamInfoScreen />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'helpCenter' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <HelpCenterScreen />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'todayMallIntroduction' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <AboutUsScreen />
             </View>
           ) : (
             <ScrollView
@@ -2417,6 +2684,26 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: COLORS.white,
+  },
+  sidebarSubItem: {
+    paddingVertical: SPACING.xs,
+    paddingLeft: SPACING.xl + SPACING.md,
+    paddingRight: SPACING.md,
+    backgroundColor: '#FFF7FA',
+  },
+  sidebarSubLabel: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
+  },
+  sidebarSubSubItem: {
+    paddingVertical: SPACING.xs,
+    paddingLeft: SPACING.xl + SPACING.xl,
+    paddingRight: SPACING.md,
+    backgroundColor: '#FFFDFE',
+  },
+  sidebarSubSubLabel: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
   },
   tabletDashboardContent: {
     padding: SPACING.md,
