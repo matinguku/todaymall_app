@@ -55,7 +55,11 @@ const WISHLIST_ITEM_STATUS_I18N: Record<WishlistItemStatusKey, string> = {
   expired: 'profile.wishlistItemExpired',
 };
 
-const WishlistScreen: React.FC = () => {
+interface WishlistScreenProps {
+  embedded?: boolean;
+}
+
+const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false }) => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { user, isAuthenticated } = useAuth();
@@ -375,9 +379,11 @@ const WishlistScreen: React.FC = () => {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-          </TouchableOpacity>
+          {!embedded && (
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+              <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
+            </TouchableOpacity>
+          )}
           <Text style={styles.headerTitle}>{t('profile.wishlistTitle')}</Text>
           <View style={styles.placeholder} />
         </View>
@@ -494,12 +500,14 @@ const WishlistScreen: React.FC = () => {
   const renderHeader = () => (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Icon name="chevron-back" size={24} color={COLORS.black} />
-        </TouchableOpacity>
+        {!embedded && (
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Icon name="chevron-back" size={24} color={COLORS.black} />
+          </TouchableOpacity>
+        )}
           <Text style={styles.headerTitle}>
           {t('profile.wishlistTitleWithCount', { count: wishlistItems.length })}
         </Text>

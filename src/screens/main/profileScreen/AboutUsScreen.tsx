@@ -13,7 +13,11 @@ import { COLORS, FONTS, SHADOWS, SPACING } from '../../../constants';
 import { useAppSelector } from '../../../store/hooks';
 import { translations } from '../../../i18n/translations';
 
-const AboutUsScreen: React.FC = () => {
+type AboutUsScreenProps = {
+  embedded?: boolean;
+};
+
+const AboutUsScreen: React.FC<AboutUsScreenProps> = ({ embedded = false }) => {
   const navigation = useNavigation();
   const locale = useAppSelector((state) => state.i18n.locale);
 
@@ -29,9 +33,13 @@ const AboutUsScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Icon name="arrow-back" size={18} color={COLORS.text.primary} />
-        </TouchableOpacity>
+        {!embedded ? (
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Icon name="arrow-back" size={18} color={COLORS.text.primary} />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.placeholder} />
+        )}
         <Text style={styles.headerTitle}>{t('profile.aboutUs')}</Text>
         <View style={styles.placeholder} />
       </View>

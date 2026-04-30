@@ -36,7 +36,11 @@ type ChartItem = {
   color: string;
 };
 
-const SellerPage: React.FC = () => {
+type SellerPageProps = {
+  embedded?: boolean;
+};
+
+const SellerPage: React.FC<SellerPageProps> = ({ embedded = false }) => {
   const navigation = useNavigation<NavigationProp>();
   const { t } = useTranslation();
   const { mutate: fetchDashboardSummary, summary, directTeam, isLoading, isError, error } = useSellerDashboardSummaryMutation();
@@ -152,9 +156,13 @@ const SellerPage: React.FC = () => {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-        <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-      </TouchableOpacity>
+      {!embedded ? (
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.headerPlaceholder} />
+      )}
       <Text style={styles.headerTitle}>{t('sellerInfo.dashboardTitle')}</Text>
       <View style={styles.headerPlaceholder} />
     </View>

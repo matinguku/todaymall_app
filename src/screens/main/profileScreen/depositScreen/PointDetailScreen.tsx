@@ -16,7 +16,14 @@ import { getTranslation } from '../../../../utils/i18nHelpers';
 import { voucherApi, PointTransaction } from '../../../../services/voucherApi';
 import { useToast } from '../../../../context/ToastContext';
 
-const PointDetailScreen = () => {
+type CouponMainTab = 'coupon' | 'point';
+
+interface PointDetailScreenProps {
+  embedded?: boolean;
+  onMainTabChange?: (tab: CouponMainTab) => void;
+}
+
+const PointDetailScreen: React.FC<PointDetailScreenProps> = ({ embedded = false, onMainTabChange }) => {
   const navigation = useNavigation();
   const { showToast } = useToast();
   const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
@@ -66,29 +73,41 @@ const PointDetailScreen = () => {
     return date.toLocaleDateString(loc, { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
+  const Container = embedded ? View : SafeAreaView;
+
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>{t('home.voucherWallet')}</Text>
-        </View>
-        {/* <TouchableOpacity style={styles.menuButton}>
-          <Icon name="ellipsis-horizontal" size={24} color={COLORS.text.primary} />
-        </TouchableOpacity> */}
-      </View>
+    <Container style={styles.container}>
+      {!embedded && (
+        <>
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+              <TouchableOpacity 
+                style={styles.backButton}
+                onPress={() => navigation.goBack()}
+              >
+                <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>{t('home.voucherWallet')}</Text>
+            </View>
+            {/* <TouchableOpacity style={styles.menuButton}>
+              <Icon name="ellipsis-horizontal" size={24} color={COLORS.text.primary} />
+            </TouchableOpacity> */}
+          </View>
+        </>
+      )}
 
       {/* Tab Navigation - Coupon/Point */}
       <View style={styles.mainTabContainer}>
         <TouchableOpacity 
           style={styles.mainTab}
-          onPress={() => (navigation as any).navigate('Coupon')}
+          onPress={() => {
+            if (embedded && onMainTabChange) {
+              onMainTabChange('coupon');
+              return;
+            }
+            (navigation as any).navigate('Coupon');
+          }}
         >
           <Text style={styles.mainTabText}>{t('home.coupon')}</Text>
         </TouchableOpacity>
@@ -177,7 +196,7 @@ const PointDetailScreen = () => {
           )}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </Container>
   );
 };
 

@@ -38,6 +38,23 @@ import { usePlatformStore } from '../../../store/platformStore';
 import { formatPriceKRW, formatDepositBalance } from '../../../utils/i18nHelpers';
 import { logDevApiFailure } from '../../../utils/devLog';
 import { useGetOrdersMutation } from '../../../hooks/useGetOrdersMutation';
+import BuyListScreen from './settingScreen/BuyListScreen';
+import CouponScreen from './depositScreen/CouponScreen';
+import PointDetailScreen from './depositScreen/PointDetailScreen';
+import WishlistScreen from '../WishlistScreen';
+import FollowedStoreScreen from './FollowedStoreScreen';
+import ViewedProductsScreen from './ViewedProductsScreen';
+import DepositScreen from './depositScreen/DepositScreen';
+import MessageScreen from '../MessageScreen';
+import AddressBookScreen from './settingScreen/addressScreen/AddressBookScreen';
+import SecuritySettingsScreen from './myPageScreen/SecuritySettingsScreen';
+import EditProfileScreen from './myPageScreen/EditProfileScreen';
+import AffiliateMarketingScreen from './myPageScreen/AffiliateMarketingScreen';
+import SellerPageScreen from './settingScreen/sellerInfoScreen/SellerPageScreen';
+import SellerSalesRefundInfoScreen from './settingScreen/sellerInfoScreen/sellerSalesRefundInfoScreen';
+import SellerTeamInfoScreen from './settingScreen/sellerInfoScreen/SellerTeamInfoScreen';
+import HelpCenterScreen from './settingScreen/helpScreen/HelpCenterScreen';
+import AboutUsScreen from './AboutUsScreen';
 import HeadsetMicIcon from '../../../assets/icons/HeadsetMicIcon';
 import LocationIcon from '../../../assets/icons/LocationIcon';
 import SettingsIcon from '../../../assets/icons/SettingsIcon';
@@ -68,6 +85,17 @@ import AffiliateMarketingIcon from '../../../assets/icons/AffiliateMarketingIcon
 
 
 type ProfileScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Main'>;
+type EmbeddedSettingsPage =
+  | 'shippingAddress'
+  | 'securitySettings'
+  | 'personalInformation'
+  | 'affiliateMarketing'
+  | 'sellerDashboard'
+  | 'sellerOrdersRefunds'
+  | 'sellerTeamPerformance'
+  | 'helpCenter'
+  | 'todayMallIntroduction'
+  | null;
 
 /** API may return a flat `wishlist` or grouped `wishlistByStore`; Profile must match WishlistScreen semantics. */
 function getGroupItemArray(group: unknown): unknown[] {
@@ -229,7 +257,9 @@ const ProfileScreen: React.FC = () => {
   const navigation = useNavigation<ProfileScreenNavigationProp>();
   const { width: pWinWidth, height: pWinHeight } = useWindowDimensions();
   const pIsTablet = Math.min(pWinWidth, pWinHeight) >= 600;
-  const pGridCols = pIsTablet ? (pWinWidth > pWinHeight ? 4 : 3) : 2;
+  const pIsLandscape = pWinWidth > pWinHeight;
+  const pIsTabletLandscape = pIsTablet && pIsLandscape;
+  const pGridCols = pIsTablet ? (pIsLandscape ? 4 : 3) : 2;
   const pCardWidth = (pWinWidth - SPACING.md * 2 * (pGridCols - 1)) / pGridCols;
   const { user, isAuthenticated, isGuest } = useAuth();
   const currentLocale = useAppSelector((state) => state.i18n.locale);
@@ -250,6 +280,41 @@ const ProfileScreen: React.FC = () => {
     refunds: 0,
     problemProducts: 0,
   }); // Order counts from API
+  const [tabletSection, setTabletSection] = useState('overview');
+  // When the user taps "All" in the My Orders card on tablet,
+  // render the BuyList screen inside the dashboard panel.
+  const [embeddedOrdersOpen, setEmbeddedOrdersOpen] = useState(false);
+  const [embeddedOrdersInitialTab, setEmbeddedOrdersInitialTab] = useState<string>('purchase_agency');
+  const [embeddedCouponPointOpen, setEmbeddedCouponPointOpen] = useState(false);
+  const [embeddedCouponPointTab, setEmbeddedCouponPointTab] = useState<'coupon' | 'point'>('coupon');
+  const [settingsExpanded, setSettingsExpanded] = useState(false);
+  const [accountSecurityExpanded, setAccountSecurityExpanded] = useState(false);
+  const [sellerInfoExpanded, setSellerInfoExpanded] = useState(false);
+  const [introductionExpanded, setIntroductionExpanded] = useState(false);
+  const [embeddedSettingsPage, setEmbeddedSettingsPage] = useState<EmbeddedSettingsPage>(null);
+
+  // If the embedded orders view is open, but the user navigates to any other
+  // sidebar section (e.g. Coupon/Point), close the embedded orders panel so
+  // the dashboard card reappears.
+  // Debounced to avoid transient state races when opening orders.
+  useEffect(() => {
+    if (!embeddedOrdersOpen) return;
+    if (tabletSection === 'orders') return;
+    const id = setTimeout(() => setEmbeddedOrdersOpen(false), 80);
+    return () => clearTimeout(id);
+  }, [tabletSection, embeddedOrdersOpen]);
+
+  useEffect(() => {
+    // Always embed Coupon/Point page when the sidebar section is selected,
+    // so the extra dashboard stat cards don't appear.
+    if (tabletSection === 'coupon_point') {
+      setEmbeddedCouponPointOpen(true);
+      return;
+    }
+    if (!embeddedCouponPointOpen) return;
+    const id = setTimeout(() => setEmbeddedCouponPointOpen(false), 80);
+    return () => clearTimeout(id);
+  }, [tabletSection, embeddedCouponPointOpen]);
 
   const [wishlistCount, setWishlistCount] = useState(0);
   const [wishlistFirstImage, setWishlistFirstImage] = useState<string>('');
@@ -326,7 +391,7 @@ const ProfileScreen: React.FC = () => {
       };
       fetchUnreadCounts();
 
-      // Get order counts from API (fetch larger page size to calculate accurate counts)
+      // Get order counts from API
       getOrders({ page: 1, pageSize: 100 });
 
       // Set wishlist and viewed counts from API
@@ -724,7 +789,7 @@ const ProfileScreen: React.FC = () => {
                 style={styles.editButton}
                 onPress={() => navigation.navigate('ProfileSettings')}
               >
-                <Icon name="pencil" size={14} color={COLORS.primary} />
+                <Icon name="pencil" size={14} color={COLORS.red} />
                 <Text style={styles.editText}>{t('profile.editProfile')}</Text>
               </TouchableOpacity>
             </View> */}
@@ -854,7 +919,15 @@ const ProfileScreen: React.FC = () => {
         <View style={styles.myOrder}>
           <TouchableOpacity 
             style={styles.myOrderHeader}
-            onPress={() => navigation.navigate('BuyList', { initialTab: 'all' })}
+            onPress={() => {
+              if (pIsTabletLandscape) {
+                setTabletSection('orders');
+                setEmbeddedOrdersInitialTab('purchase_agency');
+                setEmbeddedOrdersOpen(true);
+              } else {
+                navigation.navigate('BuyList', { initialTab: 'purchase_agency' });
+              }
+            }}
           >
             <Text style={styles.myOrderHeaderText}>{t('profile.myOrders')}{">"}</Text>
             <Text style={styles.myOrderHeaderTextSub}>{t('profile.viewAll')}{' >'}</Text>
@@ -1097,6 +1170,17 @@ const ProfileScreen: React.FC = () => {
   };
 
   // Render More to Love item
+  // IMPORTANT: the grid sits inside the tablet dashboard panel, so card width must
+  // be computed from the panel width (excluding sidebar) to prevent horizontal overflow.
+  const moreToLoveSidebarWidth = pIsTabletLandscape ? 220 : 0;
+  const moreToLovePanelWidth = pWinWidth - moreToLoveSidebarWidth;
+  const moreToLoveOuterHorizontalPadding = SPACING.xs * 2; // styles.moreToLoveSection paddingHorizontal
+  const moreToLoveAvailableWidth = Math.max(0, moreToLovePanelWidth - moreToLoveOuterHorizontalPadding);
+  const moreToLoveColWidth = moreToLoveAvailableWidth / Math.max(1, pGridCols);
+  // ProductCard(moreToLove) renders the image as width = cardW + 1px.
+  // Subtract extra pixels to prevent even 1px overflow in RN layout.
+  const moreToLoveCardWidth = Math.max(105, Math.floor(moreToLoveColWidth) - 10);
+
   const renderMoreToLoveItem = useCallback(({ item: product, index }: { item: Product; index: number }) => {
     if (!product || !product.id) {
       return null;
@@ -1118,7 +1202,7 @@ const ProfileScreen: React.FC = () => {
         key={`moretolove-${product.id || index}`}
         product={product}
         variant="moreToLove"
-        cardWidth={pCardWidth}
+        cardWidth={moreToLoveCardWidth}
         onPress={() => handleProductPress(product)}
         onLikePress={handleLike}
         isLiked={isProductLiked(product)}
@@ -1127,14 +1211,14 @@ const ProfileScreen: React.FC = () => {
         showRating={true}
       />
     );
-  }, [user, isGuest, toggleWishlist, handleProductPress, isProductLiked, pCardWidth]);
+  }, [user, isGuest, toggleWishlist, handleProductPress, isProductLiked, moreToLoveCardWidth]);
 
   // Render footer for "More to Love" loading indicator
   const renderMoreToLoveFooter = () => {
     if (recommendationsLoading && recommendationsProducts.length > 0) {
       return (
         <View style={styles.moreToLoveFooter}>
-          <ActivityIndicator size="small" color={COLORS.primary} />
+          <ActivityIndicator size="small" color={COLORS.red} />
           <Text style={styles.moreToLoveFooterText}>{t('profile.loadingMore')}</Text>
         </View>
       );
@@ -1276,6 +1360,487 @@ const ProfileScreen: React.FC = () => {
     );
   };
 
+  const renderTabletSidebar = () => {
+    const notesCount = Array.isArray(broadcastNotes) ? broadcastNotes.length : 0;
+    const inquiryCount = typeof generalInquiryUnreadCount === 'number' ? generalInquiryUnreadCount : 0;
+    const feedbackBadge = notesCount + inquiryCount;
+
+    // const navItems: Array<{ key: string; label: string; iconName: string; badge?: number }> = [
+    //   { key: 'overview', label: '내 계정', iconName: 'person' },
+    //   { key: 'orders', label: t('profile.myOrders') || '주문', iconName: 'receipt-outline' },
+    //   { key: 'coupon_point', label: `${t('profile.coupons') || '쿠폰'}/${t('profile.points') || '포인트'}`, iconName: 'pricetag-outline' },
+    //   { key: 'wishlist', label: t('profile.wishlist') || '위시리스트', iconName: 'heart-outline', badge: wishlistCount || undefined },
+    //   { key: 'following', label: t('profile.followedStores') || '스토어 팔로우', iconName: 'storefront-outline' },
+    //   { key: 'viewed', label: t('profile.viewed') || '조회한 상품', iconName: 'eye-outline', badge: viewedCount || undefined },
+    //   { key: 'billing', label: t('profile.deposit') || '내 청구서', iconName: 'wallet-outline' },
+    //   { key: 'feedback', label: t('profile.suggestion') || '피드백', iconName: 'chatbubble-outline', badge: feedbackBadge || undefined },
+    //   { key: 'returns', label: t('profile.toRefunds') || '반품/환불', iconName: 'return-down-back-outline', badge: orderCounts.refunds || undefined },
+    //   { key: 'settings', label: '계정 설정', iconName: 'settings-outline' },
+    // ];
+
+    const navItems: Array<{ key: string; label: string; badge?: number }> = [
+      { key: 'overview', label: '내 계정',  },
+      { key: 'orders', label: t('profile.myOrders') || '주문', },
+      { key: 'coupon_point', label: `${t('profile.coupons') || '쿠폰'}/${t('profile.points') || '포인트'}`,},
+      { key: 'wishlist', label: t('profile.wishlist') || '위시리스트',  badge: wishlistCount || undefined },
+      { key: 'following', label: t('profile.followedStores') || '스토어 팔로우', },
+      { key: 'viewed', label: t('profile.viewed') || '조회한 상품', badge: viewedCount || undefined },
+      { key: 'billing', label: t('profile.deposit') || '내 청구서',},
+      { key: 'feedback', label: t('profile.suggestion') || '피드백', badge: feedbackBadge || undefined },
+      { key: 'returns', label: t('profile.toRefunds') || '반품/환불', badge: orderCounts.refunds || undefined },
+      { key: 'settings', label: '계정 설정',  },
+    ];
+
+    return (
+      <View style={styles.tabletSidebar}>
+        <View style={styles.sidebarUserMini}>
+          <Image
+            source={
+              user?.avatar && typeof user.avatar === 'string' && user.avatar.trim() !== ''
+                ? { uri: user.avatar }
+                : require('../../../assets/images/avatar.png')
+            }
+            style={styles.sidebarAvatar}
+          />
+          <Text style={styles.sidebarUserName} numberOfLines={1}>{user?.name || ''}</Text>
+          <Text style={styles.sidebarUserId} numberOfLines={1}>{user?.userUniqueId || ''}</Text>
+        </View>
+        <View style={styles.sidebarDivider} />
+        <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+          {navItems.map((item) => (
+            <React.Fragment key={item.key}>
+              <TouchableOpacity
+                style={[styles.sidebarNavItem, tabletSection === item.key && styles.sidebarNavItemActive]}
+                onPress={() => {
+                  setTabletSection(item.key);
+                  if (item.key === 'settings') {
+                    if (settingsExpanded) {
+                      // Pressing parent again: collapse and disable all child sections.
+                      setSettingsExpanded(false);
+                      setAccountSecurityExpanded(false);
+                      setSellerInfoExpanded(false);
+                      setIntroductionExpanded(false);
+                      setEmbeddedSettingsPage(null);
+                    } else {
+                      // Opening parent always starts with children collapsed.
+                      setSettingsExpanded(true);
+                      setAccountSecurityExpanded(false);
+                      setSellerInfoExpanded(false);
+                      setIntroductionExpanded(false);
+                      setEmbeddedSettingsPage(null);
+                    }
+                    setEmbeddedOrdersOpen(false);
+                    setEmbeddedCouponPointOpen(false);
+                    return;
+                  }
+                  setSettingsExpanded(false);
+                  setAccountSecurityExpanded(false);
+                  setSellerInfoExpanded(false);
+                  setIntroductionExpanded(false);
+                  setEmbeddedSettingsPage(null);
+                  if (item.key === 'orders') {
+                    setEmbeddedOrdersInitialTab('purchase_agency');
+                    setEmbeddedOrdersOpen(true);
+                    setEmbeddedCouponPointOpen(false);
+                  } else if (item.key === 'coupon_point') {
+                    setEmbeddedCouponPointTab('coupon');
+                    setEmbeddedCouponPointOpen(true);
+                    setEmbeddedOrdersOpen(false);
+                  } else {
+                    setEmbeddedOrdersOpen(false);
+                    setEmbeddedCouponPointOpen(false);
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                {tabletSection === item.key && <View style={styles.sidebarActiveBar} />}
+                {/* <Icon name={item.iconName as any} size={18} color={tabletSection === item.key ? COLORS.red : COLORS.text.secondary} /> */}
+                <Text style={[styles.sidebarNavLabel, tabletSection === item.key && styles.sidebarNavLabelActive]} numberOfLines={1}>
+                  {item.label}
+                </Text>
+                {!!item.badge && item.badge > 0 && (
+                  <View style={styles.sidebarNavBadge}>
+                    <Text style={styles.sidebarNavBadgeText}>{item.badge > 99 ? '99+' : item.badge}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              {item.key === 'settings' && settingsExpanded && (
+                <>
+                  <TouchableOpacity
+                    style={styles.sidebarSubItem}
+                    onPress={() => {
+                      setAccountSecurityExpanded(prev => {
+                        const next = !prev;
+                        if (!next && (
+                          embeddedSettingsPage === 'shippingAddress' ||
+                          embeddedSettingsPage === 'securitySettings' ||
+                          embeddedSettingsPage === 'personalInformation' ||
+                          embeddedSettingsPage === 'affiliateMarketing'
+                        )) {
+                          setEmbeddedSettingsPage(null);
+                        }
+                        return next;
+                      });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.sidebarSubLabel}>{t('profile.accountandsecurity') || 'Account Security'}</Text>
+                  </TouchableOpacity>
+                  {accountSecurityExpanded && (
+                    <>
+                      <TouchableOpacity
+                        style={styles.sidebarSubSubItem}
+                        onPress={() => {
+                          setEmbeddedSettingsPage('shippingAddress');
+                          setTabletSection('settings');
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.sidebarSubSubLabel}>{t('profile.shippingAddress') || 'Shipping Address'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.sidebarSubSubItem}
+                        onPress={() => {
+                          setEmbeddedSettingsPage('securitySettings');
+                          setTabletSection('settings');
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.sidebarSubSubLabel}>{t('profile.securitySettings') || 'Security Settings'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.sidebarSubSubItem}
+                        onPress={() => {
+                          setEmbeddedSettingsPage('personalInformation');
+                          setTabletSection('settings');
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.sidebarSubSubLabel}>{t('profile.personalInformation') || 'Personal Information'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.sidebarSubSubItem}
+                        onPress={() => {
+                          setEmbeddedSettingsPage('affiliateMarketing');
+                          setTabletSection('settings');
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.sidebarSubSubLabel}>{t('profile.affiliateMarketing') || 'Affiliate Marketing'}</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                  <TouchableOpacity
+                    style={styles.sidebarSubItem}
+                    onPress={() => {
+                      setSellerInfoExpanded(prev => {
+                        const next = !prev;
+                        if (!next && (
+                          embeddedSettingsPage === 'sellerDashboard' ||
+                          embeddedSettingsPage === 'sellerOrdersRefunds' ||
+                          embeddedSettingsPage === 'sellerTeamPerformance'
+                        )) {
+                          setEmbeddedSettingsPage(null);
+                        }
+                        return next;
+                      });
+                      setIntroductionExpanded(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.sidebarSubLabel}>{t('profile.sellerInfo') || 'Seller Info'}</Text>
+                  </TouchableOpacity>
+                  {sellerInfoExpanded && (
+                    <>
+                      <TouchableOpacity
+                        style={styles.sidebarSubSubItem}
+                        onPress={() => {
+                          setEmbeddedSettingsPage('sellerDashboard');
+                          setTabletSection('settings');
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.sidebarSubSubLabel}>{t('profile.Sellerpage') || 'Sales Dashboard'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.sidebarSubSubItem}
+                        onPress={() => {
+                          setEmbeddedSettingsPage('sellerOrdersRefunds');
+                          setTabletSection('settings');
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.sidebarSubSubLabel}>{t('profile.SellerSalesRefundInfo') || 'Orders and Refunds'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.sidebarSubSubItem}
+                        onPress={() => {
+                          setEmbeddedSettingsPage('sellerTeamPerformance');
+                          setTabletSection('settings');
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.sidebarSubSubLabel}>{t('profile.sellerTeamInfo') || 'Team Performance'}</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                  <TouchableOpacity
+                    style={styles.sidebarSubItem}
+                    onPress={() => {
+                      setIntroductionExpanded(prev => {
+                        const next = !prev;
+                        if (!next && (
+                          embeddedSettingsPage === 'helpCenter' ||
+                          embeddedSettingsPage === 'todayMallIntroduction'
+                        )) {
+                          setEmbeddedSettingsPage(null);
+                        }
+                        return next;
+                      });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.sidebarSubLabel}>{t('profile.aboutUs') || 'Introduction'}</Text>
+                  </TouchableOpacity>
+                  {introductionExpanded && (
+                    <>
+                      <TouchableOpacity
+                        style={styles.sidebarSubSubItem}
+                        onPress={() => {
+                          setEmbeddedSettingsPage('helpCenter');
+                          setTabletSection('settings');
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.sidebarSubSubLabel}>{t('profile.helpCenter') || 'Help Center'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.sidebarSubSubItem}
+                        onPress={() => {
+                          setEmbeddedSettingsPage('todayMallIntroduction');
+                          setTabletSection('settings');
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.sidebarSubSubLabel}>{t('profile.aboutUs') || 'Today Mall Introduction'}</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </>
+              )}
+            </React.Fragment>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  };
+
+  const renderTabletDashboard = () => {
+    const dashCard = (children: React.ReactNode, title?: string, onMore?: () => void) => (
+      <View style={styles.dashCard}>
+        {(title || onMore) && (
+          <View style={styles.dashCardHeader}>
+            {title && <Text style={styles.dashCardTitle}>{title}</Text>}
+            {onMore && (
+              <TouchableOpacity onPress={onMore}>
+                <Text style={styles.dashCardMore}>{t('profile.viewAll') || '전체 보기'} {'>'}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+        {children}
+      </View>
+    );
+
+    switch (tabletSection) {
+      case 'overview':
+        return (
+          <View style={styles.tabletDashboardContent}>
+            {renderStatsSection()}
+            {renderQuickAccessSection()}
+          </View>
+        );
+
+      case 'orders':
+        return (
+          <View style={styles.tabletDashboardContent}>
+            {dashCard(
+              <>
+                <View style={styles.myOrderContent}>
+                  <TouchableOpacity
+                    style={styles.myOrderItem}
+                    onPress={() => {
+                      setTabletSection('orders');
+                      setEmbeddedOrdersInitialTab('purchase_agency');
+                      setEmbeddedOrdersOpen(true);
+                    }}
+                  >
+                    <Text style={styles.myOrderItemCount}>{orderCounts.unpaid}</Text>
+                    <Text style={styles.myOrderItemText}>{t('profile.toPay')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.myOrderItem}
+                    onPress={() => {
+                      setTabletSection('orders');
+                      setEmbeddedOrdersInitialTab('warehouse');
+                      setEmbeddedOrdersOpen(true);
+                    }}
+                  >
+                    <Text style={styles.myOrderItemCount}>{orderCounts.to_be_shipped}</Text>
+                    <Text style={styles.myOrderItemText}>{t('profile.toShip')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.myOrderItem}
+                    onPress={() => {
+                      setTabletSection('orders');
+                      setEmbeddedOrdersInitialTab('international_shipping');
+                      setEmbeddedOrdersOpen(true);
+                    }}
+                  >
+                    <Text style={styles.myOrderItemCount}>{orderCounts.shipped}</Text>
+                    <Text style={styles.myOrderItemText}>{t('profile.shipped')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.myOrderItem}
+                    onPress={() => {
+                      setTabletSection('orders');
+                      setEmbeddedOrdersInitialTab('international_shipping');
+                      setEmbeddedOrdersOpen(true);
+                    }}
+                  >
+                    <Text style={styles.myOrderItemCount}>{orderCounts.shipping_delay}</Text>
+                    <Text style={styles.myOrderItemText}>{t('profile.toShippingDelay')}</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.myOrderContent}>
+                  <TouchableOpacity
+                    style={styles.myOrderItem}
+                    onPress={() => {
+                      setTabletSection('orders');
+                      setEmbeddedOrdersInitialTab('international_shipping');
+                      setEmbeddedOrdersOpen(true);
+                    }}
+                  >
+                    <Text style={styles.myOrderItemCount}>{orderCounts.processed}</Text>
+                    <Text style={styles.myOrderItemText}>{t('profile.toReview')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.myOrderItem}
+                    onPress={() => {
+                      setTabletSection('orders');
+                      setEmbeddedOrdersInitialTab('purchase_agency');
+                      setEmbeddedOrdersOpen(true);
+                    }}
+                  >
+                    <Text style={styles.myOrderItemCount}>{orderCounts.problemProducts}</Text>
+                    <Text style={styles.myOrderItemText}>{t('profile.toProblem')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.myOrderItem}
+                    onPress={() => {
+                      setTabletSection('orders');
+                      setEmbeddedOrdersInitialTab('error');
+                      setEmbeddedOrdersOpen(true);
+                    }}
+                  >
+                    <Text style={styles.myOrderItemCount}>{orderCounts.error}</Text>
+                    <Text style={styles.myOrderItemText}>{t('profile.toErrorIn')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.myOrderItem}
+                    onPress={() => {
+                      setTabletSection('orders');
+                      setEmbeddedOrdersInitialTab('error');
+                      setEmbeddedOrdersOpen(true);
+                    }}
+                  >
+                    <Text style={styles.myOrderItemCount}>{orderCounts.refunds}</Text>
+                    <Text style={styles.myOrderItemText}>{t('profile.toRefunds')}</Text>
+                  </TouchableOpacity>
+                </View>
+              </>,
+              t('profile.myOrders'),
+              () => {
+                setTabletSection('orders');
+                setEmbeddedOrdersInitialTab('purchase_agency');
+                setEmbeddedOrdersOpen(true);
+              }
+            )}
+          </View>
+        );
+
+      case 'coupon_point':
+        return (
+          <View style={styles.tabletDashboardContent}>
+            {dashCard(
+              <View style={styles.dashStatRow}>
+                <TouchableOpacity
+                  style={styles.dashStatItem}
+                  onPress={() => {
+                    setTabletSection('coupon_point');
+                    setEmbeddedCouponPointTab('coupon');
+                    setEmbeddedCouponPointOpen(true);
+                    setEmbeddedOrdersOpen(false);
+                  }}
+                >
+                  <CouponIcon width={36} height={36} color={COLORS.red} />
+                  <Text style={styles.dashStatValue}>
+                    {(() => { const c = (user as any)?.coupon; return typeof c === 'number' ? String(c) : typeof c === 'string' ? c : '0'; })()}
+                  </Text>
+                  <Text style={styles.dashStatLabel}>{t('profile.coupons')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.dashStatItem}
+                  onPress={() => {
+                    setTabletSection('coupon_point');
+                    setEmbeddedCouponPointTab('point');
+                    setEmbeddedCouponPointOpen(true);
+                    setEmbeddedOrdersOpen(false);
+                  }}
+                >
+                  <PointIcon width={36} height={36} color={COLORS.red} />
+                  <Text style={styles.dashStatValue}>
+                    {(() => { const p = (user as any)?.points ?? 0; return typeof p === 'number' ? String(p) : typeof p === 'string' ? p : '0'; })()}
+                  </Text>
+                  <Text style={styles.dashStatLabel}>{t('profile.points')}</Text>
+                </TouchableOpacity>
+              </View>,
+              `${t('profile.coupons') || '쿠폰'}/${t('profile.points') || '포인트'}`
+            )}
+          </View>
+        );
+
+      case 'wishlist':
+        // Render the actual wishlist page in the right panel.
+        // (Matches what you'd see after tapping the dashboard card.)
+        return <WishlistScreen embedded />;
+
+      case 'following':
+        return <FollowedStoreScreen embedded />;
+
+      case 'viewed':
+        return <ViewedProductsScreen embedded />;
+
+      case 'billing':
+        return <DepositScreen embedded />;
+
+      case 'feedback': {
+        return <MessageScreen initialTabOverride="general" />;
+      }
+
+      case 'returns':
+        return <BuyListScreen embedded initialTabOverride="error" />;
+
+      case 'settings':
+        // Settings summary card intentionally removed from dashboard.
+        // The right panel only renders embedded setting pages selected from the sidebar tree.
+        return null;
+
+      default:
+        return null;
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Top half linear gradient background */}
@@ -1283,46 +1848,173 @@ const ProfileScreen: React.FC = () => {
         colors={['#FFE1D4', '#FAFAFA']}
         style={styles.gradientBackground}
       />
-      
-      {renderHeader()}
-      <ScrollView 
-        style={styles.scrollView} 
-        showsVerticalScrollIndicator={false}
-        onScroll={(event) => {
-          const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-          
-          // Check if user has scrolled near the bottom (within 200px)
-          const scrollPosition = contentOffset.y;
-          const scrollHeight = contentSize.height;
-          const screenHeight = layoutMeasurement.height;
-          const distanceFromBottom = scrollHeight - scrollPosition - screenHeight;
 
-          if (
-            recommendationsHasMore &&
-            !recommendationsLoading &&
-            !isLoadingMoreRecommendationsRef.current &&
-            distanceFromBottom < 240 &&
-            isAuthenticated &&
-            !isGuest &&
-            user?.id
-          ) {
-            isLoadingMoreRecommendationsRef.current = true;
-            const nextPage = currentRecommendationsPageRef.current + 1;
-            currentRecommendationsPageRef.current = nextPage;
-            setRecommendationsOffset(nextPage);
-            const country = currentLocale === 'zh' ? 'en' : currentLocale;
-            const outId = user.memberId || user.userUniqueNo || (user as any).userUniqueId;
-            fetchRecommendationsRef.current?.(country, outId, nextPage, PAGINATION.FEED_MORE_PAGE_SIZE, selectedPlatform);
-          }
-        }}
-        scrollEventThrottle={16}
-      >
-        {/* {renderUserSection()} */}
-        {isAuthenticated && renderStatsSection()}
-        {isAuthenticated && renderMenuItems()}
-        {isAuthenticated && renderQuickAccessSection()}
-        {showHeavyContent && isAuthenticated && !isGuest && renderMoreToLove()}
-      </ScrollView>
+      {renderHeader()}
+
+      {pIsTabletLandscape ? (
+        // Tablet landscape: 2-panel split view
+        <View style={styles.tabletSplitContainer}>
+          {isAuthenticated && renderTabletSidebar()}
+          {embeddedOrdersOpen ? (
+            <View style={styles.tabletDashboardPanel}>
+              <BuyListScreen embedded initialTabOverride={embeddedOrdersInitialTab} />
+            </View>
+          ) : embeddedCouponPointOpen ? (
+            <View style={styles.tabletDashboardPanel}>
+
+              
+              {embeddedCouponPointTab === 'coupon' ? (
+                <CouponScreen
+                  embedded
+                  onMainTabChange={(tab) => {
+                    setEmbeddedCouponPointTab(tab);
+                    setTabletSection('coupon_point');
+                  }}
+                />
+              ) : (
+                <PointDetailScreen
+                  embedded
+                  onMainTabChange={(tab) => {
+                    setEmbeddedCouponPointTab(tab);
+                    setTabletSection('coupon_point');
+                  }}
+                />
+              )}
+            </View>
+          ) : tabletSection === 'wishlist' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <WishlistScreen embedded />
+            </View>
+          ) : tabletSection === 'following' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <FollowedStoreScreen embedded />
+            </View>
+          ) : tabletSection === 'viewed' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <ViewedProductsScreen embedded />
+            </View>
+          ) : tabletSection === 'billing' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <DepositScreen embedded />
+            </View>
+          ) : tabletSection === 'feedback' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <MessageScreen initialTabOverride="general" />
+            </View>
+          ) : tabletSection === 'returns' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <BuyListScreen embedded initialTabOverride="error" />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'shippingAddress' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <AddressBookScreen embedded />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'securitySettings' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <SecuritySettingsScreen embedded />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'personalInformation' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <EditProfileScreen embedded />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'affiliateMarketing' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <AffiliateMarketingScreen embedded />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'sellerDashboard' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <SellerPageScreen embedded />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'sellerOrdersRefunds' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <SellerSalesRefundInfoScreen embedded />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'sellerTeamPerformance' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <SellerTeamInfoScreen embedded />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'helpCenter' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <HelpCenterScreen embedded />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'todayMallIntroduction' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <AboutUsScreen embedded />
+            </View>
+          ) : (
+            <ScrollView
+              style={styles.tabletDashboardPanel}
+              showsVerticalScrollIndicator={false}
+              onScroll={(event) => {
+                const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+                const scrollPosition = contentOffset.y;
+                const scrollHeight = contentSize.height;
+                const screenHeight = layoutMeasurement.height;
+                const distanceFromBottom = scrollHeight - scrollPosition - screenHeight;
+
+                if (
+                  recommendationsHasMore &&
+                  !recommendationsLoading &&
+                  !isLoadingMoreRecommendationsRef.current &&
+                  distanceFromBottom < 240 &&
+                  isAuthenticated &&
+                  !isGuest &&
+                  user?.id
+                ) {
+                  isLoadingMoreRecommendationsRef.current = true;
+                  const nextPage = currentRecommendationsPageRef.current + 1;
+                  currentRecommendationsPageRef.current = nextPage;
+                  setRecommendationsOffset(nextPage);
+                  const country = currentLocale === 'zh' ? 'en' : currentLocale;
+                  const outId = user.memberId || user.userUniqueNo || (user as any).userUniqueId;
+                  fetchRecommendationsRef.current?.(country, outId, nextPage, PAGINATION.FEED_MORE_PAGE_SIZE, selectedPlatform);
+                }
+              }}
+              scrollEventThrottle={16}
+            >
+              {isAuthenticated && renderTabletDashboard()}
+              {showHeavyContent && isAuthenticated && !isGuest && tabletSection === 'overview' && renderMoreToLove()}
+            </ScrollView>
+          )}
+        </View>
+      ) : (
+        // Phone / tablet portrait: single-column layout
+        <ScrollView
+          style={styles.scrollView}
+          showsVerticalScrollIndicator={false}
+          onScroll={(event) => {
+            const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+            const scrollPosition = contentOffset.y;
+            const scrollHeight = contentSize.height;
+            const screenHeight = layoutMeasurement.height;
+            const distanceFromBottom = scrollHeight - scrollPosition - screenHeight;
+
+            if (
+              recommendationsHasMore &&
+              !recommendationsLoading &&
+              !isLoadingMoreRecommendationsRef.current &&
+              distanceFromBottom < 240 &&
+              isAuthenticated &&
+              !isGuest &&
+              user?.id
+            ) {
+              isLoadingMoreRecommendationsRef.current = true;
+              const nextPage = currentRecommendationsPageRef.current + 1;
+              currentRecommendationsPageRef.current = nextPage;
+              setRecommendationsOffset(nextPage);
+              const country = currentLocale === 'zh' ? 'en' : currentLocale;
+              const outId = user.memberId || user.userUniqueNo || (user as any).userUniqueId;
+              fetchRecommendationsRef.current?.(country, outId, nextPage, PAGINATION.FEED_MORE_PAGE_SIZE, selectedPlatform);
+            }
+          }}
+          scrollEventThrottle={16}
+        >
+          {isAuthenticated && renderStatsSection()}
+          {isAuthenticated && renderMenuItems()}
+          {isAuthenticated && renderQuickAccessSection()}
+          {showHeavyContent && isAuthenticated && !isGuest && renderMoreToLove()}
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 };
@@ -1432,7 +2124,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -5,
     right: -5,
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.red,
     borderRadius: 10,
     minWidth: 20,
     height: 20,
@@ -1545,7 +2237,7 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     flexDirection: 'row',
-    backgroundColor: COLORS.text.red,
+    backgroundColor: COLORS.text.primary,
     borderRadius: 9999,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.xl,
@@ -1809,6 +2501,10 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.lg,
     marginBottom: SPACING.xl,
   },
+  moreToLoveCardWrap: {
+    // Wrapper used to apply explicit inter-card spacing and prevent overflow.
+    alignItems: 'flex-start',
+  },
   sectionTitle: {
     fontSize: FONTS.sizes.md,
     fontWeight: '700',
@@ -1837,7 +2533,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.red,
     borderRadius: BORDER_RADIUS.md,
   },
   retryButtonText: {
@@ -1847,7 +2543,7 @@ const styles = StyleSheet.create({
   },
   productRow: {
     justifyContent: 'space-between',
-    paddingHorizontal: SPACING.xs,
+    paddingHorizontal: 0,
   },
   loadingMoreContainer: {
     paddingVertical: SPACING.lg,
@@ -1878,7 +2574,207 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.sm,
     color: COLORS.text.secondary,
     fontWeight: '500',
-    
+  },
+  // ── Tablet landscape 2-panel styles ─────────────────────────────────────
+  tabletSplitContainer: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  tabletSidebar: {
+    width: 220,
+    backgroundColor: COLORS.white,
+    borderRightWidth: 1,
+    borderRightColor: COLORS.border,
+  },
+  tabletDashboardPanel: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  sidebarUserMini: {
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+  },
+  sidebarAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    marginBottom: SPACING.xs,
+    borderWidth: 2,
+    borderColor: COLORS.red,
+  },
+  sidebarUserName: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '600',
+    color: COLORS.text.primary,
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  sidebarUserId: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.text.secondary,
+    textAlign: 'center',
+  },
+  sidebarDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+  },
+  sidebarNavItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+    position: 'relative',
+    gap: SPACING.sm,
+  },
+  sidebarNavItemActive: {
+    backgroundColor: COLORS.red + '15',
+  },
+  sidebarActiveBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    backgroundColor: COLORS.red,
+    borderRadius: 2,
+  },
+  sidebarNavLabel: {
+    flex: 1,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
+  },
+  sidebarNavLabelActive: {
+    color: COLORS.text.primary,
+    fontWeight: '600',
+  },
+  sidebarNavBadge: {
+    backgroundColor: COLORS.red,
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  sidebarNavBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
+  sidebarSubItem: {
+    paddingVertical: SPACING.xs,
+    paddingLeft: SPACING.xl + SPACING.md,
+    paddingRight: SPACING.md,
+    backgroundColor: '#FFF7FA',
+  },
+  sidebarSubLabel: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
+  },
+  sidebarSubSubItem: {
+    paddingVertical: SPACING.xs,
+    paddingLeft: SPACING.xl + SPACING.xl,
+    paddingRight: SPACING.md,
+    backgroundColor: '#FFFDFE',
+  },
+  sidebarSubSubLabel: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
+  },
+  tabletDashboardContent: {
+    padding: SPACING.md,
+  },
+  dashCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    marginBottom: SPACING.md,
+    overflow: 'hidden',
+  },
+  dashCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  dashCardTitle: {
+    fontSize: FONTS.sizes.base,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+  },
+  dashCardMore: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.red,
+  },
+  dashStatRow: {
+    flexDirection: 'row',
+    paddingVertical: SPACING.lg,
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.md,
+  },
+  dashStatItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  dashStatValue: {
+    fontSize: FONTS.sizes.xl,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+  },
+  dashStatLabel: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.text.secondary,
+  },
+  dashSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING.md,
+    gap: SPACING.md,
+  },
+  dashSummaryImage: {
+    width: 60,
+    height: 60,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.surface,
+  },
+  dashSummaryText: {
+    flex: 1,
+  },
+  dashSummaryCount: {
+    fontSize: FONTS.sizes.xl,
+    fontWeight: '700',
+    color: COLORS.text.primary
+  },
+  dashSummaryLabel: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
+  },
+  dashLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    gap: SPACING.sm,
+  },
+  dashLinkRowBorder: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  dashLinkText: {
+    flex: 1,
+    fontSize: FONTS.sizes.base,
+    color: COLORS.text.primary,
+  },
+  dashLinkRowActive: {
+    backgroundColor: COLORS.lightRed,
+  },
+  dashLinkTextActive: {
+    color: COLORS.red,
+    fontWeight: '600',
   },
 });
 

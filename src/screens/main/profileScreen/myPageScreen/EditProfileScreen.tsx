@@ -18,6 +18,9 @@ import AccountIcon from '../../../../assets/icons/AccountIcon';
 type EditProfileScreenNavigationProp = StackNavigationProp<RootStackParamList, 'EditProfile'>;
 type GenderValue = '' | 'male' | 'female';
 type EmailStep = 'request' | 'confirm';
+type EditProfileScreenProps = {
+  embedded?: boolean;
+};
 
 interface ProfileFormData {
   memberId: string;
@@ -28,7 +31,7 @@ interface ProfileFormData {
   birthday: string;
 }
 
-const EditProfileScreen: React.FC = () => {
+const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ embedded = false }) => {
   const navigation = useNavigation<EditProfileScreenNavigationProp>();
   const { user, updateUser } = useAuth();
   const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
@@ -278,14 +281,18 @@ const EditProfileScreen: React.FC = () => {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-          </TouchableOpacity>
+          {!embedded ? (
+            <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+              <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.placeholder} />
+          )}
           <Text style={styles.headerTitle}>{t('profile.editProfileTitle')}</Text>
           <View style={styles.placeholder} />
         </View>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#FF6B00" />
+          <ActivityIndicator size="large" color={COLORS.red} />
           <Text style={styles.loadingText}>{t('profile.loadingProfile')}</Text>
         </View>
       </SafeAreaView>
@@ -296,9 +303,13 @@ const EditProfileScreen: React.FC = () => {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Icon name="arrow-back" size={16} color={COLORS.text.primary} />
-        </TouchableOpacity>
+        {!embedded ? (
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Icon name="arrow-back" size={16} color={COLORS.text.primary} />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.placeholder} />
+        )}
         <Text style={styles.headerTitle}>{t('profile.editProfileTitle')}</Text>
         <View style={styles.placeholder} />
       </View>
@@ -321,7 +332,7 @@ const EditProfileScreen: React.FC = () => {
         {/* Personal Info Card */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <AccountIcon width={20} color="#FF6B00" />
+            <AccountIcon width={20} color={COLORS.red} />
             <Text style={styles.cardHeaderTitle}>{t('profile.personalInfo')}</Text>
           </View>
 
@@ -401,14 +412,14 @@ const EditProfileScreen: React.FC = () => {
         {/* Contact & Security Card */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Icon name="shield-checkmark-outline" size={20} color="#FF6B00" />
+            <Icon name="shield-checkmark-outline" size={20} color={COLORS.red} />
             <Text style={styles.cardHeaderTitle}>{t('profile.contactAndSecurity')}</Text>
           </View>
 
           {/* Email */}
           <TouchableOpacity style={styles.securityRow} onPress={openEmailModal}>
             {/* <View style={styles.securityIconBox}>
-              <Icon name="mail-outline" size={20} color="#FF6B00" />
+              <Icon name="mail-outline" size={20} color={COLORS.red} />
             </View> */}
             <View style={styles.securityInfo}>
               <Text style={styles.securityLabel}>{t('auth.email')}</Text>
@@ -422,7 +433,7 @@ const EditProfileScreen: React.FC = () => {
           {/* Phone */}
           <TouchableOpacity style={styles.securityRow} onPress={openPhoneModal}>
             {/* <View style={styles.securityIconBox}>
-              <Icon name="call-outline" size={20} color="#FF6B00" />
+              <Icon name="call-outline" size={20} color={COLORS.red} />
             </View> */}
             <View style={styles.securityInfo}>
               <Text style={styles.securityLabel}>{t('auth.phoneNumber')}</Text>
@@ -436,7 +447,7 @@ const EditProfileScreen: React.FC = () => {
           {/* Password */}
           <TouchableOpacity style={[styles.securityRow, { borderBottomWidth: 0 }]} onPress={() => setPasswordModalVisible(true)}>
             {/* <View style={styles.securityIconBox}>
-              <Icon name="lock-closed-outline" size={20} color="#FF6B00" />
+              <Icon name="lock-closed-outline" size={20} color={COLORS.red} />
             </View> */}
             <View style={styles.securityInfo}>
               <Text style={styles.securityLabel}>{t('profile.password')}</Text>
@@ -460,7 +471,7 @@ const EditProfileScreen: React.FC = () => {
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderLeft}>
                 <View style={styles.modalIconBox}>
-                  <Icon name="mail-outline" size={20} color="#FF6B00" />
+                  <Icon name="mail-outline" size={20} color={COLORS.red} />
                 </View>
                 <Text style={styles.modalTitle}>{t('profile.changeEmail')}</Text>
               </View>
@@ -509,7 +520,7 @@ const EditProfileScreen: React.FC = () => {
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderLeft}>
                 <View style={styles.modalIconBox}>
-                  <Icon name="call-outline" size={20} color="#FF6B00" />
+                  <Icon name="call-outline" size={20} color={COLORS.red} />
                 </View>
                 <Text style={styles.modalTitle}>{t('profile.changePhoneNumber')}</Text>
               </View>
@@ -538,7 +549,7 @@ const EditProfileScreen: React.FC = () => {
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderLeft}>
                 <View style={styles.modalIconBox}>
-                  <Icon name="lock-closed-outline" size={20} color="#FF6B00" />
+                  <Icon name="lock-closed-outline" size={20} color={COLORS.red} />
                 </View>
                 <Text style={styles.modalTitle}>{t('profile.changePassword')}</Text>
               </View>
@@ -632,7 +643,7 @@ const styles = StyleSheet.create({
     height: 102,
     borderRadius: 51,
     borderWidth: 2.5,
-    borderColor: '#FFD4A8',
+    borderColor: COLORS.red,
   },
   cameraButton: {
     position: 'absolute',
@@ -641,7 +652,7 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: '#FF6B00',
+    backgroundColor: COLORS.red,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2.5,
@@ -649,7 +660,7 @@ const styles = StyleSheet.create({
   },
   changePictureText: {
     fontSize: FONTS.sizes.sm,
-    color: '#FF6B00',
+    color: COLORS.red,
     fontWeight: '600',
   },
 
@@ -742,8 +753,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray[50],
   },
   genderChipSelected: {
-    backgroundColor: '#FFF5ED',
-    borderColor: '#FF6B00',
+    backgroundColor: COLORS.lightRed,
+    borderColor: COLORS.red,
   },
   genderText: {
     fontSize: FONTS.sizes.sm,
@@ -751,7 +762,7 @@ const styles = StyleSheet.create({
     color: COLORS.text.secondary,
   },
   genderTextSelected: {
-    color: '#FF6B00',
+    color: COLORS.red,
   },
 
   // Save Button
@@ -760,7 +771,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#FF6B00',
+    backgroundColor: COLORS.red,
     borderRadius: 12,
     paddingVertical: 14,
     marginTop: SPACING.sm,
@@ -787,7 +798,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: '#FFF5ED',
+    backgroundColor: COLORS.lightRed,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -843,7 +854,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: '#FFF5ED',
+    backgroundColor: COLORS.lightRed,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -886,7 +897,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
   },
   modalActionButton: {
-    backgroundColor: '#FF6B00',
+    backgroundColor: COLORS.red,
     borderRadius: 12,
     minHeight: 50,
     alignItems: 'center',
@@ -920,7 +931,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 50,
     borderRadius: 12,
-    backgroundColor: '#FF6B00',
+    backgroundColor: COLORS.red,
     alignItems: 'center',
     justifyContent: 'center',
   },

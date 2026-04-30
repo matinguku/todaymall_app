@@ -32,7 +32,11 @@ interface Transaction {
   status: string;
 }
 
-const DepositScreen = () => {
+interface DepositScreenProps {
+  embedded?: boolean;
+}
+
+const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false }) => {
   const navigation = useNavigation();
   const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
@@ -301,9 +305,11 @@ const DepositScreen = () => {
       {/* Header with Gradient */}
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Icon name="arrow-back" size={16} color={COLORS.black} />
-        </TouchableOpacity>
+        {!embedded && (
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Icon name="arrow-back" size={16} color={COLORS.black} />
+          </TouchableOpacity>
+        )}
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>{t('deposit.title')}</Text>
         </View>

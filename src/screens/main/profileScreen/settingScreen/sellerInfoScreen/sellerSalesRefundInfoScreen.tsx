@@ -33,7 +33,11 @@ type SellerDashboardItem = {
   liveCodeSnapshot: string;
 };
 
-const SellerSalesRefundInfoScreen: React.FC = () => {
+type SellerSalesRefundInfoScreenProps = {
+  embedded?: boolean;
+};
+
+const SellerSalesRefundInfoScreen: React.FC<SellerSalesRefundInfoScreenProps> = ({ embedded = false }) => {
   const navigation = useNavigation<NavigationProp>();
   const { t } = useTranslation();
   const revenueTab = t('sellerInfo.orderData.revenueTab');
@@ -79,9 +83,13 @@ const SellerSalesRefundInfoScreen: React.FC = () => {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-        <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-      </TouchableOpacity>
+      {!embedded ? (
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.headerPlaceholder} />
+      )}
       <Text style={styles.headerTitle}>{t('sellerInfo.SellerSalesRefundInfo')}</Text>
       <View style={styles.headerPlaceholder} />
     </View>

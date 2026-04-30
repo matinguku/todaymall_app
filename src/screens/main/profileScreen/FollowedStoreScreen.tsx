@@ -33,7 +33,11 @@ interface Product {
   price: number;
 }
 
-const FollowedStoreScreen: React.FC = () => {
+interface FollowedStoreScreenProps {
+  embedded?: boolean;
+}
+
+const FollowedStoreScreen: React.FC<FollowedStoreScreenProps> = ({ embedded = false }) => {
   const navigation = useNavigation();
   const { showToast } = useToast();
   const { t } = useTranslation();
@@ -140,12 +144,14 @@ const FollowedStoreScreen: React.FC = () => {
   const renderHeader = () => (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
-        </TouchableOpacity>
+        {!embedded && (
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
+          </TouchableOpacity>
+        )}
         <Text style={styles.headerTitle}>{t('profile.followStore')}</Text>
       </View>
       {/* <View style={styles.headerRight}>

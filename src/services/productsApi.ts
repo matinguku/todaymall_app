@@ -18,6 +18,7 @@ import { logDevApiFailure } from '../utils/devLog';
 
 // In-memory cache for category tree (clears on app restart)
 const categoryTreeCache: Record<string, CategoriesTreeResponse> = {};
+const BACKEND_PROXY_BASE = 'https://todaymall.co.kr/api/backend-proxy';
 
 // Products API
 export const productsApi = {
@@ -713,7 +714,7 @@ export const productsApi = {
       });
       
       // Updated API endpoint: /products/{platform}/recommendations
-      const url = `${API_BASE_URL}/products/${platform}/recommendations?${params.toString()}`;
+      const url = `${BACKEND_PROXY_BASE}/products/${platform}/recommendations?${params.toString()}`;
       // console.log('🔍 [Recommendations API] Request:', {
       //   url,
       //   params,
@@ -1389,7 +1390,11 @@ export const productsApi = {
           country === 'zh' ? 'zh' :
           'en';
 
-        const taobaoUrl = `${API_BASE_URL}/products/taobao-global/${productId}/detail?item_resource=Taobao&language=${language}`;
+        const taobaoParams = new URLSearchParams({
+          item_id: productId,
+          language,
+        });
+        const taobaoUrl = `${BACKEND_PROXY_BASE}/products/taobao-global/product/get?${taobaoParams.toString()}`;
 
         // console.log('📦 [Taobao Product Detail API] Request:', {
         //   url: taobaoUrl,
@@ -1545,7 +1550,7 @@ export const productsApi = {
         country,
       });
 
-      const url = `${API_BASE_URL}/products/detail?${params.toString()}`;
+      const url = `${BACKEND_PROXY_BASE}/products/detail?${params.toString()}`;
       const signatureHeaders = await buildSignatureHeaders('GET', url);
       console.log('📦 [Product Detail API] Request:', {
         url,
