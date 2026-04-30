@@ -25,6 +25,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { useLoginMutation, useSocialLoginMutation } from '../../hooks/useAuthMutations';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, VALIDATION_RULES, ERROR_MESSAGES, SCREEN_HEIGHT } from '../../constants';
+import { resendLoginVerificationCode } from '../../services/authApi';
 import { useAppSelector } from '../../store/hooks';
 import { translations } from '../../i18n/translations';
 import ShieldCheckIcon from '../../assets/icons/ShieldCheckIcon';
@@ -125,7 +126,7 @@ const LoginScreen: React.FC = () => {
           userUniqueNo: data.user.userUniqueNo || '', // Add userUniqueNo if available
         };
         setAuthenticatedUser(user);
-        showToast(t('auth.login.success') || 'Login successful', 'success');
+        showToast(data.message || t('auth.login.success') || 'Login successful', 'success');
         // Navigate back to the previous page, or to returnTo param, or fall back to Main
         if (returnTo) {
           (navigation as any).navigate(returnTo, returnParams);
@@ -141,20 +142,35 @@ const LoginScreen: React.FC = () => {
       let errorMessage = error;
       
       switch (errorCode) {
+        case 'EMAIL_NOT_VERIFIED':
+          errorMessage = error || t('auth.verificationCodeSent');
+          void resendLoginVerificationCode(formData.email, locale).finally(() => {
+            (navigation as any).navigate('EmailVerification', {
+              email: formData.email,
+              verified: false,
+              source: 'login',
+            });
+          });
+          break;
         case 'INVALID_CREDENTIALS':
-          errorMessage = t('auth.accountOrPasswordIncorrect') || 'Your account name or password is incorrect.';
+          errorMessage = error || t('auth.accountOrPasswordIncorrect') || 'Your account name or password is incorrect.';
           break;
         case 'VALIDATION_ERROR':
           errorMessage = error || t('auth.checkInput');
           break;
         default:
-          errorMessage = t('auth.accountOrPasswordIncorrect') || 'Your account name or password is incorrect.';
+          errorMessage = error || t('auth.accountOrPasswordIncorrect') || 'Your account name or password is incorrect.';
       }
       
-      // Set error on password field
-      setErrors({ 
-        password: errorMessage
-      });
+      if (errorCode === 'EMAIL_NOT_VERIFIED') {
+        showToast(errorMessage, 'info');
+      } else {
+        showToast(errorMessage, 'error');
+        // Set error on password field
+        setErrors({ 
+          password: errorMessage
+        });
+      }
     }
   });
   
@@ -190,8 +206,37 @@ const LoginScreen: React.FC = () => {
       };
       
       setAuthenticatedUser(user);
-      showToast(t('auth.login.success') || 'Login successful', 'success');
-      if (returnTo) {
+      showToast((data as any).message || t('auth.login.success') || 'Login successful', 'success');
+
+      const openReferralCodeScreen = () => {
+        const parentNavigation = (navigation as any).getParent?.();
+        if (parentNavigation) {
+          parentNavigation.navigate('SocialReferralCode');
+          return;
+        }
+        (navigation as any).navigate('SocialReferralCode');
+      };
+
+      const isFirstSocialLogin = Boolean(
+        (data as any).isNewUser ||
+        (data as any).isNew ||
+        (data as any).isFirstLogin ||
+        (data as any).firstLogin ||
+        (data as any).isRegister ||
+        (data as any).requiresReferralCode ||
+        (data as any).needsReferralCode ||
+        (data as any).user?.isNewUser ||
+        (data as any).user?.isNew ||
+        (data as any).user?.isFirstLogin ||
+        (data as any).user?.firstLogin ||
+        (data as any).user?.requiresReferralCode ||
+        (data as any).user?.needsReferralCode ||
+        !(data as any).user?.referredBy
+      );
+
+      if (isFirstSocialLogin) {
+        openReferralCodeScreen();
+      } else if (returnTo) {
         (navigation as any).navigate(returnTo, returnParams);
       } else if (navigation.canGoBack()) {
         navigation.goBack();
@@ -296,7 +341,7 @@ const LoginScreen: React.FC = () => {
     }
 
     console.log('📡 SENDING LOGIN API REQUEST');
-    await login({ email: formData.email, password: formData.password });
+    await login({ email: formData.email, password: formData.password, lang: locale });
   };
 
   // Demo login function
@@ -315,7 +360,7 @@ const LoginScreen: React.FC = () => {
     });
     
     // Perform login with demo credentials
-    await login({ email: demoEmail, password: '' });
+    await login({ email: demoEmail, password: '', lang: locale });
   };
 
   const handleSocialLogin = async (provider: 'google' | 'facebook' | 'apple' | 'twitter' | 'kakao' | 'naver') => {

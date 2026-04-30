@@ -1595,7 +1595,7 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     flexDirection: 'row',
-    backgroundColor: '#FF0055',
+    backgroundColor: '#FF5500',
     borderRadius: 9999,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.xl,

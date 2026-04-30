@@ -7,7 +7,7 @@ export const SCREEN_HEIGHT = Dimensions.get('window').height;
 // Colors - Clean E-commerce Design (Amazon/eBay style)
 export const COLORS = {
   // Primary Colors - Red theme
-  primary: '#FF0055', // Pure red
+  primary: '#FF5500', // Pure red
   primaryDark: '#D70015',
   primaryLight: 'rgb(255, 0, 85)',
   red: '#FF5500',
@@ -18,8 +18,8 @@ export const COLORS = {
   secondary: '#000000', // Pure black
   secondaryDark: '#000000',
   secondaryLight: '#333333',
-  accentPink: '#FF0055',
-  accentPinkLight: '#FF005599',
+  accentPink: '#FF5500',
+  accentPinkLight: '#FF550099',
   
   // Neutral Colors - Clean whites and blacks
   white: '#FFFFFF',
@@ -41,7 +41,7 @@ export const COLORS = {
   
   // Status Colors - Black, White, Red only
   success: '#000000',   // Black for success (or use red if needed)
-  warning: '#FF0055',   // Red for warning
+  warning: '#FF5500',   // Red for warning
   error: '#FF0000',     // Red for error
   info: '#000000',      // Black for info
   
@@ -57,7 +57,7 @@ export const COLORS = {
     secondary: '#999999',  // Dark gray (black combination)
     disabled: '#CCCCCC',   // Light gray (black + white combination)
     inverse: '#FFFFFF',    // Pure white for dark backgrounds
-    custom: '#FF0055',
+    custom: '#FF5500',
     red: '#FF5500',     // Red for highlights and accents
   },
   
@@ -72,9 +72,9 @@ export const COLORS = {
   
   // Gradient Colors - Black, White, Red combinations
   gradients: {
-    primary: ['#FF0055', 'rgb(255, 0, 85)'],     // Red gradient
+    primary: ['#FF5500', 'rgb(255, 0, 85)'],     // Red gradient
     secondary: ['#000000', '#333333'],    // Black gradient
-    accent: ['#FF0055', '#FAFAFA'],       // Red to white
+    accent: ['#FF5500', '#FAFAFA'],       // Red to white
     success: ['#000000', '#666666'],      // Black gradient
     authBackground: ['#FFE1D4', '#FAFAFA'] as const, // Sign-in background gradient
   },

@@ -1,0 +1,16 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appIDs": ["YOUR_TEAM_ID.com.todaymall.kr"],
+        "components": [
+          {
+            "/": "/signin/qr",
+            "comment": "QR login"
+          }
+        ]
+      }
+    ]
+  }
+}

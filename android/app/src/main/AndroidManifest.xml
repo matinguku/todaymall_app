@@ -54,6 +54,24 @@
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="todaymall" />
         </intent-filter>
+        <intent-filter android:autoVerify="true">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data
+                android:scheme="https"
+                android:host="todaymall.co.kr"
+                android:pathPrefix="/signin/qr" />
+        </intent-filter>
+        <intent-filter android:autoVerify="true">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data
+                android:scheme="https"
+                android:host="www.todaymall.co.kr"
+                android:pathPrefix="/signin/qr" />
+        </intent-filter>
       </activity>
     </application>
 

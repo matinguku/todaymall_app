@@ -34,6 +34,8 @@ import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
 import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
 import EmailVerificationScreen from '../screens/auth/EmailVerificationScreen';
 import SetPasswordScreen from '../screens/auth/SetPasswordScreen';
+import QrLoginConfirmScreen from '../screens/auth/QrLoginConfirmScreen';
+import SocialReferralCodeScreen from '../screens/auth/SocialReferralCodeScreen';
 import HomeScreen from '../screens/main/HomeScreen';
 import SearchScreen from '../screens/main/searchScreen/SearchScreen';
 import CartScreen from '../screens/main/CartScreen';
@@ -119,6 +121,20 @@ import CreateGeneralInquiryScreen from '../screens/main/profileScreen/CreateGene
 const RootStack = createStackNavigator<RootStackParamList>();
 const AuthStack = createStackNavigator<AuthStackParamList>();
 const MainTab = createBottomTabNavigator<MainTabParamList>();
+
+const linking = {
+  prefixes: ['todaymall://', 'https://todaymall.co.kr', 'https://www.todaymall.co.kr'],
+  config: {
+    screens: {
+      QrLoginConfirm: {
+        path: 'signin/qr',
+        parse: {
+          token: String,
+        },
+      },
+    },
+  },
+};
 
 const ChatScreenWithBoundary = (props: any) => (
   <ChatErrorBoundary>
@@ -466,6 +482,16 @@ const RootNavigator = () => {
       <>
         <RootStack.Screen name="Main" component={MainTabNavigator} />
         <RootStack.Screen name="Auth" component={AuthNavigator} />
+        <RootStack.Screen
+          name="QrLoginConfirm"
+          component={QrLoginConfirmScreen}
+          options={{ headerShown: false }}
+        />
+        <RootStack.Screen
+          name="SocialReferralCode"
+          component={SocialReferralCodeScreen}
+          options={{ headerShown: false }}
+        />
           <RootStack.Screen
             name="Category"
             component={CategoryTabScreen}
@@ -1314,7 +1340,7 @@ const RootNavigator = () => {
 // Main App Navigator
 const AppNavigator = () => {
   return (
-    <NavigationContainer>
+    <NavigationContainer linking={linking}>
       <RootNavigator />
     </NavigationContainer>
   );

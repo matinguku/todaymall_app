@@ -437,7 +437,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.smmd,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.transparent,
   },
   backButton: {
     paddingHorizontal: SPACING.xs,

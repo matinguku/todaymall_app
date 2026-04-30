@@ -500,6 +500,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.xs,
     paddingTop: SPACING.lg,
+    backgroundColor: COLORS.transparent,
   },
   backButton: {
     paddingHorizontal: SPACING.xs,

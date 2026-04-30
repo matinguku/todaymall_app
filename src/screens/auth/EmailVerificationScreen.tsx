@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ import { translations } from '../../i18n/translations';
 import { AuthStackParamList } from '../../types';
 import { useVerifyEmailMutation, useResendVerificationMutation } from '../../hooks/useAuthMutations';
 import { useAuth } from '../../context/AuthContext';
-import { checkEmail } from '../../services/authApi';
+import { resendLoginVerificationCode } from '../../services/authApi';
 import LinearGradient from 'react-native-linear-gradient';
 import ShieldCheckIcon from '../../assets/icons/ShieldCheckIcon';
 import {
@@ -34,12 +34,83 @@ import { Button } from '../../components';
 type EmailVerificationScreenNavigationProp = StackNavigationProp<AuthStackParamList, 'EmailVerification'>;
 type EmailVerificationScreenRouteProp = RouteProp<AuthStackParamList, 'EmailVerification'>;
 
-const CELL_COUNT = 4; // Changed from 6 to 4
+const CELL_COUNT = 6;
+
+type VerificationActionsProps = {
+  errorMessage: string;
+  resendCooldown: number;
+  resendLabel: string;
+  continueLabel: string;
+  isLoading: boolean;
+  verifyButtonDisabled: boolean;
+  verifyButtonStyle: any;
+  verifyButtonTextStyle: any;
+  onResendCode: () => void;
+  onVerify: () => void;
+};
+
+const VerificationActions = memo(({
+  errorMessage,
+  resendCooldown,
+  resendLabel,
+  continueLabel,
+  isLoading,
+  verifyButtonDisabled,
+  verifyButtonStyle,
+  verifyButtonTextStyle,
+  onResendCode,
+  onVerify,
+}: VerificationActionsProps) => (
+  <>
+    {errorMessage ? (
+      <View style={styles.errorMessageContainer}>
+        <Text style={styles.errorText}>{errorMessage}</Text>
+      </View>
+    ) : null}
+
+    <TouchableOpacity
+      onPress={onResendCode}
+      disabled={resendCooldown > 0}
+      style={styles.resendContainer}
+    >
+      <Text style={[
+        styles.resendLink,
+        resendCooldown > 0 && styles.resendLinkDisabled,
+      ]}>
+        {resendCooldown > 0 ? `${resendLabel} (${resendCooldown}s)` : resendLabel}
+      </Text>
+    </TouchableOpacity>
+
+    <Button
+      title={continueLabel}
+      onPress={onVerify}
+      disabled={verifyButtonDisabled}
+      loading={isLoading}
+      variant="danger"
+      style={verifyButtonStyle}
+      textStyle={verifyButtonTextStyle}
+    />
+  </>
+));
+
+type VerificationFooterProps = {
+  supportText: string;
+  copyright: string;
+};
+
+const VerificationFooter = memo(({ supportText, copyright }: VerificationFooterProps) => (
+  <View style={styles.footerContainer}>
+    <Text style={styles.footerSupportText}>
+      <Text style={styles.footerSupportGray}>{supportText}</Text>
+    </Text>
+    <Text style={styles.footerCopyright}>{copyright}</Text>
+  </View>
+));
 
 const EmailVerificationScreen = () => {
   const navigation = useNavigation<EmailVerificationScreenNavigationProp>();
   const route = useRoute<EmailVerificationScreenRouteProp>();
-  const { email, verified = false } = route.params || { email: '', verified: false };
+  const { email, verified, source } = route.params || { email: '', verified: undefined, source: undefined };
   const { setAuthenticatedUser, setNavigateToProfile } = useAuth();
   const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
   
@@ -47,14 +118,14 @@ const EmailVerificationScreen = () => {
   const [resendCooldown, setResendCooldown] = useState(0);
   
   // Translation function
-  const t = (key: string) => {
+  const t = useCallback((key: string) => {
     const keys = key.split('.');
     let value: any = translations[locale as keyof typeof translations];
     for (const k of keys) {
       value = value?.[k];
     }
     return value || key;
-  };
+  }, [locale]);
 
   // Map language codes to flag emojis
   const getLanguageFlag = (locale: string) => {
@@ -68,31 +139,66 @@ const EmailVerificationScreen = () => {
 
   const [value, setValue] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const valueRef = useRef('');
   const ref = useBlurOnFulfill({ value, cellCount: CELL_COUNT });
   const [props, getCellOnLayoutHandler] = useClearByFocusCell({
     value,
     setValue,
   });
 
-  const { mutate: verifyEmail, isLoading } = useVerifyEmailMutation({
+  const handleCodeChange = useCallback((text: string) => {
+    valueRef.current = text;
+    setValue(text);
+    // Clear error when user starts typing
+    setErrorMessage((currentError) => currentError ? '' : currentError);
+  }, []);
+  const renderCodeCell = useCallback(({ index, symbol, isFocused }: { index: number; symbol: string; isFocused: boolean }) => (
+    <View
+      key={`cell-${index}`}
+      style={[
+        styles.cell,
+        isFocused && styles.focusCell,
+        errorMessage && styles.cellError,
+      ]}
+      onLayout={getCellOnLayoutHandler(index)}
+    >
+      <Text style={styles.cellText}>
+        {symbol || (isFocused ? <Cursor /> : null)}
+      </Text>
+    </View>
+  ), [errorMessage, getCellOnLayoutHandler]);
+
+  const verifyEmailOptions = useMemo(() => ({
     useSignupCode: verified === false,
-    onSuccess: async (data) => {
-      // Clear any error messages
+    onSuccess: async (data: any) => {
       setErrorMessage('');
-      
-      // For signup code verification (verified: false), handle differently
+
       if (verified === false && data && data.signup_code_verified) {
-        // Navigate to set password screen after successful signup verification
-        // Pass the verification code so it can be sent with the set-password request
+        if (source === 'login') {
+          setTimeout(() => {
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Login' as any }],
+            });
+          }, 500);
+          return;
+        }
+
+        if (data.user) {
+          setAuthenticatedUser(data.user);
+          setNavigateToProfile();
+        }
+
         setTimeout(() => {
-          (navigation as any).navigate('SetPassword', { email, code: value });
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Main' as any }],
+          });
         }, 500);
         return;
       }
-      
-      // For signin code verification (verified: true), navigate to login page
+
       if (verified === true && data && (data.token || data.user)) {
-        // Update auth state if user data is available
         if (data.user) {
           const user = {
             id: data.user.id || data.user.email || Date.now().toString(),
@@ -117,12 +223,11 @@ const EmailVerificationScreen = () => {
             createdAt: data.user.createdAt || new Date(),
             updatedAt: data.user.updatedAt || new Date(),
           };
-          
+
           setAuthenticatedUser(user);
           setNavigateToProfile();
         }
-        
-        // Navigate to login page (or main if already authenticated)
+
         setTimeout(() => {
           navigation.reset({
             index: 0,
@@ -131,9 +236,7 @@ const EmailVerificationScreen = () => {
         }, 500);
         return;
       }
-      
-      // The token and user data are already stored in the API call
-      // Now update the AuthContext with the user data
+
       if (data && data.user) {
         const user = {
           id: data.user.id || data.user.email || Date.now().toString(),
@@ -158,35 +261,22 @@ const EmailVerificationScreen = () => {
           createdAt: data.user.createdAt || new Date(),
           updatedAt: data.user.updatedAt || new Date(),
         };
-        
-        // Update auth state - this will trigger the app to show as logged in
+
         setAuthenticatedUser(user);
         setNavigateToProfile();
-        
-        // Wait for state to update, then navigate
         await Promise.resolve();
-        
-        // Navigate to main screen after a short delay
-        setTimeout(() => {
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'Main' as any }],
-          });
-        }, 1500);
-      } else {
-        // If no user data, just navigate
-        setTimeout(() => {
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'Main' as any }],
-          });
-        }, 1500);
       }
+
+      setTimeout(() => {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Main' as any }],
+        });
+      }, 1500);
     },
-    onError: (error, errorCode) => {
-      // Handle specific error codes and show error below code field
+    onError: (error: string, errorCode?: string) => {
       let errorMsg = error;
-      
+
       switch (errorCode) {
         case 'INVALID_VERIFICATION_CODE':
           errorMsg = t('auth.invalidVerificationCode');
@@ -203,22 +293,53 @@ const EmailVerificationScreen = () => {
         default:
           errorMsg = error || t('auth.verificationFailed');
       }
-      
+
       setErrorMessage(errorMsg);
     },
-  });
+  }), [email, navigation, setAuthenticatedUser, setNavigateToProfile, source, t, verified]);
+
+  const { mutate: verifyEmail, isLoading } = useVerifyEmailMutation(verifyEmailOptions);
+
+  const verifyButtonDisabled = isLoading;
+  const verifyButtonStyle = useMemo(
+    () => verifyButtonDisabled
+      ? { ...styles.verifyButton, ...styles.verifyButtonDisabled }
+      : styles.verifyButton,
+    [verifyButtonDisabled]
+  );
+  const verifyButtonTextStyle = useMemo(
+    () => verifyButtonDisabled
+      ? { ...styles.verifyButtonText, ...styles.verifyButtonTextDisabled }
+      : styles.verifyButtonText,
+    [verifyButtonDisabled]
+  );
+
+  const startResendCooldown = useCallback(() => {
+    setResendCooldown(60);
+
+    const interval = setInterval(() => {
+      setResendCooldown((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
 
   const { mutate: resendCode } = useResendVerificationMutation({
-    onSuccess: (data) => {
+    onSuccess: () => {
       // Clear error message on successful resend
       setErrorMessage('');
+      startResendCooldown();
     },
     onError: (error) => {
-      // Handle error silently or show toast
+      setErrorMessage(error || t('auth.resendFailed') || 'Failed to resend code');
     },
   });
 
-  const handleVerify = async () => {
+  const handleVerify = useCallback(async () => {
     // Clear previous error
     setErrorMessage('');
     
@@ -228,7 +349,7 @@ const EmailVerificationScreen = () => {
     }
 
     await verifyEmail({ email, code: value, verified });
-  };
+  }, [email, t, value, verified, verifyEmail]);
 
   // Cleanup interval on unmount
   React.useEffect(() => {
@@ -237,34 +358,26 @@ const EmailVerificationScreen = () => {
     };
   }, []);
 
-  const handleResendCode = async () => {
+  const handleResendCode = useCallback(async () => {
     if (resendCooldown > 0) return; // Prevent resend during cooldown
     
     try {
-      // Call check email API to resend code
-      const result = await checkEmail(email);
-      if (result.success) {
-        // Start 60 second cooldown
-        setResendCooldown(60);
-        setErrorMessage('');
-        
-        // Countdown timer
-        const interval = setInterval(() => {
-          setResendCooldown((prev) => {
-            if (prev <= 1) {
-              clearInterval(interval);
-              return 0;
-            }
-            return prev - 1;
-          });
-        }, 1000);
-      } else {
-        setErrorMessage(result.error || t('auth.resendFailed') || 'Failed to resend code');
+      if (source === 'login') {
+        const result = await resendLoginVerificationCode(email, locale);
+        if (result.success) {
+          setErrorMessage('');
+          startResendCooldown();
+        } else {
+          setErrorMessage(result.error || t('auth.resendFailed') || 'Failed to resend code');
+        }
+        return;
       }
+
+      await resendCode({ email });
     } catch (error: any) {
       setErrorMessage(error?.message || t('auth.resendFailed') || 'Failed to resend code');
     }
-  };
+  }, [email, locale, resendCode, resendCooldown, source, startResendCooldown, t]);
 
   // Handle back button
   useFocusEffect(
@@ -291,7 +404,7 @@ const EmailVerificationScreen = () => {
 
       <KeyboardAvoidingView
         style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -370,91 +483,34 @@ const EmailVerificationScreen = () => {
                   ref={ref}
                   {...props}
                   value={value}
-                  onChangeText={(text) => {
-                    setValue(text);
-                    // Clear error when user starts typing
-                    if (errorMessage) {
-                      setErrorMessage('');
-                    }
-                  }}
+                  onChangeText={handleCodeChange}
                   cellCount={CELL_COUNT}
                   rootStyle={styles.codeFieldRoot}
                   keyboardType="number-pad"
                   textContentType="oneTimeCode"
-                  renderCell={({ index, symbol, isFocused }) => (
-                    <View
-                      key={`cell-${index}`}
-                      style={[
-                        styles.cell, 
-                        isFocused && styles.focusCell,
-                        errorMessage && styles.cellError
-                      ]}
-                      onLayout={getCellOnLayoutHandler(index)}
-                    >
-                      <Text style={styles.cellText}>
-                        {symbol || (isFocused ? <Cursor /> : null)}
-                      </Text>
-                    </View>
-                  )}
+                  renderCell={renderCodeCell}
                 />
               </View>
 
-              {errorMessage ? (
-                <View style={styles.errorMessageContainer}>
-                  <Text style={styles.errorText}>{errorMessage}</Text>
-                </View>
-              ) : null}
-
-              <TouchableOpacity 
-                onPress={handleResendCode}
-                disabled={resendCooldown > 0}
-                style={styles.resendContainer}
-              >
-                <Text style={[
-                  styles.resendLink,
-                  resendCooldown > 0 && styles.resendLinkDisabled
-                ]}>
-                  {resendCooldown > 0 
-                    ? `${t('auth.resend') || 'Resend'} (${resendCooldown}s)`
-                    : (t('auth.resend') || 'Resend code')
-                  }
-                </Text>
-              </TouchableOpacity>
-
-              <Button
-                title={t('auth.continue') || 'Continue'}
-                onPress={handleVerify}
-                disabled={isLoading || value.length !== CELL_COUNT}
-                loading={isLoading}
-                variant="danger"
-                style={
-                  (isLoading || value.length !== CELL_COUNT)
-                    ? { ...styles.verifyButton, ...styles.verifyButtonDisabled }
-                    : styles.verifyButton
-                }
-                textStyle={
-                  (isLoading || value.length !== CELL_COUNT)
-                    ? { ...styles.verifyButtonText, ...styles.verifyButtonTextDisabled }
-                    : styles.verifyButtonText
-                }
+              <VerificationActions
+                errorMessage={errorMessage}
+                resendCooldown={resendCooldown}
+                resendLabel={t('auth.resend') || 'Resend code'}
+                continueLabel={t('auth.continue') || 'Continue'}
+                isLoading={isLoading}
+                verifyButtonDisabled={verifyButtonDisabled}
+                verifyButtonStyle={verifyButtonStyle}
+                verifyButtonTextStyle={verifyButtonTextStyle}
+                onResendCode={handleResendCode}
+                onVerify={handleVerify}
               />
 
             </View>
               
-              {/* Footer bar - Inside ScrollView after verify button */}
-              <View style={styles.footerContainer}>
-                {/* Support text */}
-                <Text style={styles.footerSupportText}>
-                  <Text style={styles.footerSupportGray}>
-                    {t('auth.supportText') || '주식회사:투데이몰 /대표 유두성 주소: 경기도 의정부시 녹양로34번길 47, 101동 305호(가능동, e편한세상 녹양역) 사업자번호: 661-12-03163 전화: 07077926663 서비스 이메일: taoexpress_1@163.com '}
-                  </Text>
-                </Text>
-
-                {/* Copyright */}
-                <Text style={styles.footerCopyright}>
-                  {t('auth.copyright') || '© 2025 TodayMall. All Rights Reserved.'}
-                </Text>
-              </View>
+              <VerificationFooter
+                supportText={t('auth.supportText') || '주식회사:투데이몰 /대표 유두성 주소: 경기도 의정부시 녹양로34번길 47, 101동 305호(가능동, e편한세상 녹양역) 사업자번호: 661-12-03163 전화: 07077926663 서비스 이메일: taoexpress_1@163.com '}
+                copyright={t('auth.copyright') || '© 2025 TodayMall. All Rights Reserved.'}
+              />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -490,6 +546,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.xs,
     paddingTop: SPACING.lg,
+    backgroundColor: COLORS.transparent,
   },
   backButton: {
     paddingHorizontal: SPACING.xs,
@@ -592,28 +649,29 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   codeFieldContainer: {
-    paddingHorizontal: SPACING.md,
+    paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
   codeFieldRoot: {
     width: '100%',
-    justifyContent: 'center',
+    maxWidth: 318,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
   cell: {
-    width: 56,
-    height: 56,
-    lineHeight: 54,
+    width: 44,
+    height: 52,
+    lineHeight: 50,
     borderWidth: 2,
     borderColor: COLORS.borderLight,
-    borderRadius: 12,
+    borderRadius: 10,
     textAlign: 'center',
     backgroundColor: COLORS.white,
     justifyContent: 'center',
     alignItems: 'center',
-    marginHorizontal: SPACING.xs,
   },
   focusCell: {
     borderColor: COLORS.primary,
@@ -622,7 +680,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.error,
   },
   cellText: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '600',
     color: COLORS.text.primary,
     textAlign: 'center',

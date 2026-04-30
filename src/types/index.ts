@@ -324,6 +324,8 @@ export type RootStackParamList = {
   Splash: undefined;
   Auth: undefined;
   Main: undefined;
+  QrLoginConfirm: { token: string };
+  SocialReferralCode: undefined;
   OtpVerification: undefined;
   ProductDetail: { productId: string; source?: string; country?: string; productData?: any };
   SellerProfile: { sellerId: string; sellerName?: string; source?: string; country?: string };
@@ -488,7 +490,7 @@ export type AuthStackParamList = {
   ForgotPassword: undefined;
   ResetPassword: { token: string; email: string };
   OtpVerification: { email: string; phoneNumber?: string; countryCode?: string; recoveryMethod?: 'email' | 'phone' };
-  EmailVerification: { email: string; verified?: boolean; token?: string; userData?: any };
+  EmailVerification: { email: string; verified?: boolean; source?: 'signup' | 'login'; token?: string; userData?: any };
   SetPassword: { email: string; code: string };
 };
 
@@ -1151,6 +1153,7 @@ export interface AuthUseMutationOptions {
 export interface LoginVariables {
   email: string;
   password: string;
+  lang?: string;
 }
 
 export interface RegisterVariables {
@@ -1162,6 +1165,7 @@ export interface RegisterVariables {
   referralCode?: string;
   user_id?: string;
   isSeller?: boolean;
+  lang?: string;
 }
 
 export interface GuestLoginVariables {
@@ -1170,7 +1174,7 @@ export interface GuestLoginVariables {
 
 export interface UseLoginMutationResult {
   mutate: (variables: LoginVariables) => Promise<void>;
-  data: { token: string; user: Partial<User> } | null;
+  data: { token: string; user: Partial<User>; message?: string } | null;
   error: string | null;
   isLoading: boolean;
   isSuccess: boolean;

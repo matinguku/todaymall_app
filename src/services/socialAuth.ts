@@ -3,6 +3,7 @@ import React from 'react';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { SocialLoginOptions, SocialLoginResult } from '../types';
 import { API_BASE_URL } from '../constants';
+import { storeAuthData } from './authApi';
 
 // React Native CLI alternatives for Expo packages
 // Note: OAuth flows for Facebook, Twitter, and Kakao require additional setup
@@ -203,19 +204,32 @@ export const signInWithGoogle = async () => {
 
     // Extract user data from backend response (same format as login)
     const { user, token, refreshToken } = backendData.data;
+    const userData = {
+      id: user.id || user._id,
+      email: user.email,
+      name: user.user_id || user.name,
+      phone: user.phone,
+      avatar: user.avatar || user.pictureUrl,
+    };
+
+    if (token) {
+      await storeAuthData(token, userData);
+    }
 
     return {
       success: true,
       data: {
+        ...backendData.data,
+        isNewUser: backendData.data?.isNewUser ?? backendData.isNewUser,
+        isFirstLogin: backendData.data?.isFirstLogin ?? backendData.isFirstLogin,
+        firstLogin: backendData.data?.firstLogin ?? backendData.firstLogin,
+        isRegister: backendData.data?.isRegister ?? backendData.isRegister,
+        requiresReferralCode: backendData.data?.requiresReferralCode ?? backendData.requiresReferralCode,
+        needsReferralCode: backendData.data?.needsReferralCode ?? backendData.needsReferralCode,
         token: token,
         refreshToken: refreshToken,
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.user_id || user.name,
-          phone: user.phone,
-          avatar: user.avatar,
-        },
+        user: userData,
+        message: backendData.message,
       },
     };
   } catch (error: any) {

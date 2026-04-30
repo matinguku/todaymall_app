@@ -27,7 +27,7 @@ interface UseChangePasswordMutationResult {
 }
 
 export const useLoginMutation = (options?: AuthUseMutationOptions): UseLoginMutationResult => {
-  const [data, setData] = useState<{ token: string; user: Partial<User> } | null>(null);
+  const [data, setData] = useState<{ token: string; user: Partial<User>; message?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
@@ -43,7 +43,7 @@ export const useLoginMutation = (options?: AuthUseMutationOptions): UseLoginMuta
       // Use frontend-only or backend API based on flag
       const response = USE_FRONTEND_ONLY 
         ? await loginFrontendOnly(variables.email, variables.password)
-        : await apiLogin(variables.email, variables.password);
+        : await apiLogin(variables.email, variables.password, variables.lang);
       
       if (response.success && response.data) {
         setData(response.data);
@@ -77,7 +77,13 @@ export const useLoginMutation = (options?: AuthUseMutationOptions): UseLoginMuta
 };
 
 export const useRegisterMutation = (options?: AuthUseMutationOptions): UseRegisterMutationResult => {
-  const [data, setData] = useState<{ token: string; user: Partial<User> } | null>(null);
+  const [data, setData] = useState<{
+    token?: string;
+    user?: Partial<User>;
+    email?: string;
+    message?: string;
+    requiresVerification?: boolean;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
@@ -112,7 +118,8 @@ export const useRegisterMutation = (options?: AuthUseMutationOptions): UseRegist
         variables.isBusiness,
         variables.referralCode,
         variables.user_id,
-        variables.isSeller
+        variables.isSeller,
+        variables.lang
       );
       
       if (response.success && response.data) {

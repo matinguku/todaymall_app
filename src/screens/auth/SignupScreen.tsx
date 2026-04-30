@@ -33,7 +33,7 @@ import ArrowDropDownIcon from '../../assets/icons/ArrowDropDownIcon';
 
 const SignupScreen: React.FC = () => {
   const navigation = useNavigation();
-  const { socialLogin, signupError, clearSignupError } = useAuth();
+  const { signupError, clearSignupError, setAuthenticatedUser } = useAuth();
   const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
   const { showToast } = useToast();
   
@@ -59,10 +59,17 @@ const SignupScreen: React.FC = () => {
   
   const { mutate: register, isLoading, isError, error, isSuccess, data } = useRegisterMutation({
     onSuccess: (data) => {
-      // The AuthContext will handle updating the global state
-      // This is just for side effects if needed
-      // console.log('User Registeration successful:', data);
-      showToast(t('auth.signupSuccess') || 'Signup successful', 'success');
+      if (data?.requiresVerification) {
+        showToast(data.message || t('auth.verificationCodeSent') || 'Verification code sent to your email', 'success');
+        (navigation as any).navigate('EmailVerification', {
+          email: data.email || formData.email,
+          verified: false,
+          source: 'signup',
+        });
+        return;
+      }
+
+      showToast(data?.message || t('auth.signupSuccess') || 'Signup successful', 'success');
       handleLogin();
     },
     onError: (errorMessage, errorCode) => {
@@ -74,13 +81,13 @@ const SignupScreen: React.FC = () => {
         setErrors({ 
           email: t('auth.emailAlreadyRegistered')
         });
-        showToast(t('auth.emailAlreadyRegistered') || 'Email already registered', 'error');
+        showToast(errorMessage || t('auth.emailAlreadyRegistered') || 'Email already registered', 'error');
       } else if (errorCode === 'INVALID_REFERRAL_CODE') {
         // Show error only on referral code field
         setErrors({ 
           referralCode: t('auth.invalidReferralCode')
         });
-        showToast(t('auth.invalidReferralCode') || 'Invalid referral code', 'error');
+        showToast(errorMessage || t('auth.invalidReferralCode') || 'Invalid referral code', 'error');
       } else if (errorCode === 'VALIDATION_ERROR') {
         // Show validation error
         setErrors({ 
@@ -96,9 +103,40 @@ const SignupScreen: React.FC = () => {
   
   const { mutate: socialLoginMutation, isLoading: isSocialLoading, isError: isSocialError, error: socialError } = useSocialLogin({
     onSuccess: (data) => {
-      // Handle successful social login
-      // console.log('Social login successful:', data);
-      // showToast({ message: `Welcome ${data.userInfo.name || 'User'}!`, type: 'success' });
+      const user = {
+        id: data.user?.id || data.user?.email || Date.now().toString(),
+        email: data.user?.email || '',
+        name: data.user?.name || data.user?.email?.split('@')[0] || 'User',
+        avatar: data.user?.avatar || 'https://via.placeholder.com/150',
+        phone: data.user?.phone || '',
+        addresses: data.user?.addresses || [],
+        paymentMethods: data.user?.paymentMethods || [],
+        wishlist: data.user?.wishlist || [],
+        followersCount: data.user?.followersCount || 0,
+        followingsCount: data.user?.followingsCount || 0,
+        depositBalance: data.user?.depositBalance ?? 0,
+        points: data.user?.points ?? 0,
+        preferences: data.user?.preferences || {
+          notifications: {
+            email: true,
+            push: true,
+            sms: true,
+          },
+          language: 'en',
+          currency: 'USD',
+        },
+        createdAt: data.user?.createdAt || new Date(),
+        updatedAt: data.user?.updatedAt || new Date(),
+      };
+
+      setAuthenticatedUser(user);
+      showToast(data.message || t('auth.login.success') || 'Login successful', 'success');
+      const parentNavigation = (navigation as any).getParent?.();
+      if (parentNavigation) {
+        parentNavigation.navigate('SocialReferralCode');
+      } else {
+        (navigation as any).navigate('SocialReferralCode');
+      }
     },
     onError: (error) => {
       // Handle social login error
@@ -204,6 +242,7 @@ const SignupScreen: React.FC = () => {
       referralCode: formData.referralCode || undefined,
       user_id: formData.user_id || undefined,
       isSeller,
+      lang: locale,
     });
     // console.log('SignupScreen: Signup function completed');
   };

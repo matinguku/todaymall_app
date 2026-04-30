@@ -142,8 +142,10 @@ export const clearAuthData = async () => {
   }
 };
 
+const normalizeApiLang = (lang?: string) => (['en', 'ko', 'zh'].includes(lang || '') ? lang : 'ko');
+
 // Login API (backend)
-export const login = async (email: string, password: string): Promise<{ success: boolean; data?: any; error?: string; errorCode?: string }> => {
+export const login = async (email: string, password: string, lang?: string): Promise<{ success: boolean; data?: any; error?: string; errorCode?: string }> => {
   try {
     const requestBody = {
       email: email,
@@ -151,7 +153,8 @@ export const login = async (email: string, password: string): Promise<{ success:
     };
     // console.log("Login Request Body", requestBody);
     
-    const url = `${API_BASE_URL}/auth/login`;
+    const normalizedLang = normalizeApiLang(lang);
+    const url = `${API_BASE_URL}/auth/login?lang=${encodeURIComponent(normalizedLang || 'ko')}`;
     console.log("Login URL", url);
     const signatureHeaders = await buildSignatureHeaders('POST', url, requestBody);
 
@@ -210,14 +213,19 @@ export const login = async (email: string, password: string): Promise<{ success:
     if (!response.ok) {
       const errorCode = responseData?.errorCode;
       let errorMessage = responseData?.message || responseData?.error || `Request failed with status ${response.status}`;
+      const hasApiMessage = Boolean(responseData?.message || responseData?.error);
       
       // Map errorCode to user-friendly messages
       switch (errorCode) {
         case 'EMAIL_NOT_VERIFIED':
-          errorMessage = 'Please verify your email before logging in. Check your inbox for the verification link.';
+          if (!hasApiMessage) {
+            errorMessage = 'Please verify your email before logging in. Check your inbox for the verification link.';
+          }
           break;
         case 'INVALID_CREDENTIALS':
-          errorMessage = 'Invalid email or password. Please try again.';
+          if (!hasApiMessage) {
+            errorMessage = 'Invalid email or password. Please try again.';
+          }
           break;
         case 'VALIDATION_ERROR':
           // Try to parse validation errors
@@ -440,6 +448,7 @@ export const login = async (email: string, password: string): Promise<{ success:
         refreshToken,
         user: userData,
         cartCount,
+        message: responseData.message,
       },
     };
   } catch (error) {
@@ -461,6 +470,146 @@ export const login = async (email: string, password: string): Promise<{ success:
   }
 };
 
+export const confirmQrLogin = async (
+  qrToken: string,
+  lang?: string
+): Promise<{ success: boolean; data?: any; message?: string; error?: string; errorCode?: string }> => {
+  try {
+    const token = await getStoredToken();
+
+    if (!token) {
+      return {
+        success: false,
+        error: 'Please log in before confirming QR login.',
+        errorCode: 'NOT_AUTHENTICATED',
+      };
+    }
+
+    const requestBody = { qrToken };
+    const normalizedLang = normalizeApiLang(lang);
+    const url = `${API_BASE_URL}/auth/qr-login/confirm?lang=${encodeURIComponent(normalizedLang || 'ko')}`;
+    const signatureHeaders = await buildSignatureHeaders('POST', url, requestBody);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
+        ...signatureHeaders,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    const responseText = await response.text();
+    let responseData: any;
+    try {
+      responseData = responseText ? JSON.parse(responseText) : {};
+    } catch (parseError) {
+      return {
+        success: false,
+        error: 'Invalid response from server. Please try again.',
+      };
+    }
+
+    if (!response.ok || responseData.status === 'error') {
+      return {
+        success: false,
+        error: responseData?.message || responseData?.error || `Request failed with status ${response.status}`,
+        errorCode: responseData?.errorCode,
+      };
+    }
+
+    return {
+      success: true,
+      message: responseData?.message || 'QR login confirmed.',
+      data: responseData?.data,
+    };
+  } catch (error: any) {
+    if (error instanceof TypeError && error.message.includes('Network request failed')) {
+      return {
+        success: false,
+        error: 'Network error. Please check your connection and try again.',
+      };
+    }
+
+    return {
+      success: false,
+      error: error.message || 'Failed to confirm QR login. Please try again.',
+    };
+  }
+};
+
+export const submitReferralCode = async (
+  referralCode: string,
+  lang?: string
+): Promise<{ success: boolean; data?: any; message?: string; error?: string; errorCode?: string }> => {
+  try {
+    const token = await getStoredToken();
+
+    if (!token) {
+      return {
+        success: false,
+        error: 'Please log in before submitting a referral code.',
+        errorCode: 'NOT_AUTHENTICATED',
+      };
+    }
+
+    const requestBody = { referralCode };
+    const normalizedLang = normalizeApiLang(lang);
+    const url = `${API_BASE_URL}/auth/social/referral?lang=${encodeURIComponent(normalizedLang || 'ko')}`;
+    const signatureHeaders = await buildSignatureHeaders('POST', url, requestBody);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
+        ...signatureHeaders,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    const responseText = await response.text();
+    let responseData: any;
+    try {
+      responseData = responseText ? JSON.parse(responseText) : {};
+    } catch (parseError) {
+      return {
+        success: false,
+        error: 'Invalid response from server. Please try again.',
+      };
+    }
+
+    if (!response.ok || responseData.status === 'error' || responseData.success === false) {
+      return {
+        success: false,
+        error: responseData?.message || responseData?.error || `Request failed with status ${response.status}`,
+        errorCode: responseData?.errorCode,
+      };
+    }
+
+    return {
+      success: true,
+      message: responseData?.message || 'Referral code submitted.',
+      data: responseData?.data,
+    };
+  } catch (error: any) {
+    if (error instanceof TypeError && error.message.includes('Network request failed')) {
+      return {
+        success: false,
+        error: 'Network error. Please check your connection and try again.',
+      };
+    }
+
+    return {
+      success: false,
+      error: error.message || 'Failed to submit referral code. Please try again.',
+    };
+  }
+};
+
 // Register API (backend)
 export const register = async (
   email: string,
@@ -470,7 +619,8 @@ export const register = async (
   isBusiness: boolean = false,
   referralCode?: string,
   user_id?: string,
-  isSeller?: boolean
+  isSeller?: boolean,
+  lang?: string
 ): Promise<{ success: boolean; data?: any; error?: string; errorCode?: string }> => {
   // console.log("Registration attempt:", { email, name, phone, isBusiness, referralCode });
   
@@ -489,7 +639,8 @@ export const register = async (
       requestBody.referralCode = referralCode.trim();
     }
     
-    const url = `${API_BASE_URL}/auth/register`;
+    const normalizedLang = normalizeApiLang(lang);
+    const url = `${API_BASE_URL}/auth/register?lang=${encodeURIComponent(normalizedLang || 'ko')}`;
     const signatureHeaders = await buildSignatureHeaders('POST', url, requestBody);
 
     const response = await fetch(url, {
@@ -527,14 +678,19 @@ export const register = async (
       // Handle error by errorCode
       const errorCode = responseData?.errorCode;
       let errorMessage = responseData?.message || responseData?.error || `Request failed with status ${response.status}`;
+      const hasApiMessage = Boolean(responseData?.message || responseData?.error);
       
       // Map errorCode to user-friendly messages
       switch (errorCode) {
         case 'EMAIL_ALREADY_REGISTERED':
-          errorMessage = 'This email is already registered. Please login instead.';
+          if (!hasApiMessage) {
+            errorMessage = 'This email is already registered. Please login instead.';
+          }
           break;
         case 'INVALID_REFERRAL_CODE':
-          errorMessage = 'Invalid referral code. Please check and try again.';
+          if (!hasApiMessage) {
+            errorMessage = 'Invalid referral code. Please check and try again.';
+          }
           break;
         case 'VALIDATION_ERROR':
           // Try to parse validation errors
@@ -1311,7 +1467,7 @@ export const verifySigninCode = async (
 export const verifySignupCode = async (
   email: string,
   code: string
-): Promise<{ success: boolean; data?: { signup_code_verified: boolean }; error?: string; errorCode?: string }> => {
+): Promise<{ success: boolean; data?: any; error?: string; errorCode?: string }> => {
   try {
     const requestBody = { email, code };
     const signatureHeaders = await buildSignatureHeaders('POST', `${API_BASE_URL}/auth/verify-signup-code`, requestBody);
@@ -1324,10 +1480,57 @@ export const verifySignupCode = async (
     });
 
     if (response.data && response.data.status === 'success' && response.data.data) {
+      const { user, token, refreshToken } = response.data.data;
+
+      if (user && token) {
+        const userData: Partial<User> = {
+          id: user._id || user.id,
+          email: user.email,
+          name: user.user_id || user.name || user.email?.split('@')[0] || 'User',
+          avatar: user.avatar || user.pictureUrl || 'https://via.placeholder.com/150',
+          phone: user.phone || '',
+          addresses: user.addresses || [],
+          paymentMethods: [],
+          wishlist: user.wishlist || [],
+          followersCount: 0,
+          followingsCount: 0,
+          preferences: {
+            notifications: {
+              email: true,
+              push: true,
+              sms: true,
+            },
+            language: 'en',
+            currency: 'USD',
+          },
+          createdAt: user.createdAt ? new Date(user.createdAt) : new Date(),
+          updatedAt: user.updatedAt ? new Date(user.updatedAt) : new Date(),
+        };
+
+        await storeAuthData(token, userData);
+
+        if (refreshToken) {
+          await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+        }
+
+        return {
+          success: true,
+          data: {
+            ...response.data.data,
+            user: userData,
+            token,
+            refreshToken,
+            message: response.data.message,
+          },
+        };
+      }
+
       return {
         success: true,
         data: {
+          ...response.data.data,
           signup_code_verified: response.data.data.signup_code_verified || false,
+          message: response.data.message,
         },
       };
     }
@@ -1494,6 +1697,55 @@ export const verifyEmail = async (
 };
 
 // Resend Verification Code API
+export const resendLoginVerificationCode = async (
+  email: string,
+  lang: string = 'ko'
+): Promise<{ success: boolean; data?: any; error?: string }> => {
+  try {
+    const requestBody = { email };
+    const normalizedLang = ['en', 'ko', 'zh'].includes(lang) ? lang : 'ko';
+    const response = await fetch(
+      `https://todaymall.co.kr/api/auth-proxy/resend-verification-code?lang=${encodeURIComponent(normalizedLang)}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      }
+    );
+
+    const responseText = await response.text();
+    let responseData: any = {};
+
+    try {
+      responseData = responseText ? JSON.parse(responseText) : {};
+    } catch (parseError) {
+      return {
+        success: false,
+        error: 'Invalid response from server',
+      };
+    }
+
+    if (!response.ok || responseData.status === 'error' || responseData.success === false) {
+      return {
+        success: false,
+        error: responseData?.message || responseData?.error || `Request failed with status ${response.status}`,
+      };
+    }
+
+    return {
+      success: true,
+      data: responseData?.data || responseData,
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error?.message || 'Failed to send verification code',
+    };
+  }
+};
+
 export const resendVerificationCode = async (
   email: string
 ): Promise<{ success: boolean; data?: any; error?: string }> => {

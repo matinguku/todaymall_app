@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.todaymall.kr",
+      "sha256_cert_fingerprints": [
+        "1E:54:77:A0:74:2D:E5:39:30:08:35:9C:F2:65:FF:61:A4:D4:A1:B4:81:61:39:57:8C:C4:B1:3F:FB:59:86:FD"
+      ]
+    }
+  }
+]

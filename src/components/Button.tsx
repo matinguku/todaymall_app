@@ -65,7 +65,7 @@ const Button: React.FC<ButtonProps> = ({
     // Variant styles
     switch (variant) {
       case 'primary':
-        baseStyle.backgroundColor = disabled ? COLORS.gray[300] : COLORS.primary;
+        baseStyle.backgroundColor = disabled ? COLORS.gray[300] : COLORS.red;
         break;
       case 'secondary':
         baseStyle.backgroundColor = disabled ? COLORS.gray[300] : COLORS.secondary;
@@ -73,7 +73,7 @@ const Button: React.FC<ButtonProps> = ({
       case 'outline':
         baseStyle.backgroundColor = 'transparent';
         baseStyle.borderWidth = 1;
-        baseStyle.borderColor = disabled ? COLORS.gray[300] : COLORS.primary;
+        baseStyle.borderColor = disabled ? COLORS.gray[300] : COLORS.red;
         break;
       case 'ghost':
         baseStyle.backgroundColor = 'transparent';
@@ -116,10 +116,10 @@ const Button: React.FC<ButtonProps> = ({
         baseStyle.color = disabled ? COLORS.gray[500] : COLORS.white;
         break;
       case 'outline':
-        baseStyle.color = disabled ? COLORS.gray[500] : COLORS.primary;
+        baseStyle.color = disabled ? COLORS.gray[500] : COLORS.red;
         break;
       case 'ghost':
-        baseStyle.color = disabled ? COLORS.gray[500] : COLORS.primary;
+        baseStyle.color = disabled ? COLORS.gray[500] : COLORS.red;
         break;
       case 'danger':
         baseStyle.color = disabled ? COLORS.gray[500] : COLORS.white;
@@ -150,7 +150,7 @@ const Button: React.FC<ButtonProps> = ({
         return COLORS.white;
       case 'outline':
       case 'ghost':
-        return COLORS.primary;
+        return COLORS.red;
       default:
         return COLORS.white;
     }
@@ -192,7 +192,7 @@ const Button: React.FC<ButtonProps> = ({
   // For primary and secondary variants, use LinearGradient
   if ((variant === 'primary' || variant === 'secondary') && !disabled) {
     const gradientColors = variant === 'primary' 
-      ? [COLORS.gradients.primary[0], COLORS.gradients.primary[1]] as [string, string]
+      ? [COLORS.gradients.primary[0], COLORS.gradients.primary[0]] as [string, string]
       : [COLORS.gradients.secondary[0], COLORS.gradients.secondary[1]] as [string, string];
 
     return (
@@ -202,12 +202,12 @@ const Button: React.FC<ButtonProps> = ({
         disabled={disabled || loading}
         activeOpacity={0.8}
       >
-        <LinearGradient
+        {/* <LinearGradient
           colors={gradientColors}
           style={styles.gradientButton}
-        >
+        > */}
           {renderButtonContent()}
-        </LinearGradient>
+        {/* </LinearGradient> */}
       </TouchableOpacity>
     );
   }
