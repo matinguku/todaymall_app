@@ -728,7 +728,7 @@ const ProfileScreen: React.FC = () => {
             style={styles.backButton}
             onPress={() => navigation.goBack()}
           >
-            <Icon name="arrow-back" size={20} color={COLORS.text.red} />
+            <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{t('profile.title')}</Text>
           </View>
@@ -738,10 +738,10 @@ const ProfileScreen: React.FC = () => {
             style={styles.headerIcon}
             onPress={() => navigation.navigate('LanguageSettings')}
           >
-            <LocationIcon width={24} height={24} color={COLORS.text.red} />
+            <LocationIcon width={24} height={24} color={COLORS.text.primary} />
           </TouchableOpacity>
           <NotificationBadge
-            customIcon={<HeadsetMicIcon width={24} height={24} color={COLORS.text.red} />}
+            customIcon={<HeadsetMicIcon width={24} height={24} color={COLORS.text.primary} />}
             count={notificationCount}
             badgeColor={COLORS.red}
             onPress={() => {
@@ -753,7 +753,7 @@ const ProfileScreen: React.FC = () => {
               style={styles.headerIcon}
               onPress={() => navigation.navigate('ProfileSettings')}
             >
-              <SettingsIcon width={24} height={24} color={COLORS.text.red} />
+              <SettingsIcon width={24} height={24} color={COLORS.text.primary} />
             </TouchableOpacity>
           )}
         </View>
@@ -2095,7 +2095,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: FONTS.sizes.md,
     fontWeight: '700',
-    color: COLORS.text.red,
+    color: COLORS.text.primary,
     letterSpacing: 0.5,
   },
   headerIcons: {
@@ -2181,7 +2181,7 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: FONTS.sizes.xl,
     fontWeight: '700',
-    color: COLORS.text.red,
+    color: COLORS.text.primary,
     marginBottom: SPACING.xs,
   },
   userBadge: {
@@ -2219,7 +2219,7 @@ const styles = StyleSheet.create({
   welcomeText: {
     fontSize: FONTS.sizes['2xl'],
     fontWeight: '700',
-    color: COLORS.text.red,
+    color: COLORS.text.primary,
     marginBottom: SPACING.sm,
     textAlign: 'center',
   },
@@ -2237,7 +2237,7 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     flexDirection: 'row',
-    backgroundColor: COLORS.text.red,
+    backgroundColor: COLORS.text.primary,
     borderRadius: 9999,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.xl,
@@ -2336,7 +2336,7 @@ const styles = StyleSheet.create({
   },
   myOrderHeaderText: {
     fontSize: FONTS.sizes.sm,
-    color: COLORS.text.red,
+    color: COLORS.text.primary,
     fontWeight: '700',
   },
   myOrderHeaderTextSub: {
@@ -2361,11 +2361,11 @@ const styles = StyleSheet.create({
   myOrderItemCount: {
     fontSize: FONTS.sizes.xl,
     fontWeight: '900',
-    color: COLORS.text.red,
+    color: COLORS.text.primary,
   },
   myOrderItemText: {
     fontSize: FONTS.sizes.xs,
-    color: COLORS.text.red,
+    color: COLORS.text.primary,
     fontWeight: '400',
     textAlign: 'center',
     marginTop: SPACING.xs,
@@ -2421,7 +2421,7 @@ const styles = StyleSheet.create({
   quickAccessTitle: {
     fontSize: FONTS.sizes.xs,
     fontWeight: '400',
-    color: COLORS.text.red,
+    color: COLORS.text.primary,
     textAlign: 'center',
     marginBottom: 2,
   },
@@ -2483,7 +2483,7 @@ const styles = StyleSheet.create({
   },
   menuItemText: {
     fontSize: FONTS.sizes.md,
-    color: COLORS.text.red,
+    color: COLORS.text.primary,
     fontWeight: '500',
   },
   menuItemBadge: {
@@ -2508,7 +2508,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: FONTS.sizes.md,
     fontWeight: '700',
-    color: COLORS.text.red,
+    color: COLORS.text.primary,
     marginBottom: SPACING.md,
     textAlign: 'center',
   },
@@ -2606,7 +2606,7 @@ const styles = StyleSheet.create({
   sidebarUserName: {
     fontSize: FONTS.sizes.sm,
     fontWeight: '600',
-    color: COLORS.text.red,
+    color: COLORS.text.primary,
     textAlign: 'center',
     marginBottom: 2,
   },
@@ -2645,7 +2645,7 @@ const styles = StyleSheet.create({
     color: COLORS.text.secondary,
   },
   sidebarNavLabelActive: {
-    color: COLORS.text.red,
+    color: COLORS.text.primary,
     fontWeight: '600',
   },
   sidebarNavBadge: {
@@ -2703,7 +2703,7 @@ const styles = StyleSheet.create({
   dashCardTitle: {
     fontSize: FONTS.sizes.base,
     fontWeight: '700',
-    color: COLORS.text.red,
+    color: COLORS.text.primary,
   },
   dashCardMore: {
     fontSize: FONTS.sizes.sm,
@@ -2723,7 +2723,7 @@ const styles = StyleSheet.create({
   dashStatValue: {
     fontSize: FONTS.sizes.xl,
     fontWeight: '700',
-    color: COLORS.text.red,
+    color: COLORS.text.primary,
   },
   dashStatLabel: {
     fontSize: FONTS.sizes.xs,
@@ -2747,7 +2747,7 @@ const styles = StyleSheet.create({
   dashSummaryCount: {
     fontSize: FONTS.sizes.xl,
     fontWeight: '700',
-    color: COLORS.text.red
+    color: COLORS.text.primary
   },
   dashSummaryLabel: {
     fontSize: FONTS.sizes.sm,
@@ -2767,7 +2767,7 @@ const styles = StyleSheet.create({
   dashLinkText: {
     flex: 1,
     fontSize: FONTS.sizes.base,
-    color: COLORS.text.red,
+    color: COLORS.text.primary,
   },
   dashLinkRowActive: {
     backgroundColor: COLORS.lightRed,
