@@ -17,8 +17,11 @@ import { useAppSelector } from '../../../../store/hooks';
 import { translations } from '../../../../i18n/translations';
 
 type SecuritySettingsScreenNavigationProp = StackNavigationProp<RootStackParamList, 'SecuritySettings'>;
+type SecuritySettingsScreenProps = {
+  embedded?: boolean;
+};
 
-const SecuritySettingsScreen: React.FC = () => {
+const SecuritySettingsScreen: React.FC<SecuritySettingsScreenProps> = ({ embedded = false }) => {
   const navigation = useNavigation<SecuritySettingsScreenNavigationProp>();
   const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
 
@@ -45,9 +48,13 @@ const SecuritySettingsScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-        </TouchableOpacity>
+        {!embedded ? (
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.placeholder} />
+        )}
         <Text style={styles.headerTitle}>{t('profile.securitySettings')}</Text>
         <View style={styles.placeholder} />
       </View>

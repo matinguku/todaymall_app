@@ -29,7 +29,11 @@ import AttachmantIcon from '../../../../assets/icons/AttachmantIcon';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const AffiliateMarketingScreen = () => {
+type AffiliateMarketingScreenProps = {
+  embedded?: boolean;
+};
+
+const AffiliateMarketingScreen: React.FC<AffiliateMarketingScreenProps> = ({ embedded = false }) => {
   const navigation = useNavigation();
   const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
   const { user } = useAuth();
@@ -135,12 +139,16 @@ const AffiliateMarketingScreen = () => {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Icon name="arrow-back" size={16} color={COLORS.text.primary} />
-        </TouchableOpacity>
+        {!embedded ? (
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Icon name="arrow-back" size={16} color={COLORS.text.primary} />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.placeholder} />
+        )}
         <Text style={styles.headerTitle}>{t('profile.affiliateMarketing')}</Text>
         {/* <TouchableOpacity style={styles.eventRuleButton}>
           <Text style={styles.eventRuleText}>{t('profile.eventRule')}</Text>
@@ -172,7 +180,7 @@ const AffiliateMarketingScreen = () => {
                   </Text>
                 </View>
                 <View style={styles.metaBadge}>
-                  <Icon name="people-outline" size={12} color={COLORS.primary} />
+                  <Icon name="people-outline" size={12} color={COLORS.red} />
                   <Text style={styles.metaBadgeText}>
                     {t('profile.myReferrals')}: {relatedUsers}
                   </Text>
@@ -207,7 +215,7 @@ const AffiliateMarketingScreen = () => {
           {/* Card 1: Share Member ID */}
           <View style={styles.inviteCard}>
             <View style={styles.cardIconContainer}>
-              <ShareCardIcon width={28} color="#FF6B00" />
+              <ShareCardIcon width={28} color={COLORS.red} />
             </View>
             <Text style={styles.cardTitle}>{t('profile.shareMemberId')}</Text>
             <Text style={styles.cardDesc}>{t('profile.shareMemberIdDesc')}</Text>
@@ -223,7 +231,7 @@ const AffiliateMarketingScreen = () => {
           {/* Card 2: Share QR Code */}
           <View style={styles.inviteCard}>
             <View style={styles.cardIconContainer}>
-              <QRCodeIcon width={28} color="#FF6B00" />
+              <QRCodeIcon width={28} color={COLORS.red} />
             </View>
             <Text style={styles.cardTitle}>{t('profile.shareQrCode')}</Text>
             <Text style={styles.cardDesc}>{t('profile.shareQrCodeDesc')}</Text>
@@ -247,7 +255,7 @@ const AffiliateMarketingScreen = () => {
                 <Text style={styles.qrActionText}>{t('profile.share')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.qrActionBtnOutline} onPress={handleDownloadQR}>
-                <Icon name="download-outline" size={14} color="#FF6B00" />
+                <Icon name="download-outline" size={14} color={COLORS.red} />
                 <Text style={styles.qrActionTextOutline}>{t('profile.download')}</Text>
               </TouchableOpacity>
             </View>
@@ -256,7 +264,7 @@ const AffiliateMarketingScreen = () => {
           {/* Card 3: Share Referral Link */}
           <View style={styles.inviteCard}>
             <View style={styles.cardIconContainer}>
-              <AttachmantIcon width={28} color="#FF6B00" />
+              <AttachmantIcon width={28} color={COLORS.red} />
             </View>
             <Text style={styles.cardTitle}>{t('profile.shareReferralLink')}</Text>
             <Text style={styles.cardDesc}>{t('profile.shareReferralLinkDesc')}</Text>
@@ -299,13 +307,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  placeholder: {
+    width: 24,
+    height: 24,
+  },
   headerTitle: {
     fontSize: FONTS.sizes.md,
     fontWeight: '700',
     color: COLORS.text.primary,
   },
   eventRuleButton: {
-    backgroundColor: '#FF6B00',
+    backgroundColor: COLORS.red,
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 16,
@@ -348,7 +360,7 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     borderWidth: 2,
-    borderColor: '#FFD4A8',
+    borderColor: COLORS.red,
   },
   profileInfo: {
     marginLeft: 12,
@@ -368,7 +380,7 @@ const styles = StyleSheet.create({
   metaBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF5ED',
+    backgroundColor: COLORS.lightRed,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 10,
@@ -376,7 +388,7 @@ const styles = StyleSheet.create({
   },
   metaBadgeText: {
     fontSize: FONTS.sizes.xs,
-    color: '#FF6B00',
+    color: COLORS.red,
     fontWeight: '500',
   },
   incomeSection: {
@@ -400,13 +412,13 @@ const styles = StyleSheet.create({
 
   // Revenue Info Box
   revenueBox: {
-    backgroundColor: '#FFF8F0',
+    backgroundColor: COLORS.lightRed,
     marginHorizontal: SPACING.md,
     marginTop: SPACING.md,
     borderRadius: 12,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: '#FFE0C0',
+    borderColor: COLORS.red,
   },
   revenueHeader: {
     flexDirection: 'row',
@@ -417,7 +429,7 @@ const styles = StyleSheet.create({
   revenueTitle: {
     fontSize: FONTS.sizes.sm,
     fontWeight: '700',
-    color: '#FF6B00',
+    color: COLORS.red,
   },
   revenueDesc: {
     fontSize: FONTS.sizes.xs,
@@ -464,7 +476,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: '#FFF5ED',
+    backgroundColor: COLORS.lightRed,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 12,
@@ -472,7 +484,7 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: FONTS.sizes.lg,
     fontWeight: '700',
-    color: '#FF6B00',
+    color: COLORS.red,
     textAlign: 'center',
     marginBottom: 8,
   },
@@ -489,7 +501,7 @@ const styles = StyleSheet.create({
   codeDisplayBox: {
     width: '100%',
     borderWidth: 2,
-    borderColor: '#FF6B00',
+    borderColor: COLORS.red,
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: SPACING.md,
@@ -508,7 +520,7 @@ const styles = StyleSheet.create({
   linkDisplayBox: {
     width: '100%',
     borderWidth: 2,
-    borderColor: '#FF6B00',
+    borderColor: COLORS.red,
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: SPACING.md,
@@ -540,7 +552,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FF6B00',
+    backgroundColor: COLORS.red,
     paddingVertical: 10,
     borderRadius: 10,
     gap: 5,
@@ -559,11 +571,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1.5,
-    borderColor: '#FF6B00',
+    borderColor: COLORS.red,
     gap: 5,
   },
   qrActionTextOutline: {
-    color: '#FF6B00',
+    color: COLORS.red,
     fontSize: FONTS.sizes.sm,
     fontWeight: '600',
   },
@@ -573,7 +585,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FF6B00',
+    backgroundColor: COLORS.red,
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 10,

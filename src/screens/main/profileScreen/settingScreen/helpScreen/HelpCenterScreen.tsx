@@ -20,6 +20,9 @@ import { translations } from '../../../../../i18n/translations';
 import { useHelpCenterMutation } from '../../../../../hooks/useHelpCenterMutation';
 
 type HelpCenterScreenNavigationProp = StackNavigationProp<RootStackParamList, 'HelpCenter'>;
+type HelpCenterScreenProps = {
+  embedded?: boolean;
+};
 
 interface SearchSectionProps {
   placeholder: string;
@@ -58,7 +61,7 @@ const SearchSection = React.memo(({ placeholder, onSearch }: SearchSectionProps)
   );
 });
 
-const HelpCenterScreen: React.FC = () => {
+const HelpCenterScreen: React.FC<HelpCenterScreenProps> = ({ embedded = false }) => {
   const navigation = useNavigation<HelpCenterScreenNavigationProp>();
   const locale = useAppSelector((state) => state.i18n.locale);
   
@@ -102,12 +105,16 @@ const HelpCenterScreen: React.FC = () => {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => navigation.goBack()}
-      >
-        <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-      </TouchableOpacity>
+      {!embedded ? (
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.placeholder} />
+      )}
       <Text style={styles.headerTitle}>{t('helpCenter.title')}</Text>
       <View style={styles.placeholder} />
     </View>

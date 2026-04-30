@@ -728,7 +728,7 @@ const ProfileScreen: React.FC = () => {
             style={styles.backButton}
             onPress={() => navigation.goBack()}
           >
-            <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
+            <Icon name="arrow-back" size={20} color={COLORS.text.red} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{t('profile.title')}</Text>
           </View>
@@ -738,10 +738,10 @@ const ProfileScreen: React.FC = () => {
             style={styles.headerIcon}
             onPress={() => navigation.navigate('LanguageSettings')}
           >
-            <LocationIcon width={24} height={24} color={COLORS.text.primary} />
+            <LocationIcon width={24} height={24} color={COLORS.text.red} />
           </TouchableOpacity>
           <NotificationBadge
-            customIcon={<HeadsetMicIcon width={24} height={24} color={COLORS.text.primary} />}
+            customIcon={<HeadsetMicIcon width={24} height={24} color={COLORS.text.red} />}
             count={notificationCount}
             badgeColor={COLORS.red}
             onPress={() => {
@@ -753,7 +753,7 @@ const ProfileScreen: React.FC = () => {
               style={styles.headerIcon}
               onPress={() => navigation.navigate('ProfileSettings')}
             >
-              <SettingsIcon width={24} height={24} color={COLORS.text.primary} />
+              <SettingsIcon width={24} height={24} color={COLORS.text.red} />
             </TouchableOpacity>
           )}
         </View>
@@ -789,7 +789,7 @@ const ProfileScreen: React.FC = () => {
                 style={styles.editButton}
                 onPress={() => navigation.navigate('ProfileSettings')}
               >
-                <Icon name="pencil" size={14} color={COLORS.primary} />
+                <Icon name="pencil" size={14} color={COLORS.red} />
                 <Text style={styles.editText}>{t('profile.editProfile')}</Text>
               </TouchableOpacity>
             </View> */}
@@ -1218,7 +1218,7 @@ const ProfileScreen: React.FC = () => {
     if (recommendationsLoading && recommendationsProducts.length > 0) {
       return (
         <View style={styles.moreToLoveFooter}>
-          <ActivityIndicator size="small" color={COLORS.primary} />
+          <ActivityIndicator size="small" color={COLORS.red} />
           <Text style={styles.moreToLoveFooterText}>{t('profile.loadingMore')}</Text>
         </View>
       );
@@ -1365,17 +1365,30 @@ const ProfileScreen: React.FC = () => {
     const inquiryCount = typeof generalInquiryUnreadCount === 'number' ? generalInquiryUnreadCount : 0;
     const feedbackBadge = notesCount + inquiryCount;
 
-    const navItems: Array<{ key: string; label: string; iconName: string; badge?: number }> = [
-      { key: 'overview', label: '내 계정', iconName: 'person' },
-      { key: 'orders', label: t('profile.myOrders') || '주문', iconName: 'receipt-outline' },
-      { key: 'coupon_point', label: `${t('profile.coupons') || '쿠폰'}/${t('profile.points') || '포인트'}`, iconName: 'pricetag-outline' },
-      { key: 'wishlist', label: t('profile.wishlist') || '위시리스트', iconName: 'heart-outline', badge: wishlistCount || undefined },
-      { key: 'following', label: t('profile.followedStores') || '스토어 팔로우', iconName: 'storefront-outline' },
-      { key: 'viewed', label: t('profile.viewed') || '조회한 상품', iconName: 'eye-outline', badge: viewedCount || undefined },
-      { key: 'billing', label: t('profile.deposit') || '내 청구서', iconName: 'wallet-outline' },
-      { key: 'feedback', label: t('profile.suggestion') || '피드백', iconName: 'chatbubble-outline', badge: feedbackBadge || undefined },
-      { key: 'returns', label: t('profile.toRefunds') || '반품/환불', iconName: 'return-down-back-outline', badge: orderCounts.refunds || undefined },
-      { key: 'settings', label: '계정 설정', iconName: 'settings-outline' },
+    // const navItems: Array<{ key: string; label: string; iconName: string; badge?: number }> = [
+    //   { key: 'overview', label: '내 계정', iconName: 'person' },
+    //   { key: 'orders', label: t('profile.myOrders') || '주문', iconName: 'receipt-outline' },
+    //   { key: 'coupon_point', label: `${t('profile.coupons') || '쿠폰'}/${t('profile.points') || '포인트'}`, iconName: 'pricetag-outline' },
+    //   { key: 'wishlist', label: t('profile.wishlist') || '위시리스트', iconName: 'heart-outline', badge: wishlistCount || undefined },
+    //   { key: 'following', label: t('profile.followedStores') || '스토어 팔로우', iconName: 'storefront-outline' },
+    //   { key: 'viewed', label: t('profile.viewed') || '조회한 상품', iconName: 'eye-outline', badge: viewedCount || undefined },
+    //   { key: 'billing', label: t('profile.deposit') || '내 청구서', iconName: 'wallet-outline' },
+    //   { key: 'feedback', label: t('profile.suggestion') || '피드백', iconName: 'chatbubble-outline', badge: feedbackBadge || undefined },
+    //   { key: 'returns', label: t('profile.toRefunds') || '반품/환불', iconName: 'return-down-back-outline', badge: orderCounts.refunds || undefined },
+    //   { key: 'settings', label: '계정 설정', iconName: 'settings-outline' },
+    // ];
+
+    const navItems: Array<{ key: string; label: string; badge?: number }> = [
+      { key: 'overview', label: '내 계정',  },
+      { key: 'orders', label: t('profile.myOrders') || '주문', },
+      { key: 'coupon_point', label: `${t('profile.coupons') || '쿠폰'}/${t('profile.points') || '포인트'}`,},
+      { key: 'wishlist', label: t('profile.wishlist') || '위시리스트',  badge: wishlistCount || undefined },
+      { key: 'following', label: t('profile.followedStores') || '스토어 팔로우', },
+      { key: 'viewed', label: t('profile.viewed') || '조회한 상품', badge: viewedCount || undefined },
+      { key: 'billing', label: t('profile.deposit') || '내 청구서',},
+      { key: 'feedback', label: t('profile.suggestion') || '피드백', badge: feedbackBadge || undefined },
+      { key: 'returns', label: t('profile.toRefunds') || '반품/환불', badge: orderCounts.refunds || undefined },
+      { key: 'settings', label: '계정 설정',  },
     ];
 
     return (
@@ -1441,7 +1454,7 @@ const ProfileScreen: React.FC = () => {
                 activeOpacity={0.7}
               >
                 {tabletSection === item.key && <View style={styles.sidebarActiveBar} />}
-                <Icon name={item.iconName as any} size={18} color={tabletSection === item.key ? COLORS.primary : COLORS.text.secondary} />
+                {/* <Icon name={item.iconName as any} size={18} color={tabletSection === item.key ? COLORS.red : COLORS.text.secondary} /> */}
                 <Text style={[styles.sidebarNavLabel, tabletSection === item.key && styles.sidebarNavLabelActive]} numberOfLines={1}>
                   {item.label}
                 </Text>
@@ -1770,7 +1783,7 @@ const ProfileScreen: React.FC = () => {
                     setEmbeddedOrdersOpen(false);
                   }}
                 >
-                  <CouponIcon width={36} height={36} color={COLORS.primary} />
+                  <CouponIcon width={36} height={36} color={COLORS.red} />
                   <Text style={styles.dashStatValue}>
                     {(() => { const c = (user as any)?.coupon; return typeof c === 'number' ? String(c) : typeof c === 'string' ? c : '0'; })()}
                   </Text>
@@ -1785,7 +1798,7 @@ const ProfileScreen: React.FC = () => {
                     setEmbeddedOrdersOpen(false);
                   }}
                 >
-                  <PointIcon width={36} height={36} color={COLORS.primary} />
+                  <PointIcon width={36} height={36} color={COLORS.red} />
                   <Text style={styles.dashStatValue}>
                     {(() => { const p = (user as any)?.points ?? 0; return typeof p === 'number' ? String(p) : typeof p === 'string' ? p : '0'; })()}
                   </Text>
@@ -1819,47 +1832,9 @@ const ProfileScreen: React.FC = () => {
         return <BuyListScreen embedded initialTabOverride="error" />;
 
       case 'settings':
-        return (
-          <View style={styles.tabletDashboardContent}>
-            {dashCard(
-              <>
-                {[
-                  {
-                    label: t('profile.accountandsecurity') || 'Account Security',
-                    onPress: () => {
-                      setTabletSection('settings');
-                      setEmbeddedSettingsPage('securitySettings');
-                    },
-                  },
-                  {
-                    label: t('profile.sellerInfo') || 'Seller Info',
-                    onPress: () => {
-                      setTabletSection('settings');
-                      setEmbeddedSettingsPage('sellerDashboard');
-                    },
-                  },
-                  {
-                    label: t('profile.aboutUs') || 'Introduction',
-                    onPress: () => {
-                      setTabletSection('settings');
-                      setEmbeddedSettingsPage('todayMallIntroduction');
-                    },
-                  },
-                ].map((item, idx) => (
-                  <TouchableOpacity
-                    key={idx}
-                    style={[styles.dashLinkRow, idx > 0 && styles.dashLinkRowBorder]}
-                    onPress={item.onPress}
-                  >
-                    <Text style={styles.dashLinkText}>{item.label}</Text>
-                    <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
-                  </TouchableOpacity>
-                ))}
-              </>,
-              t('profile.settings') || 'Settings'
-            )}
-          </View>
-        );
+        // Settings summary card intentionally removed from dashboard.
+        // The right panel only renders embedded setting pages selected from the sidebar tree.
+        return null;
 
       default:
         return null;
@@ -1886,6 +1861,8 @@ const ProfileScreen: React.FC = () => {
             </View>
           ) : embeddedCouponPointOpen ? (
             <View style={styles.tabletDashboardPanel}>
+
+              
               {embeddedCouponPointTab === 'coupon' ? (
                 <CouponScreen
                   embedded
@@ -1930,39 +1907,39 @@ const ProfileScreen: React.FC = () => {
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'shippingAddress' ? (
             <View style={styles.tabletDashboardPanel}>
-              <AddressBookScreen />
+              <AddressBookScreen embedded />
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'securitySettings' ? (
             <View style={styles.tabletDashboardPanel}>
-              <SecuritySettingsScreen />
+              <SecuritySettingsScreen embedded />
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'personalInformation' ? (
             <View style={styles.tabletDashboardPanel}>
-              <EditProfileScreen />
+              <EditProfileScreen embedded />
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'affiliateMarketing' ? (
             <View style={styles.tabletDashboardPanel}>
-              <AffiliateMarketingScreen />
+              <AffiliateMarketingScreen embedded />
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'sellerDashboard' ? (
             <View style={styles.tabletDashboardPanel}>
-              <SellerPageScreen />
+              <SellerPageScreen embedded />
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'sellerOrdersRefunds' ? (
             <View style={styles.tabletDashboardPanel}>
-              <SellerSalesRefundInfoScreen />
+              <SellerSalesRefundInfoScreen embedded />
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'sellerTeamPerformance' ? (
             <View style={styles.tabletDashboardPanel}>
-              <SellerTeamInfoScreen />
+              <SellerTeamInfoScreen embedded />
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'helpCenter' ? (
             <View style={styles.tabletDashboardPanel}>
-              <HelpCenterScreen />
+              <HelpCenterScreen embedded />
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'todayMallIntroduction' ? (
             <View style={styles.tabletDashboardPanel}>
-              <AboutUsScreen />
+              <AboutUsScreen embedded />
             </View>
           ) : (
             <ScrollView
@@ -2118,7 +2095,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: FONTS.sizes.md,
     fontWeight: '700',
-    color: COLORS.text.primary,
+    color: COLORS.text.red,
     letterSpacing: 0.5,
   },
   headerIcons: {
@@ -2147,7 +2124,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -5,
     right: -5,
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.red,
     borderRadius: 10,
     minWidth: 20,
     height: 20,
@@ -2204,7 +2181,7 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: FONTS.sizes.xl,
     fontWeight: '700',
-    color: COLORS.text.primary,
+    color: COLORS.text.red,
     marginBottom: SPACING.xs,
   },
   userBadge: {
@@ -2242,7 +2219,7 @@ const styles = StyleSheet.create({
   welcomeText: {
     fontSize: FONTS.sizes['2xl'],
     fontWeight: '700',
-    color: COLORS.text.primary,
+    color: COLORS.text.red,
     marginBottom: SPACING.sm,
     textAlign: 'center',
   },
@@ -2359,7 +2336,7 @@ const styles = StyleSheet.create({
   },
   myOrderHeaderText: {
     fontSize: FONTS.sizes.sm,
-    color: COLORS.text.primary,
+    color: COLORS.text.red,
     fontWeight: '700',
   },
   myOrderHeaderTextSub: {
@@ -2384,11 +2361,11 @@ const styles = StyleSheet.create({
   myOrderItemCount: {
     fontSize: FONTS.sizes.xl,
     fontWeight: '900',
-    color: COLORS.text.primary,
+    color: COLORS.text.red,
   },
   myOrderItemText: {
     fontSize: FONTS.sizes.xs,
-    color: COLORS.text.primary,
+    color: COLORS.text.red,
     fontWeight: '400',
     textAlign: 'center',
     marginTop: SPACING.xs,
@@ -2444,7 +2421,7 @@ const styles = StyleSheet.create({
   quickAccessTitle: {
     fontSize: FONTS.sizes.xs,
     fontWeight: '400',
-    color: COLORS.text.primary,
+    color: COLORS.text.red,
     textAlign: 'center',
     marginBottom: 2,
   },
@@ -2506,7 +2483,7 @@ const styles = StyleSheet.create({
   },
   menuItemText: {
     fontSize: FONTS.sizes.md,
-    color: COLORS.text.primary,
+    color: COLORS.text.red,
     fontWeight: '500',
   },
   menuItemBadge: {
@@ -2531,7 +2508,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: FONTS.sizes.md,
     fontWeight: '700',
-    color: COLORS.text.primary,
+    color: COLORS.text.red,
     marginBottom: SPACING.md,
     textAlign: 'center',
   },
@@ -2556,7 +2533,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.red,
     borderRadius: BORDER_RADIUS.md,
   },
   retryButtonText: {
@@ -2624,12 +2601,12 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     marginBottom: SPACING.xs,
     borderWidth: 2,
-    borderColor: COLORS.primary,
+    borderColor: COLORS.red,
   },
   sidebarUserName: {
     fontSize: FONTS.sizes.sm,
     fontWeight: '600',
-    color: COLORS.text.primary,
+    color: COLORS.text.red,
     textAlign: 'center',
     marginBottom: 2,
   },
@@ -2651,7 +2628,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   sidebarNavItemActive: {
-    backgroundColor: COLORS.primary + '15',
+    backgroundColor: COLORS.red + '15',
   },
   sidebarActiveBar: {
     position: 'absolute',
@@ -2659,7 +2636,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: 3,
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.red,
     borderRadius: 2,
   },
   sidebarNavLabel: {
@@ -2668,11 +2645,11 @@ const styles = StyleSheet.create({
     color: COLORS.text.secondary,
   },
   sidebarNavLabelActive: {
-    color: COLORS.primary,
+    color: COLORS.text.red,
     fontWeight: '600',
   },
   sidebarNavBadge: {
-    backgroundColor: COLORS.error,
+    backgroundColor: COLORS.red,
     borderRadius: 10,
     minWidth: 18,
     height: 18,
@@ -2726,11 +2703,11 @@ const styles = StyleSheet.create({
   dashCardTitle: {
     fontSize: FONTS.sizes.base,
     fontWeight: '700',
-    color: COLORS.text.primary,
+    color: COLORS.text.red,
   },
   dashCardMore: {
     fontSize: FONTS.sizes.sm,
-    color: COLORS.primary,
+    color: COLORS.red,
   },
   dashStatRow: {
     flexDirection: 'row',
@@ -2746,7 +2723,7 @@ const styles = StyleSheet.create({
   dashStatValue: {
     fontSize: FONTS.sizes.xl,
     fontWeight: '700',
-    color: COLORS.text.primary,
+    color: COLORS.text.red,
   },
   dashStatLabel: {
     fontSize: FONTS.sizes.xs,
@@ -2770,7 +2747,7 @@ const styles = StyleSheet.create({
   dashSummaryCount: {
     fontSize: FONTS.sizes.xl,
     fontWeight: '700',
-    color: COLORS.text.primary,
+    color: COLORS.text.red
   },
   dashSummaryLabel: {
     fontSize: FONTS.sizes.sm,
@@ -2790,7 +2767,14 @@ const styles = StyleSheet.create({
   dashLinkText: {
     flex: 1,
     fontSize: FONTS.sizes.base,
-    color: COLORS.text.primary,
+    color: COLORS.text.red,
+  },
+  dashLinkRowActive: {
+    backgroundColor: COLORS.lightRed,
+  },
+  dashLinkTextActive: {
+    color: COLORS.red,
+    fontWeight: '600',
   },
 });
 

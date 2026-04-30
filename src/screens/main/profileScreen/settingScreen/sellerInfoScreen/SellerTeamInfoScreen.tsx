@@ -43,7 +43,11 @@ const sellerData: Seller[] = [
   { sellerId: 'S013', name: 'hyon rim il', amount: 20000, count: 33, rebate: 9000 },
 ];
 
-const SellerTeamInfo: React.FC = () => {
+type SellerTeamInfoProps = {
+  embedded?: boolean;
+};
+
+const SellerTeamInfo: React.FC<SellerTeamInfoProps> = ({ embedded = false }) => {
   const navigation = useNavigation<NavigationProp>();
   const { t } = useTranslation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -68,9 +72,13 @@ const SellerTeamInfo: React.FC = () => {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-        <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-      </TouchableOpacity>
+      {!embedded ? (
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.headerPlaceholder} />
+      )}
       <Text style={styles.headerTitle}>{t('sellerInfo.dashboardTitle')}</Text>
       <View style={styles.headerPlaceholder} />
     </View>

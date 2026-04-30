@@ -31,8 +31,11 @@ import { logDevApiFailure } from '../../../../../utils/devLog';
 
 type AddressBookScreenNavigationProp = StackNavigationProp<RootStackParamList, 'AddressBook'>;
 type AddressBookScreenRouteProp = RouteProp<RootStackParamList, 'AddressBook'>;
+type AddressBookScreenProps = {
+  embedded?: boolean;
+};
 
-const AddressBookScreen: React.FC = () => {
+const AddressBookScreen: React.FC<AddressBookScreenProps> = ({ embedded = false }) => {
   const navigation = useNavigation<AddressBookScreenNavigationProp>();
   const route = useRoute<AddressBookScreenRouteProp>();
   const { user, updateUser } = useAuth();
@@ -343,12 +346,14 @@ const AddressBookScreen: React.FC = () => {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => navigation.goBack()}
-      >
-        <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
-      </TouchableOpacity>
+      {!embedded && (
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
+        </TouchableOpacity>
+      )}
       <Text style={styles.headerTitle}>{t('profile.shippingAddress')}</Text>
       <View style={styles.headerRight}>
         <TouchableOpacity style={styles.headerIconButton}>

@@ -50,12 +50,12 @@ const ProfileSettingsScreen: React.FC = () => {
   // Korean favorite colors for menu icons (same as ProfileScreen)
   const getMenuIconColor = (index: number) => {
     const colors = [
-      { bg: '#FFE4E6', icon: '#FF6B9D' }, // Soft pink
+      { bg: COLORS.lightRed, icon: COLORS.red }, // Project red
       { bg: '#E8F4FD', icon: '#4A90E2' }, // Sky blue
       { bg: '#E8F8F5', icon: '#26D0CE' }, // Mint
       { bg: '#FFF4E6', icon: '#FF9500' }, // Orange
       { bg: '#F3E8FF', icon: '#9C88FF' }, // Lavender
-      { bg: '#FFE8E8', icon: '#FF6B6B' }, // Coral
+      { bg: COLORS.lightRed, icon: COLORS.red }, // Project red
       { bg: '#E8FFE8', icon: '#4CAF50' }, // Green
       { bg: '#FFF0E6', icon: '#FF8A65' }, // Peach
       { bg: '#E6F3FF', icon: '#42A5F5' }, // Light blue
@@ -441,7 +441,7 @@ const styles = StyleSheet.create({
     height: 106,
     borderRadius: 53,
     borderWidth: 3,
-    borderColor: '#FF9A9E',
+    borderColor: COLORS.red,
   },
   userName: {
     fontSize: FONTS.sizes.lg,
