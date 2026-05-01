@@ -48,12 +48,19 @@ import DepositScreen from './depositScreen/DepositScreen';
 import MessageScreen from '../MessageScreen';
 import AddressBookScreen from './settingScreen/addressScreen/AddressBookScreen';
 import SecuritySettingsScreen from './myPageScreen/SecuritySettingsScreen';
+import ChangePasswordScreen from './myPageScreen/ChangePasswordScreen';
+import PaymentPasswordScreen from './myPageScreen/PaymentPasswordScreen';
+import PrivacyPolicyScreen from './PrivacyPolicyScreen';
 import EditProfileScreen from './myPageScreen/EditProfileScreen';
 import AffiliateMarketingScreen from './myPageScreen/AffiliateMarketingScreen';
 import SellerPageScreen from './settingScreen/sellerInfoScreen/SellerPageScreen';
 import SellerSalesRefundInfoScreen from './settingScreen/sellerInfoScreen/sellerSalesRefundInfoScreen';
 import SellerTeamInfoScreen from './settingScreen/sellerInfoScreen/SellerTeamInfoScreen';
 import HelpCenterScreen from './settingScreen/helpScreen/HelpCenterScreen';
+import HelpChapterScreen from './settingScreen/helpScreen/HelpChapterScreen';
+import HelpArticleScreen from './settingScreen/helpScreen/HelpArticleScreen';
+import HelpFAQCategoriesScreen from './settingScreen/helpScreen/HelpFAQCategoriesScreen';
+import HelpFAQQuestionsScreen from './settingScreen/helpScreen/HelpFAQQuestionsScreen';
 import AboutUsScreen from './AboutUsScreen';
 import HeadsetMicIcon from '../../../assets/icons/HeadsetMicIcon';
 import LocationIcon from '../../../assets/icons/LocationIcon';
@@ -88,12 +95,19 @@ type ProfileScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Main
 type EmbeddedSettingsPage =
   | 'shippingAddress'
   | 'securitySettings'
+  | 'changePassword'
+  | 'paymentPassword'
+  | 'privacyPolicy'
   | 'personalInformation'
   | 'affiliateMarketing'
   | 'sellerDashboard'
   | 'sellerOrdersRefunds'
   | 'sellerTeamPerformance'
   | 'helpCenter'
+  | 'helpChapter'
+  | 'helpArticle'
+  | 'helpFAQCategories'
+  | 'helpFAQQuestions'
   | 'todayMallIntroduction'
   | null;
 
@@ -292,6 +306,8 @@ const ProfileScreen: React.FC = () => {
   const [sellerInfoExpanded, setSellerInfoExpanded] = useState(false);
   const [introductionExpanded, setIntroductionExpanded] = useState(false);
   const [embeddedSettingsPage, setEmbeddedSettingsPage] = useState<EmbeddedSettingsPage>(null);
+  const [embeddedHelpSubPageData, setEmbeddedHelpSubPageData] = useState<any>(null);
+  const [embeddedHelpArticleData, setEmbeddedHelpArticleData] = useState<any>(null);
 
   // If the embedded orders view is open, but the user navigates to any other
   // sidebar section (e.g. Coupon/Point), close the embedded orders panel so
@@ -1591,6 +1607,10 @@ const ProfileScreen: React.FC = () => {
                         const next = !prev;
                         if (!next && (
                           embeddedSettingsPage === 'helpCenter' ||
+                          embeddedSettingsPage === 'helpChapter' ||
+                          embeddedSettingsPage === 'helpArticle' ||
+                          embeddedSettingsPage === 'helpFAQCategories' ||
+                          embeddedSettingsPage === 'helpFAQQuestions' ||
                           embeddedSettingsPage === 'todayMallIntroduction'
                         )) {
                           setEmbeddedSettingsPage(null);
@@ -1911,7 +1931,25 @@ const ProfileScreen: React.FC = () => {
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'securitySettings' ? (
             <View style={styles.tabletDashboardPanel}>
-              <SecuritySettingsScreen embedded />
+              <SecuritySettingsScreen
+                embedded
+                onSelectEmbeddedPage={(page) => {
+                  setEmbeddedSettingsPage(page);
+                  setTabletSection('settings');
+                }}
+              />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'changePassword' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <ChangePasswordScreen />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'paymentPassword' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <PaymentPasswordScreen />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'privacyPolicy' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <PrivacyPolicyScreen />
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'personalInformation' ? (
             <View style={styles.tabletDashboardPanel}>
@@ -1935,7 +1973,60 @@ const ProfileScreen: React.FC = () => {
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'helpCenter' ? (
             <View style={styles.tabletDashboardPanel}>
-              <HelpCenterScreen embedded />
+              <HelpCenterScreen
+                embedded
+                onGuidePress={(guide) => {
+                  setEmbeddedHelpSubPageData(guide);
+                  setEmbeddedSettingsPage('helpChapter');
+                }}
+                onFAQPress={(faqs) => {
+                  setEmbeddedHelpSubPageData(faqs);
+                  setEmbeddedSettingsPage('helpFAQCategories');
+                }}
+              />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'helpChapter' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <HelpChapterScreen
+                embedded
+                guide={embeddedHelpSubPageData}
+                onBack={() => setEmbeddedSettingsPage('helpCenter')}
+                onSubchapterPress={(article) => {
+                  setEmbeddedHelpArticleData(article);
+                  setEmbeddedSettingsPage('helpArticle');
+                }}
+              />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'helpArticle' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <HelpArticleScreen
+                embedded
+                articleId={embeddedHelpArticleData?.articleId}
+                title={embeddedHelpArticleData?.title}
+                content={embeddedHelpArticleData?.content}
+                onBack={() => setEmbeddedSettingsPage('helpChapter')}
+              />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'helpFAQCategories' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <HelpFAQCategoriesScreen
+                embedded
+                faqsByCategory={embeddedHelpSubPageData}
+                onBack={() => setEmbeddedSettingsPage('helpCenter')}
+                onCategoryPress={(category, faqs) => {
+                  setEmbeddedHelpArticleData({ category, faqs });
+                  setEmbeddedSettingsPage('helpFAQQuestions');
+                }}
+              />
+            </View>
+          ) : tabletSection === 'settings' && embeddedSettingsPage === 'helpFAQQuestions' ? (
+            <View style={styles.tabletDashboardPanel}>
+              <HelpFAQQuestionsScreen
+                embedded
+                category={embeddedHelpArticleData?.category}
+                faqs={embeddedHelpArticleData?.faqs}
+                onBack={() => setEmbeddedSettingsPage('helpFAQCategories')}
+              />
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'todayMallIntroduction' ? (
             <View style={styles.tabletDashboardPanel}>

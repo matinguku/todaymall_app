@@ -19,10 +19,23 @@ import { translations } from '../../../../../i18n/translations';
 type HelpFAQQuestionsScreenNavigationProp = StackNavigationProp<RootStackParamList, 'HelpFAQQuestions'>;
 type HelpFAQQuestionsScreenRouteProp = RouteProp<RootStackParamList, 'HelpFAQQuestions'>;
 
-const HelpFAQQuestionsScreen: React.FC = () => {
+type HelpFAQQuestionsScreenProps = {
+  embedded?: boolean;
+  category?: any;
+  faqs?: any[];
+  onBack?: () => void;
+};
+
+const HelpFAQQuestionsScreen: React.FC<HelpFAQQuestionsScreenProps> = ({
+  embedded = false,
+  category: categoryProp,
+  faqs: faqsProp,
+  onBack,
+}) => {
   const navigation = useNavigation<HelpFAQQuestionsScreenNavigationProp>();
   const route = useRoute<HelpFAQQuestionsScreenRouteProp>();
-  const { category, faqs } = route.params;
+  const category = embedded ? categoryProp : route.params?.category;
+  const faqs = embedded ? faqsProp : route.params?.faqs;
   const locale = useAppSelector((state) => state.i18n.locale);
   const [expandedFAQ, setExpandedFAQ] = useState<string | null>(null);
   
@@ -45,9 +58,9 @@ const HelpFAQQuestionsScreen: React.FC = () => {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.backButton}
-        onPress={() => navigation.goBack()}
+        onPress={() => embedded && onBack ? onBack() : navigation.goBack()}
       >
         <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
       </TouchableOpacity>

@@ -22,8 +22,11 @@ import { useAppSelector } from '../../../../store/hooks';
 import { translations } from '../../../../i18n/translations';
 
 type ChangePasswordScreenNavigationProp = StackNavigationProp<RootStackParamList, 'ChangePassword'>;
+type ChangePasswordScreenProps = {
+  embedded?: boolean;
+};
 
-const ChangePasswordScreen: React.FC = () => {
+const ChangePasswordScreen: React.FC<ChangePasswordScreenProps> = ({ embedded = false }) => {
   const navigation = useNavigation<ChangePasswordScreenNavigationProp>();
   const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
   const [currentPassword, setCurrentPassword] = useState('');
@@ -60,7 +63,9 @@ const ChangePasswordScreen: React.FC = () => {
               setCurrentPassword('');
               setNewPassword('');
               setConfirmPassword('');
-              navigation.goBack();
+              if (!embedded) {
+                navigation.goBack();
+              }
             },
           },
         ]
@@ -101,12 +106,17 @@ const ChangePasswordScreen: React.FC = () => {
     <View
       style={styles.header}
     >
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => navigation.goBack()}
-      >
-        <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-      </TouchableOpacity>
+      {!embedded ? (
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
+          console.log('back button pressed','1');
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.placeholder} />
+      )}
       <Text style={styles.headerTitle}>{t('profile.changePassword')}</Text>
       <View style={styles.placeholder} />
     {/* </LinearGradient> */}

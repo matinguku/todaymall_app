@@ -22,6 +22,8 @@ import { useHelpCenterMutation } from '../../../../../hooks/useHelpCenterMutatio
 type HelpCenterScreenNavigationProp = StackNavigationProp<RootStackParamList, 'HelpCenter'>;
 type HelpCenterScreenProps = {
   embedded?: boolean;
+  onGuidePress?: (guide: any) => void;
+  onFAQPress?: (faqsByCategory: any[]) => void;
 };
 
 interface SearchSectionProps {
@@ -61,7 +63,7 @@ const SearchSection = React.memo(({ placeholder, onSearch }: SearchSectionProps)
   );
 });
 
-const HelpCenterScreen: React.FC<HelpCenterScreenProps> = ({ embedded = false }) => {
+const HelpCenterScreen: React.FC<HelpCenterScreenProps> = ({ embedded = false, onGuidePress, onFAQPress }) => {
   const navigation = useNavigation<HelpCenterScreenNavigationProp>();
   const locale = useAppSelector((state) => state.i18n.locale);
   
@@ -96,11 +98,19 @@ const HelpCenterScreen: React.FC<HelpCenterScreenProps> = ({ embedded = false })
   );
 
   const handleGuidePress = (guide: any) => {
-    navigation.navigate('HelpChapter', { guide });
+    if (onGuidePress) {
+      onGuidePress(guide);
+    } else {
+      navigation.navigate('HelpChapter', { guide });
+    }
   };
 
   const handleFAQPress = () => {
-    navigation.navigate('HelpFAQCategories', { faqsByCategory: helpCenterData?.faqsByCategory || [] });
+    if (onFAQPress) {
+      onFAQPress(helpCenterData?.faqsByCategory || []);
+    } else {
+      navigation.navigate('HelpFAQCategories', { faqsByCategory: helpCenterData?.faqsByCategory || [] });
+    }
   };
 
   const renderHeader = () => (

@@ -18,7 +18,6 @@ import { logDevApiFailure } from '../utils/devLog';
 
 // In-memory cache for category tree (clears on app restart)
 const categoryTreeCache: Record<string, CategoriesTreeResponse> = {};
-const BACKEND_PROXY_BASE = 'https://todaymall.co.kr/api/backend-proxy';
 
 // Products API
 export const productsApi = {
@@ -713,13 +712,10 @@ export const productsApi = {
         pageSize: pageSize.toString(),
       });
       
-      // Updated API endpoint: /products/{platform}/recommendations
-      const url = `${BACKEND_PROXY_BASE}/products/${platform}/recommendations?${params.toString()}`;
-      // console.log('🔍 [Recommendations API] Request:', {
-      //   url,
-      //   params,
-      //   token,
-      // });
+      // Required endpoint format:
+      // /products/1688/recommendations?country=ko&outMemberId=...
+      const url = `${API_BASE_URL}/products/1688/recommendations?${params.toString()}`;
+      console.log('🔍 [Recommendations] 실제 요청 URL:', url);
 
       const signatureHeaders = await buildSignatureHeaders('GET', url);
 
@@ -1394,16 +1390,8 @@ export const productsApi = {
           item_id: productId,
           language,
         });
-        const taobaoUrl = `${BACKEND_PROXY_BASE}/products/taobao-global/product/get?${taobaoParams.toString()}`;
-
-        // console.log('📦 [Taobao Product Detail API] Request:', {
-        //   url: taobaoUrl,
-        //   productId,
-        //   productIdType: typeof productId,
-        //   source,
-        //   country,
-        //   language,
-        // });
+        const taobaoUrl = `${API_BASE_URL}/products/taobao-global/product/get?${taobaoParams.toString()}`;
+        console.log('📦 [Taobao Product Detail] 실제 요청 URL:', taobaoUrl);
         const signatureHeaders = await buildSignatureHeaders('GET', taobaoUrl);
         const taobaoResponse = await axios.get(taobaoUrl, {
           headers: {
@@ -1544,20 +1532,20 @@ export const productsApi = {
       }
 
       // Default 1688 (and other platforms) product detail
+      const language =
+        country === 'ko' ? 'ko' :
+        country === 'zh' ? 'zh' :
+        'en';
       const params = new URLSearchParams({
         productId,
         source,
         country,
+        lang: language,
       });
 
-      const url = `${BACKEND_PROXY_BASE}/products/detail?${params.toString()}`;
+      const url = `${API_BASE_URL}/products/detail?${params.toString()}`;
       const signatureHeaders = await buildSignatureHeaders('GET', url);
-      console.log('📦 [Product Detail API] Request:', {
-        url,
-        productId,
-        source,
-        country,
-      });
+      console.log('📦 [Product Detail] 실제 요청 URL:', url);
       const response = await axios.get(url, {
         headers: {
           'Authorization': `Bearer ${token}`,

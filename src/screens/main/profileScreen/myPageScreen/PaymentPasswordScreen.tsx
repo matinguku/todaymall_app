@@ -18,7 +18,11 @@ import { useAuth } from '../../../../context/AuthContext';
 import { useAppSelector } from '../../../../store/hooks';
 import { translations } from '../../../../i18n/translations';
 
-const PaymentPasswordScreen = () => {
+type PaymentPasswordScreenProps = {
+  embedded?: boolean;
+};
+
+const PaymentPasswordScreen: React.FC<PaymentPasswordScreenProps> = ({ embedded = false }) => {
   const navigation = useNavigation();
   const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
   const { user } = useAuth();
@@ -97,7 +101,14 @@ const PaymentPasswordScreen = () => {
       await new Promise(resolve => setTimeout(resolve, 1500));
       
       Alert.alert(t('shareApp.success'), t('profile.paymentPasswordUpdated'), [
-        { text: t('profile.ok'), onPress: () => navigation.goBack() }
+        {
+          text: t('profile.ok'),
+          onPress: () => {
+            if (!embedded) {
+              navigation.goBack();
+            }
+          },
+        }
       ]);
     } catch (error) {
       Alert.alert(t('common.error'), t('profile.failedToUpdatePaymentPassword'));
@@ -114,12 +125,16 @@ const PaymentPasswordScreen = () => {
       <View
         style={styles.header}
       >
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-        </TouchableOpacity>
+        {!embedded ? (
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.placeholder} />
+        )}
         <Text style={styles.headerTitle}>{t('profile.paymentPassword')}</Text>
         <View style={styles.placeholder} />
       {/* </LinearGradient> */}

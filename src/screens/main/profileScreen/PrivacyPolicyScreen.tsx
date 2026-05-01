@@ -13,7 +13,11 @@ import { useNavigation } from '@react-navigation/native';
 
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../constants';
 
-const PrivacyPolicyScreen: React.FC = () => {
+type PrivacyPolicyScreenProps = {
+  embedded?: boolean;
+};
+
+const PrivacyPolicyScreen: React.FC<PrivacyPolicyScreenProps> = ({ embedded = false }) => {
   const navigation = useNavigation();
 
   const handleContactSupport = () => {
@@ -23,12 +27,16 @@ const PrivacyPolicyScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Icon name="arrow-back" size={18} color={COLORS.text.primary} />
-        </TouchableOpacity>
+        {!embedded ? (
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Icon name="arrow-back" size={18} color={COLORS.text.primary} />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.placeholder} />
+        )}
         <Text style={styles.headerTitle}>Privacy Policy</Text>
         <View style={styles.placeholder} />
       </View>

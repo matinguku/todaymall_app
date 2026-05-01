@@ -19,10 +19,17 @@ import { translations } from '../../../../../i18n/translations';
 type HelpChapterScreenNavigationProp = StackNavigationProp<RootStackParamList, 'HelpChapter'>;
 type HelpChapterScreenRouteProp = RouteProp<RootStackParamList, 'HelpChapter'>;
 
-const HelpChapterScreen: React.FC = () => {
+type HelpChapterScreenProps = {
+  embedded?: boolean;
+  guide?: any;
+  onBack?: () => void;
+  onSubchapterPress?: (subchapter: { articleId: string; title: string; content: string }) => void;
+};
+
+const HelpChapterScreen: React.FC<HelpChapterScreenProps> = ({ embedded = false, guide: guideProp, onBack, onSubchapterPress }) => {
   const navigation = useNavigation<HelpChapterScreenNavigationProp>();
   const route = useRoute<HelpChapterScreenRouteProp>();
-  const { guide } = route.params;
+  const guide = embedded ? guideProp : route.params?.guide;
   const locale = useAppSelector((state) => state.i18n.locale);
   
   const t = (key: string) => {
@@ -44,9 +51,9 @@ const HelpChapterScreen: React.FC = () => {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.backButton}
-        onPress={() => navigation.goBack()}
+        onPress={() => embedded && onBack ? onBack() : navigation.goBack()}
       >
         <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
       </TouchableOpacity>
@@ -73,11 +80,16 @@ const HelpChapterScreen: React.FC = () => {
             key={subchapter._id || index}
             style={styles.subchapterItem}
             onPress={() => {
-              navigation.navigate('HelpArticle', {
+              const articleData = {
                 articleId: subchapter._id || index.toString(),
                 title: getLocalizedText(subchapter.subchapterTitle),
                 content: getLocalizedText(subchapter.subchapterContent),
-              });
+              };
+              if (embedded && onSubchapterPress) {
+                onSubchapterPress(articleData);
+              } else {
+                navigation.navigate('HelpArticle', articleData);
+              }
             }}
           >
             <View style={styles.subchapterContent}>

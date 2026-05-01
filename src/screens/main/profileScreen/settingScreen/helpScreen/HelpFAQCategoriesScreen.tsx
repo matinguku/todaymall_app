@@ -19,10 +19,17 @@ import { translations } from '../../../../../i18n/translations';
 type HelpFAQCategoriesScreenNavigationProp = StackNavigationProp<RootStackParamList, 'HelpFAQCategories'>;
 type HelpFAQCategoriesScreenRouteProp = RouteProp<RootStackParamList, 'HelpFAQCategories'>;
 
-const HelpFAQCategoriesScreen: React.FC = () => {
+type HelpFAQCategoriesScreenProps = {
+  embedded?: boolean;
+  faqsByCategory?: any[];
+  onBack?: () => void;
+  onCategoryPress?: (category: any, faqs: any[]) => void;
+};
+
+const HelpFAQCategoriesScreen: React.FC<HelpFAQCategoriesScreenProps> = ({ embedded = false, faqsByCategory: faqsProp, onBack, onCategoryPress }) => {
   const navigation = useNavigation<HelpFAQCategoriesScreenNavigationProp>();
   const route = useRoute<HelpFAQCategoriesScreenRouteProp>();
-  const { faqsByCategory } = route.params;
+  const faqsByCategory = embedded ? faqsProp : route.params?.faqsByCategory;
   const locale = useAppSelector((state) => state.i18n.locale);
   
   const t = (key: string) => {
@@ -44,9 +51,9 @@ const HelpFAQCategoriesScreen: React.FC = () => {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.backButton}
-        onPress={() => navigation.goBack()}
+        onPress={() => embedded && onBack ? onBack() : navigation.goBack()}
       >
         <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
       </TouchableOpacity>
@@ -71,10 +78,14 @@ const HelpFAQCategoriesScreen: React.FC = () => {
             key={category._id || index}
             style={styles.categoryItem}
             onPress={() => {
-              navigation.navigate('HelpFAQQuestions', {
-                category,
-                faqs: category.faqs || [],
-              });
+              if (embedded && onCategoryPress) {
+                onCategoryPress(category, category.faqs || []);
+              } else {
+                navigation.navigate('HelpFAQQuestions', {
+                  category,
+                  faqs: category.faqs || [],
+                });
+              }
             }}
           >
             <View style={styles.categoryContent}>

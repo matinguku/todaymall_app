@@ -19,10 +19,25 @@ import { translations } from '../../../../../i18n/translations';
 type HelpArticleScreenNavigationProp = StackNavigationProp<RootStackParamList, 'HelpArticle'>;
 type HelpArticleScreenRouteProp = RouteProp<RootStackParamList, 'HelpArticle'>;
 
-const HelpArticleScreen: React.FC = () => {
+type HelpArticleScreenProps = {
+  embedded?: boolean;
+  articleId?: string;
+  title?: string;
+  content?: string;
+  onBack?: () => void;
+};
+
+const HelpArticleScreen: React.FC<HelpArticleScreenProps> = ({
+  embedded = false,
+  articleId: articleIdProp,
+  title: titleProp,
+  content: contentProp,
+  onBack,
+}) => {
   const navigation = useNavigation<HelpArticleScreenNavigationProp>();
   const route = useRoute<HelpArticleScreenRouteProp>();
-  const { articleId, title } = route.params;
+  const articleId = embedded ? (articleIdProp ?? '') : route.params?.articleId;
+  const title = embedded ? (titleProp ?? '') : route.params?.title;
   const locale = useAppSelector((state) => state.i18n.locale);
   
   const t = (key: string) => {
@@ -65,11 +80,11 @@ const HelpArticleScreen: React.FC = () => {
 
   // Get article content
   const getArticleContent = () => {
-    // If content is provided from route params, use it
-    if (route.params.content) {
+    const rawContent = embedded ? contentProp : route.params?.content;
+    if (rawContent) {
       return {
         title: title,
-        content: stripHtml(route.params.content),
+        content: stripHtml(rawContent),
         lastUpdated: `${t('helpCenter.lastUpdated')}: ${formatDate(new Date())}`,
       };
     }
@@ -95,9 +110,9 @@ const HelpArticleScreen: React.FC = () => {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.backButton}
-        onPress={() => navigation.goBack()}
+        onPress={() => embedded && onBack ? onBack() : navigation.goBack()}
       >
         <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
       </TouchableOpacity>

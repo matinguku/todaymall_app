@@ -19,9 +19,13 @@ import { translations } from '../../../../i18n/translations';
 type SecuritySettingsScreenNavigationProp = StackNavigationProp<RootStackParamList, 'SecuritySettings'>;
 type SecuritySettingsScreenProps = {
   embedded?: boolean;
+  onSelectEmbeddedPage?: (page: 'changePassword' | 'paymentPassword' | 'privacyPolicy') => void;
 };
 
-const SecuritySettingsScreen: React.FC<SecuritySettingsScreenProps> = ({ embedded = false }) => {
+const SecuritySettingsScreen: React.FC<SecuritySettingsScreenProps> = ({
+  embedded = false,
+  onSelectEmbeddedPage,
+}) => {
   const navigation = useNavigation<SecuritySettingsScreenNavigationProp>();
   const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
 
@@ -40,9 +44,27 @@ const SecuritySettingsScreen: React.FC<SecuritySettingsScreenProps> = ({ embedde
   };
 
   const rows: { title: string; onPress: () => void }[] = [
-    { title: t('profile.changePassword'), onPress: () => navigation.navigate('ChangePassword') },
-    { title: t('profile.paymentPassword'), onPress: () => navigation.navigate('PaymentPassword') },
-    { title: t('auth.privacyPolicy'), onPress: () => navigation.navigate('PrivacyPolicy') },
+    {
+      title: t('profile.changePassword'),
+      onPress: () =>
+        embedded && onSelectEmbeddedPage
+          ? onSelectEmbeddedPage('changePassword')
+          : navigation.navigate('ChangePassword'),
+    },
+    {
+      title: t('profile.paymentPassword'),
+      onPress: () =>
+        embedded && onSelectEmbeddedPage
+          ? onSelectEmbeddedPage('paymentPassword')
+          : navigation.navigate('PaymentPassword'),
+    },
+    {
+      title: t('auth.privacyPolicy'),
+      onPress: () =>
+        embedded && onSelectEmbeddedPage
+          ? onSelectEmbeddedPage('privacyPolicy')
+          : navigation.navigate('PrivacyPolicy'),
+    },
   ];
 
   return (
