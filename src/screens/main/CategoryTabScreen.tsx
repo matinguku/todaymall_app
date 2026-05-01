@@ -864,6 +864,14 @@ const CategoryTabScreen: React.FC = () => {
     <View style={styles.header}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
       <View style={styles.headerRow}>
+        <TouchableOpacity
+          style={styles.headerBackButton}
+          onPress={() => navigation.goBack()}
+          activeOpacity={0.8}
+        >
+          <Icon name="arrow-back" size={22} color={COLORS.text.primary} />
+        </TouchableOpacity>
+
         <SearchButton
           placeholder={t('category.searchPlaceholder')}
           onPress={() => navigation.navigate('Search' as never)}
@@ -871,7 +879,7 @@ const CategoryTabScreen: React.FC = () => {
           style={styles.searchButton}
           isHomepage={false}
         />
-        
+
         <NotificationBadge
           customIcon={<NotificationIcon width={28} height={28} color={COLORS.text.primary} />}
           count={unreadCount}
@@ -1269,8 +1277,16 @@ const styles = StyleSheet.create({
   },
   searchButton: {
     borderRadius: BORDER_RADIUS.full,
-    width: '90%',
+    flex: 1,
     height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerBackButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: COLORS.gray[100],
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -20,10 +20,23 @@ import { translations } from '../../../../i18n/translations';
 
 type PaymentPasswordScreenProps = {
   embedded?: boolean;
+  /** Tablet/settings sidebar: return to Security Settings without using the stack `goBack()` */
+  onBackToSecuritySettings?: () => void;
 };
 
-const PaymentPasswordScreen: React.FC<PaymentPasswordScreenProps> = ({ embedded = false }) => {
+const PaymentPasswordScreen: React.FC<PaymentPasswordScreenProps> = ({
+  embedded = false,
+  onBackToSecuritySettings,
+}) => {
   const navigation = useNavigation();
+
+  const goBackToSecurity = () => {
+    if (onBackToSecuritySettings) {
+      onBackToSecuritySettings();
+    } else {
+      navigation.goBack();
+    }
+  };
   const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
   const { user } = useAuth();
   const [currentPassword, setCurrentPassword] = useState('');
@@ -104,11 +117,13 @@ const PaymentPasswordScreen: React.FC<PaymentPasswordScreenProps> = ({ embedded 
         {
           text: t('profile.ok'),
           onPress: () => {
-            if (!embedded) {
+            if (onBackToSecuritySettings) {
+              onBackToSecuritySettings();
+            } else if (!embedded) {
               navigation.goBack();
             }
           },
-        }
+        },
       ]);
     } catch (error) {
       Alert.alert(t('common.error'), t('profile.failedToUpdatePaymentPassword'));
@@ -125,11 +140,8 @@ const PaymentPasswordScreen: React.FC<PaymentPasswordScreenProps> = ({ embedded 
       <View
         style={styles.header}
       >
-        {!embedded ? (
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
+        {!embedded || onBackToSecuritySettings ? (
+          <TouchableOpacity style={styles.backButton} onPress={goBackToSecurity}>
             <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
           </TouchableOpacity>
         ) : (

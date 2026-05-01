@@ -24,9 +24,14 @@ import { translations } from '../../../../i18n/translations';
 type ChangePasswordScreenNavigationProp = StackNavigationProp<RootStackParamList, 'ChangePassword'>;
 type ChangePasswordScreenProps = {
   embedded?: boolean;
+  /** Tablet/settings sidebar: return to Security Settings without using the stack `goBack()` */
+  onBackToSecuritySettings?: () => void;
 };
 
-const ChangePasswordScreen: React.FC<ChangePasswordScreenProps> = ({ embedded = false }) => {
+const ChangePasswordScreen: React.FC<ChangePasswordScreenProps> = ({
+  embedded = false,
+  onBackToSecuritySettings,
+}) => {
   const navigation = useNavigation<ChangePasswordScreenNavigationProp>();
   const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
   const [currentPassword, setCurrentPassword] = useState('');
@@ -51,6 +56,14 @@ const ChangePasswordScreen: React.FC<ChangePasswordScreenProps> = ({ embedded = 
     return value || key;
   };
   
+  const goBackToSecurity = () => {
+    if (onBackToSecuritySettings) {
+      onBackToSecuritySettings();
+    } else {
+      navigation.goBack();
+    }
+  };
+
   const { mutate: changePassword, isLoading } = useChangePasswordMutation({
     onSuccess: () => {
       Alert.alert(
@@ -63,7 +76,9 @@ const ChangePasswordScreen: React.FC<ChangePasswordScreenProps> = ({ embedded = 
               setCurrentPassword('');
               setNewPassword('');
               setConfirmPassword('');
-              if (!embedded) {
+              if (onBackToSecuritySettings) {
+                onBackToSecuritySettings();
+              } else if (!embedded) {
                 navigation.goBack();
               }
             },
@@ -106,13 +121,12 @@ const ChangePasswordScreen: React.FC<ChangePasswordScreenProps> = ({ embedded = 
     <View
       style={styles.header}
     >
-      {!embedded ? (
+      {!embedded || onBackToSecuritySettings ? (
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => navigation.goBack()}
+          onPress={goBackToSecurity}
         >
           <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-          console.log('back button pressed','1');
         </TouchableOpacity>
       ) : (
         <View style={styles.placeholder} />

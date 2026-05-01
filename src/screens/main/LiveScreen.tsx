@@ -567,12 +567,22 @@ const LiveScreen: React.FC = () => {
   const locale = useAppSelector((s) => s.i18n.locale) as 'en' | 'ko' | 'zh';
   const { t } = useTranslation();
   const [searchText, setSearchText] = useState('');
-  const { width: dynWidth } = useWindowDimensions();
+  const { width: dynWidth, height: dynHeight } = useWindowDimensions();
   const isTablet = dynWidth >= 600;
+  /** Upright tablet: carousel full width; schedule + top seller in one horizontal row (~40% each). */
+  const isTabletPortrait = isTablet && dynWidth < dynHeight;
+  const TABLET_PORTRAIT_VISIBLE_ROWS = 5;
+  const TABLET_PORTRAIT_SCHEDULE_ROW_PX = 66;
+  const TABLET_PORTRAIT_TOP_SELLER_ROW_PX = 48;
+  const tabletPortraitScheduleScrollMax =
+    TABLET_PORTRAIT_VISIBLE_ROWS * TABLET_PORTRAIT_SCHEDULE_ROW_PX;
+  const tabletPortraitTopSellerScrollMax =
+    TABLET_PORTRAIT_VISIBLE_ROWS * TABLET_PORTRAIT_TOP_SELLER_ROW_PX;
   // Tablet flex ratio: schedule(2) : topSeller(2) : carousel(7) = 11 units total
   const tabletTotalWidth = dynWidth - SPACING.sm * 2; // outer horizontal margin
   const availWidth = tabletTotalWidth - SPACING.sm * 2; // subtract 2 inter-panel gaps
   const tabletCarouselWidth = Math.floor(availWidth * 7 / 11);
+  const tabletCarouselWidthPortrait = Math.floor(tabletTotalWidth);
 
   // Point Partner Seller grid: 4 columns on tablet, 2 on phone
   const PARTNER_COLS = isTablet ? 4 : 2;
@@ -649,6 +659,7 @@ const LiveScreen: React.FC = () => {
   const tabletMinHeightLocked = useRef(false);
   const [tabletMinHeight, setTabletMinHeight] = useState<number | undefined>();
   const handleTabletPanelLayout = (index: number) => (e: any) => {
+    if (isTabletPortrait) return;
     if (tabletMinHeightLocked.current) return;
     tabletPanelNaturalHeights.current[index] = e.nativeEvent.layout.height;
     if (tabletPanelNaturalHeights.current.every(h => h !== null)) {
@@ -656,6 +667,174 @@ const LiveScreen: React.FC = () => {
       setTabletMinHeight(Math.min(...(tabletPanelNaturalHeights.current as number[])));
     }
   };
+
+  useEffect(() => {
+    tabletPanelNaturalHeights.current = [null, null, null];
+    tabletMinHeightLocked.current = false;
+    setTabletMinHeight(undefined);
+  }, [isTabletPortrait]);
+
+  const tabletSchedulePanelEl =
+    !isTabletPortrait && schedule.length > 0 ? (
+      <View
+        key="live-tablet-schedule"
+        style={[
+          styles.section,
+          styles.tabletSchedulePanel,
+          tabletMinHeight ? { height: tabletMinHeight } : {},
+        ]}
+        onLayout={handleTabletPanelLayout(0)}
+      >
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>{t('live.liveStreamSchedule')}</Text>
+          {liveNowCount > 0 && (
+            <Text style={styles.liveNowCountText}>
+              {liveNowCount}{' '}
+              <Text style={{ color: COLORS.text.secondary }}>{t('live.liveNowStatus')}</Text>
+            </Text>
+          )}
+        </View>
+        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+          {schedule.map((item: any, i: number) => (
+            <ScheduleItem key={item._id || item.id || i} item={item} locale={locale} />
+          ))}
+        </ScrollView>
+      </View>
+    ) : null;
+
+  const tabletTopSellerPanelEl =
+    !isTabletPortrait && topSellers.length > 0 ? (
+      <View
+        key="live-tablet-topseller"
+        style={[
+          styles.section,
+          styles.tabletTopSellerPanel,
+          tabletMinHeight ? { height: tabletMinHeight } : {},
+        ]}
+        onLayout={handleTabletPanelLayout(1)}
+      >
+        <View style={styles.topSellerHeader}>
+          <Text style={styles.sectionTitle}>{t('live.topSeller')}</Text>
+        </View>
+        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+          {topSellers.map((seller: any, i: number) => (
+            <TabletTopSellerRow
+              key={seller._id || i}
+              seller={seller}
+              rank={i + 1}
+              onPress={() =>
+                navigation.navigate('LiveSellerDetail', {
+                  sellerId: seller._id || seller.id || '',
+                  sellerName: seller.nickname || seller.userName || '',
+                  source: 'ownmall',
+                })
+              }
+            />
+          ))}
+        </ScrollView>
+      </View>
+    ) : null;
+
+  const tabletPortraitScheduleTopRowEl =
+    isTabletPortrait && (schedule.length > 0 || topSellers.length > 0) ? (
+      <View key="live-tablet-schedule-top-portrait" style={styles.tabletPortraitScheduleTopRow}>
+        {schedule.length > 0 && (
+          <View
+            style={[
+              styles.section,
+              styles.tabletSchedulePanel,
+              styles.tabletPortraitHalfCard,
+              topSellers.length === 0 && styles.tabletPortraitHalfCardOnly,
+            ]}
+          >
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle} numberOfLines={1}>
+                {t('live.liveStreamSchedule')}
+              </Text>
+              {liveNowCount > 0 && (
+                <Text style={styles.liveNowCountText} numberOfLines={1}>
+                  {liveNowCount}{' '}
+                  <Text style={{ color: COLORS.text.secondary }}>{t('live.liveNowStatus')}</Text>
+                </Text>
+              )}
+            </View>
+            <ScrollView
+              style={{ maxHeight: tabletPortraitScheduleScrollMax }}
+              contentContainerStyle={styles.tabletPortraitScrollContent}
+              showsVerticalScrollIndicator
+              nestedScrollEnabled
+            >
+              {schedule.map((item: any, i: number) => (
+                <ScheduleItem key={item._id || item.id || i} item={item} locale={locale} />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+        {topSellers.length > 0 && (
+          <View
+            style={[
+              styles.section,
+              styles.tabletTopSellerPanel,
+              styles.tabletPortraitHalfCard,
+              schedule.length === 0 && styles.tabletPortraitHalfCardOnly,
+            ]}
+          >
+            <View style={styles.topSellerHeader}>
+              <Text style={styles.sectionTitle} numberOfLines={1}>
+                {t('live.topSeller')}
+              </Text>
+            </View>
+            <ScrollView
+              style={{ maxHeight: tabletPortraitTopSellerScrollMax }}
+              contentContainerStyle={styles.tabletPortraitScrollContent}
+              showsVerticalScrollIndicator
+              nestedScrollEnabled
+            >
+              {topSellers.map((seller: any, i: number) => (
+                <TabletTopSellerRow
+                  key={seller._id || i}
+                  seller={seller}
+                  rank={i + 1}
+                  onPress={() =>
+                    navigation.navigate('LiveSellerDetail', {
+                      sellerId: seller._id || seller.id || '',
+                      sellerName: seller.nickname || seller.userName || '',
+                      source: 'ownmall',
+                    })
+                  }
+                />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+      </View>
+    ) : null;
+
+  const tabletCarouselPanelEl =
+    featuredItems.length > 0 ? (
+      <View
+        key="live-tablet-carousel"
+        style={[
+          styles.tabletCarouselPanel,
+          isTabletPortrait && styles.tabletSegmentPortrait,
+          !isTabletPortrait && tabletMinHeight
+            ? { height: tabletMinHeight, overflow: 'hidden' }
+            : {},
+        ]}
+        onLayout={handleTabletPanelLayout(2)}
+      >
+        <FeaturedLiveCarousel
+          items={featuredItems.slice(0, 5)}
+          locale={locale}
+          t={t}
+          containerWidth={isTabletPortrait ? tabletCarouselWidthPortrait : tabletCarouselWidth}
+          containerStyle={{ marginTop: 0, marginHorizontal: 0 }}
+        />
+      </View>
+    ) : null;
+
+  const tabletPanelsLandscape = [tabletSchedulePanelEl, tabletTopSellerPanelEl, tabletCarouselPanelEl];
+  const tabletPanelsPortrait = [tabletCarouselPanelEl, tabletPortraitScheduleTopRowEl];
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -742,87 +921,15 @@ const LiveScreen: React.FC = () => {
 
         {showHeavyContent ? (
           <>
-            {/* Tablet: 3-panel horizontal row (Schedule | Top Seller | Carousel) */}
+            {/* Tablet: landscape = Schedule | Top Seller | Carousel; portrait = Carousel then row(Schedule | Top Seller), ~40% cards, ~5 rows + scroll */}
             {isTablet && (
-              <View style={styles.tabletPanelRow}>
-                {schedule.length > 0 && (
-                  <View
-                    style={[
-                      styles.section,
-                      styles.tabletSchedulePanel,
-                      tabletMinHeight ? { height: tabletMinHeight } : {},
-                    ]}
-                    onLayout={handleTabletPanelLayout(0)}
-                  >
-                    <View style={styles.sectionHeaderRow}>
-                      <Text style={styles.sectionTitle}>{t('live.liveStreamSchedule')}</Text>
-                      {liveNowCount > 0 && (
-                        <Text style={styles.liveNowCountText}>
-                          {liveNowCount}{' '}
-                          <Text style={{ color: COLORS.text.secondary }}>{t('live.liveNowStatus')}</Text>
-                        </Text>
-                      )}
-                    </View>
-                    <ScrollView
-                      style={{ flex: 1 }}
-                      showsVerticalScrollIndicator={false}
-                      nestedScrollEnabled
-                    >
-                      {schedule.map((item: any, i: number) => (
-                        <ScheduleItem key={item._id || item.id || i} item={item} locale={locale} />
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
-                {topSellers.length > 0 && (
-                  <View
-                    style={[
-                      styles.section,
-                      styles.tabletTopSellerPanel,
-                      tabletMinHeight ? { height: tabletMinHeight } : {},
-                    ]}
-                    onLayout={handleTabletPanelLayout(1)}
-                  >
-                    <View style={styles.topSellerHeader}>
-                      <Text style={styles.sectionTitle}>{t('live.topSeller')}</Text>
-                    </View>
-                    <ScrollView
-                      style={{ flex: 1 }}
-                      showsVerticalScrollIndicator={false}
-                      nestedScrollEnabled
-                    >
-                      {topSellers.map((seller: any, i: number) => (
-                        <TabletTopSellerRow
-                          key={seller._id || i}
-                          seller={seller}
-                          rank={i + 1}
-                          onPress={() => navigation.navigate('LiveSellerDetail', {
-                            sellerId: seller._id || seller.id || '',
-                            sellerName: seller.nickname || seller.userName || '',
-                            source: 'ownmall',
-                          })}
-                        />
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
-                {featuredItems.length > 0 && (
-                  <View
-                    style={[
-                      styles.tabletCarouselPanel,
-                      tabletMinHeight ? { height: tabletMinHeight, overflow: 'hidden' } : {},
-                    ]}
-                    onLayout={handleTabletPanelLayout(2)}
-                  >
-                    <FeaturedLiveCarousel
-                      items={featuredItems.slice(0, 5)}
-                      locale={locale}
-                      t={t}
-                      containerWidth={tabletCarouselWidth}
-                      containerStyle={{ marginTop: 0, marginHorizontal: 0 }}
-                    />
-                  </View>
-                )}
+              <View
+                style={[
+                  styles.tabletPanelRow,
+                  isTabletPortrait && styles.tabletPanelRowPortrait,
+                ]}
+              >
+                {(isTabletPortrait ? tabletPanelsPortrait : tabletPanelsLandscape).filter(Boolean)}
               </View>
             )}
 
@@ -1745,6 +1852,41 @@ const styles = StyleSheet.create({
     marginTop: SPACING.lg,
     marginHorizontal: SPACING.sm,
     gap: SPACING.sm,
+  },
+  tabletPanelRowPortrait: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
+  tabletSegmentPortrait: {
+    width: '100%',
+    alignSelf: 'stretch',
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  tabletPortraitScheduleTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: SPACING.md,
+    width: '100%',
+    alignSelf: 'stretch',
+    paddingHorizontal: SPACING.xs,
+  },
+  tabletPortraitHalfCard: {
+    width: '40%',
+    flexGrow: 0,
+    flexShrink: 1,
+    minWidth: 0,
+    marginTop: 0,
+    marginHorizontal: 0,
+  },
+  tabletPortraitHalfCardOnly: {
+    width: '100%',
+    flexShrink: 0,
+  },
+  tabletPortraitScrollContent: {
+    flexGrow: 1,
+    paddingBottom: SPACING.xs,
   },
   tabletSchedulePanel: {
     flex: 2,

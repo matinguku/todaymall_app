@@ -94,12 +94,6 @@ android {
         resConfigs "ko", "en", "zh"
     }
     signingConfigs {
-        debug {
-            storeFile file('todaymall.keystore')
-            storePassword '123456'
-            keyAlias 'todaymall_alias'
-            keyPassword '123456'
-        }
         release {
             storeFile file('todaymall.keystore')
             storePassword '123456'
@@ -109,7 +103,8 @@ android {
     }
     buildTypes {
         debug {
-            signingConfig signingConfigs.debug
+            // Use Android's default debug keystore for local development.
+            // This avoids requiring a project keystore for debug installs.
         }
         release {
             // Caution! In production, you need to generate your own keystore file.

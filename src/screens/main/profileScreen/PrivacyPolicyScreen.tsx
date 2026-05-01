@@ -15,10 +15,23 @@ import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../constan
 
 type PrivacyPolicyScreenProps = {
   embedded?: boolean;
+  /** Tablet/settings sidebar: return to Security Settings without using the stack `goBack()` */
+  onBackToSecuritySettings?: () => void;
 };
 
-const PrivacyPolicyScreen: React.FC<PrivacyPolicyScreenProps> = ({ embedded = false }) => {
+const PrivacyPolicyScreen: React.FC<PrivacyPolicyScreenProps> = ({
+  embedded = false,
+  onBackToSecuritySettings,
+}) => {
   const navigation = useNavigation();
+
+  const goBackToSecurity = () => {
+    if (onBackToSecuritySettings) {
+      onBackToSecuritySettings();
+    } else {
+      navigation.goBack();
+    }
+  };
 
   const handleContactSupport = () => {
     Linking.openURL('mailto:support@todaymall.com');
@@ -27,11 +40,8 @@ const PrivacyPolicyScreen: React.FC<PrivacyPolicyScreenProps> = ({ embedded = fa
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        {!embedded ? (
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
+        {!embedded || onBackToSecuritySettings ? (
+          <TouchableOpacity style={styles.backButton} onPress={goBackToSecurity}>
             <Icon name="arrow-back" size={18} color={COLORS.text.primary} />
           </TouchableOpacity>
         ) : (

@@ -1941,15 +1941,24 @@ const ProfileScreen: React.FC = () => {
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'changePassword' ? (
             <View style={styles.tabletDashboardPanel}>
-              <ChangePasswordScreen />
+              <ChangePasswordScreen
+                embedded
+                onBackToSecuritySettings={() => setEmbeddedSettingsPage('securitySettings')}
+              />
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'paymentPassword' ? (
             <View style={styles.tabletDashboardPanel}>
-              <PaymentPasswordScreen />
+              <PaymentPasswordScreen
+                embedded
+                onBackToSecuritySettings={() => setEmbeddedSettingsPage('securitySettings')}
+              />
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'privacyPolicy' ? (
             <View style={styles.tabletDashboardPanel}>
-              <PrivacyPolicyScreen />
+              <PrivacyPolicyScreen
+                embedded
+                onBackToSecuritySettings={() => setEmbeddedSettingsPage('securitySettings')}
+              />
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'personalInformation' ? (
             <View style={styles.tabletDashboardPanel}>
