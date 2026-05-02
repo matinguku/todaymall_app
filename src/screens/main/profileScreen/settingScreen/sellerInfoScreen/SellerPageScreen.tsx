@@ -13,7 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import Icon from '../../../../../components/Icon';
 import type { SellerStackParamList } from '../../../../../types';
-import { COLORS } from '../../../../../constants';
+import { COLORS, BACK_NAVIGATION_HIT_SLOP } from '../../../../../constants';
 import { useTranslation } from '../../../../../hooks/useTranslation';
 import { useSellerDashboardSummaryMutation } from './useSellerDashboardSummaryMutation';
 
@@ -157,7 +157,7 @@ const SellerPage: React.FC<SellerPageProps> = ({ embedded = false }) => {
   const renderHeader = () => (
     <View style={styles.header}>
       {!embedded ? (
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.backButton} onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
         </TouchableOpacity>
       ) : (

@@ -18,7 +18,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 import { AuthStackParamList } from '../../types';
 import { useResetPasswordMutation } from '../../hooks/useAuthMutations';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SCREEN_HEIGHT } from '../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SCREEN_HEIGHT, BACK_NAVIGATION_HIT_SLOP } from '../../constants';
 import { useAppSelector } from '../../store/hooks';
 import { translations } from '../../i18n/translations';
 import LinearGradient from 'react-native-linear-gradient';
@@ -129,6 +129,7 @@ const ResetPasswordScreen: React.FC = () => {
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity
+              hitSlop={BACK_NAVIGATION_HIT_SLOP}
               style={styles.backButton}
               onPress={handleBack}
             >

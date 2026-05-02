@@ -18,7 +18,7 @@ import { LinearGradient } from 'react-native-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { COLORS, FONTS, SPACING, SCREEN_HEIGHT, STORAGE_KEYS, BORDER_RADIUS, PAGINATION } from '../../../constants';
+import { COLORS, FONTS, SPACING, SCREEN_HEIGHT, STORAGE_KEYS, BORDER_RADIUS, PAGINATION, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
 import { RootStackParamList, Product } from '../../../types';
 import { useAuth } from '../../../context/AuthContext';
 import { useAppSelector } from '../../../store/hooks';
@@ -740,7 +740,7 @@ const ProfileScreen: React.FC = () => {
           </View>
         ) : ( */}
         <View style={{flexDirection: 'row', alignItems: 'center'}}>
-          <TouchableOpacity 
+          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
             style={styles.backButton}
             onPress={() => navigation.goBack()}
           >

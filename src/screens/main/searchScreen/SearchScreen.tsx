@@ -25,7 +25,7 @@ import { Platform, Alert } from 'react-native';
 import RNFS from 'react-native-fs';
 import { requestCameraPermission, requestPhotoLibraryPermission } from '../../../utils/permissions';
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG, PAGINATION } from '../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG, PAGINATION, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
 import { RootStackParamList, Product } from '../../../types';
 import { usePlatformStore } from '../../../store/platformStore';
 import { useAppSelector } from '../../../store/hooks';
@@ -1325,7 +1325,7 @@ const SearchScreenComponent: React.FC = () => {
           headerTopHeightRef.current = height;
         }}
       >
-        <TouchableOpacity 
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >          

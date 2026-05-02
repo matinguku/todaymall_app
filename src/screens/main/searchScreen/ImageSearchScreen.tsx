@@ -17,7 +17,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useAppSelector } from '../../../store/hooks';
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, PAGINATION } from '../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, PAGINATION, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
 import { RootStackParamList, Product } from '../../../types';
 import { ProductCard, SortDropdown, PriceFilterModal } from '../../../components';
 import { useAuth } from '../../../context/AuthContext';
@@ -573,6 +573,7 @@ const ImageSearchScreen: React.FC = () => {
     <View style={styles.header}>
       <View style={styles.headerTop}>
         <TouchableOpacity 
+          hitSlop={BACK_NAVIGATION_HIT_SLOP}
           style={styles.backButton}
           onPress={handleGoBack}
         >          

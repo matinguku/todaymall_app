@@ -21,7 +21,7 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import Icon from '../../components/Icon';
 // Removed WebView import - using simpler HTML rendering approach
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, SERVER_BASE_URL } from '../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, SERVER_BASE_URL, BACK_NAVIGATION_HIT_SLOP } from '../../constants';
 import { useAuth } from '../../context/AuthContext';
 import { isLiveSource } from '../../utils/liveCode';
 import { recordLiveProduct } from '../../utils/liveProductTracker';
@@ -1920,7 +1920,7 @@ const ProductDetailScreen: React.FC = () => {
     return (
       <Animated.View style={[styles.header, { backgroundColor: headerBg }]}>
         {/* <StatusBar backgroundColor={headerBg}/> */}
-        <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.headerButton} onPress={() => navigation.goBack()}>
           <ArrowBackIcon width={12} height={20} color={COLORS.text.primary} />
         </TouchableOpacity>
 

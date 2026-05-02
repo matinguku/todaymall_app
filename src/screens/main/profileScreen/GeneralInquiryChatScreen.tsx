@@ -19,7 +19,7 @@ import { useRoute, useNavigation, RouteProp, useFocusEffect } from '@react-navig
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../../components/Icon';
-import { COLORS, FONTS, SHADOWS, SPACING, BORDER_RADIUS, IMAGE_CONFIG } from '../../../constants';
+import { COLORS, FONTS, SHADOWS, SPACING, BORDER_RADIUS, IMAGE_CONFIG, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
 import { RootStackParamList } from '../../../types';
 import { launchCamera, launchImageLibrary, MediaType, ImagePickerResponse, CameraOptions, ImageLibraryOptions } from 'react-native-image-picker';
 import { requestCameraPermission, requestPhotoLibraryPermission } from '../../../utils/permissions';
@@ -591,7 +591,7 @@ const GeneralInquiryChatScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} onPress={() => navigation.goBack()} style={styles.backButton}>
           <Icon name="arrow-back" size={16} color={COLORS.black} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>

@@ -13,7 +13,7 @@ import Icon from '../../../../../components/Icon';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../../../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, BACK_NAVIGATION_HIT_SLOP } from '../../../../../constants';
 import { RootStackParamList } from '../../../../../types';
 import { useAppSelector } from '../../../../../store/hooks';
 import { translations } from '../../../../../i18n/translations';
@@ -55,7 +55,7 @@ const SearchSection = React.memo(({ placeholder, onSearch }: SearchSectionProps)
           onSubmitEditing={submit}
           returnKeyType="search"
         />
-        <TouchableOpacity style={styles.searchButton} onPress={submit}>
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.searchButton} onPress={submit}>
           <Icon name="search" size={20} color={COLORS.white} />
         </TouchableOpacity>
       </View>
@@ -116,7 +116,7 @@ const HelpCenterScreen: React.FC<HelpCenterScreenProps> = ({ embedded = false, o
   const renderHeader = () => (
     <View style={styles.header}>
       {!embedded ? (
-        <TouchableOpacity
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >

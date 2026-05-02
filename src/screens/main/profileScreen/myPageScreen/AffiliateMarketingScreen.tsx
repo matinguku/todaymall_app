@@ -19,7 +19,7 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import ViewShot from 'react-native-view-shot';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
-import { COLORS, FONTS, SPACING, SERVER_BASE_URL, IMAGE_CONFIG } from '../../../../constants';
+import { COLORS, FONTS, SPACING, SERVER_BASE_URL, IMAGE_CONFIG, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
 import { useAuth } from '../../../../context/AuthContext';
 import { useAppSelector } from '../../../../store/hooks';
 import { translations } from '../../../../i18n/translations';
@@ -140,7 +140,7 @@ const AffiliateMarketingScreen: React.FC<AffiliateMarketingScreenProps> = ({ emb
       {/* Header */}
       <View style={styles.header}>
         {!embedded ? (
-          <TouchableOpacity
+          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
             style={styles.backButton}
             onPress={() => navigation.goBack()}
           >

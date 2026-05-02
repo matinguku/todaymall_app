@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,14 +11,17 @@ import {
   Modal,
   TextInput,
   ActivityIndicator,
+  Pressable,
+  Platform,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import Icon from '../../../../../components/Icon';
+import { BackNavPressable } from '../../../../../components/BackNavTouchable';
 import EditIcon from '../../../../../assets/icons/EditIcon';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, BACK_NAVIGATION_HIT_SLOP } from '../../../../../constants';
 import { RootStackParamList, Address } from '../../../../../types';
 import { useAuth } from '../../../../../context/AuthContext';
 import { useAddAddressMutation } from '../../../../../hooks/useAddAddressMutation';
@@ -195,6 +198,14 @@ const AddressBookScreen: React.FC<AddressBookScreenProps> = ({ embedded = false 
     setAddressModalVisible(true);
   };
 
+  const handleGoBack = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+    navigation.navigate('Main');
+  }, [navigation]);
+
   const handleEditAddress = (address: Address) => {
     setEditingAddress(address);
     // Pre-fill form with existing address data
@@ -347,29 +358,32 @@ const AddressBookScreen: React.FC<AddressBookScreenProps> = ({ embedded = false 
   const renderHeader = () => (
     <View style={styles.header}>
       {!embedded && (
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
+        <BackNavPressable
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          style={({ pressed }) => [styles.backButton, pressed && styles.headerPressablePressed]}
+          onPress={handleGoBack}
         >
           <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
-        </TouchableOpacity>
+        </BackNavPressable>
       )}
-      <Text style={styles.headerTitle}>{t('profile.shippingAddress')}</Text>
+      <Text style={styles.headerTitle} pointerEvents="none">
+        {t('profile.shippingAddress')}
+      </Text>
       <View style={styles.headerRight}>
-        <TouchableOpacity style={styles.headerIconButton}>
-          {/* <Icon name="search" size={24} color={COLORS.text.primary} /> */}
-        </TouchableOpacity>
         <TouchableOpacity onPress={() => setIsManagementMode(!isManagementMode)}>
           <Text style={styles.managementText}>
             {isManagementMode ? t('profile.done') : t('profile.management')}
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.headerIconButton}
+        <Pressable
+          accessibilityRole="button"
+          hitSlop={BACK_NAVIGATION_HIT_SLOP}
+          style={({ pressed }) => [styles.headerIconButton, pressed && styles.headerPressablePressed]}
           onPress={handleAddAddress}
         >
           <Icon name="add" size={20} color={COLORS.text.primary} />
-        </TouchableOpacity>
+        </Pressable>
       </View>
     </View>
   );
@@ -543,7 +557,12 @@ const AddressBookScreen: React.FC<AddressBookScreenProps> = ({ embedded = false 
     <SafeAreaView style={styles.container}>
       {renderHeader()}
       
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled={Platform.OS === 'android'}
+      >
         <FlatList
           data={addresses}
           renderItem={renderAddressItem}
@@ -656,6 +675,14 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: SPACING.xs,
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  headerPressablePressed: {
+    opacity: 0.65,
   },
   headerTitle: {
     fontSize: FONTS.sizes.md,

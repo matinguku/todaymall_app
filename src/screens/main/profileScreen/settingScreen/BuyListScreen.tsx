@@ -18,7 +18,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG, PAGINATION } from '../../../../constants';
+import { BackNavTouchableOpacity } from '../../../../components/BackNavTouchable';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG, PAGINATION, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
 import { RootStackParamList, Product } from '../../../../types';
 import { ProductCard, SearchButton } from '../../../../components';
 import TuneIcon from '../../../../assets/icons/TuneIcon';
@@ -1733,7 +1734,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
             <Text style={styles.selectAllText}>{t('pages.orders.filters.selectAll') || '전체 선택'}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
+          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
             style={[styles.filterChip, !!selectedCustomsMethod && styles.filterChipActive]}
             onPress={() => setShowCustomsDropdown(prev => !prev)}
           >
@@ -1743,7 +1744,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
             <Icon name="chevron-down" size={14} color={selectedCustomsMethod ? COLORS.red : COLORS.text.primary} />
           </TouchableOpacity>
 
-          <TouchableOpacity
+          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
             style={[styles.filterChip, !!selectedTransportMethod && styles.filterChipActive]}
             onPress={() => setShowTransportDropdown(prev => !prev)}
           >
@@ -1753,7 +1754,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
             <Icon name="chevron-down" size={14} color={selectedTransportMethod ? COLORS.red : COLORS.text.primary} />
           </TouchableOpacity>
 
-          <TouchableOpacity
+          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
             style={[styles.filterChip, (selectedStartDate || selectedEndDate) && styles.filterChipActive]}
             onPress={() => setShowDateModal(true)}
           >
@@ -1819,7 +1820,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
       {/* Header */}
       <View style={styles.header} onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}>
         {!embedded && (
-          <TouchableOpacity 
+          <BackNavTouchableOpacity
             style={styles.backButton}
             onPress={() => {
               if (navigation.canGoBack()) {
@@ -1830,7 +1831,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
             }}
           >
             <Icon name="chevron-back" size={24} color={COLORS.text.primary} />
-          </TouchableOpacity>
+          </BackNavTouchableOpacity>
         )}
         
         {/* Order number search input */}

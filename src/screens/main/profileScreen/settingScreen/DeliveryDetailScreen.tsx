@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { COLORS, FONTS, SPACING, IMAGE_CONFIG } from '../../../../constants';
+import { COLORS, FONTS, SPACING, IMAGE_CONFIG, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
 import { useToast } from '../../../../context/ToastContext';
 
 interface TrackingEvent {
@@ -82,7 +82,7 @@ const DeliveryDetailScreen: React.FC = () => {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >

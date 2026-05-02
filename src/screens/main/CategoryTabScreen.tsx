@@ -23,7 +23,7 @@ import { requestCameraPermission, requestPhotoLibraryPermission } from '../../ut
 import { StackNavigationProp } from '@react-navigation/stack';
 
 import FastImage from '@d11/react-native-fast-image';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG } from '../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG, BACK_NAVIGATION_HIT_SLOP } from '../../constants';
 import { getProductCardImageUri, buildProductDisplayImageUri } from '../../utils/productImage';
 import { RootStackParamList, Product } from '../../types';
 import { SearchButton, NotificationBadge, ProductCard, ImagePickerModal } from '../../components';
@@ -820,7 +820,7 @@ const CategoryTabScreen: React.FC = () => {
             const isSelected = selectedCompany === company;
             
             return (
-              <TouchableOpacity
+              <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
                 key={`company-${company}-${index}`}
                 style={[
                   styles.companyTab,
@@ -864,7 +864,7 @@ const CategoryTabScreen: React.FC = () => {
     <View style={styles.header}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
       <View style={styles.headerRow}>
-        <TouchableOpacity
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
           style={styles.headerBackButton}
           onPress={() => navigation.goBack()}
           activeOpacity={0.8}

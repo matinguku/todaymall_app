@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { AuthStackParamList } from '../../types';
-import { BORDER_RADIUS, COLORS, FONTS, SPACING, SCREEN_HEIGHT } from '../../constants';
+import { BORDER_RADIUS, COLORS, FONTS, SPACING, SCREEN_HEIGHT, BACK_NAVIGATION_HIT_SLOP } from '../../constants';
 import Icon from '../../components/Icon';
 import ArrowBackIcon from '../../assets/icons/ArrowBackIcon';
 import { useResendVerificationMutation } from '../../hooks/useAuthMutations';
@@ -181,7 +181,7 @@ const OtpVerificationScreen: React.FC = () => {
         >
           {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity 
+            <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
               style={styles.backButton}
               onPress={() => navigation.goBack()}
             >

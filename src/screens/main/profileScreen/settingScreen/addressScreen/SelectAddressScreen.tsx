@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,12 +8,14 @@ import {
   ScrollView,
   SafeAreaView,
   Alert,
+  Pressable,
+  Platform,
 } from 'react-native';
 import Icon from '../../../../../components/Icon';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, BACK_NAVIGATION_HIT_SLOP } from '../../../../../constants';
 import { RootStackParamList, Address } from '../../../../../types';
 import { useAuth } from '../../../../../context/AuthContext';
 
@@ -67,18 +69,31 @@ const SelectAddressScreen: React.FC = () => {
   };
 
   const handleAddNewAddress = () => {
-    navigation.navigate('AddNewAddress', {});
+    navigation.push('AddNewAddress', {});
   };
+
+  const handleGoBack = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+    navigation.navigate('Main');
+  }, [navigation]);
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => navigation.goBack()}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+        hitSlop={BACK_NAVIGATION_HIT_SLOP}
+        style={({ pressed }) => [styles.backButton, pressed && styles.headerPressablePressed]}
+        onPress={handleGoBack}
       >
         <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-      </TouchableOpacity>
-      <Text style={styles.headerTitle}>Select Address</Text>
+      </Pressable>
+      <Text style={styles.headerTitle} pointerEvents="none">
+        Select Address
+      </Text>
       <View style={styles.placeholder} />
     </View>
   );
@@ -129,7 +144,12 @@ const SelectAddressScreen: React.FC = () => {
     <SafeAreaView style={styles.container}>
       {renderHeader()}
       
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled={Platform.OS === 'android'}
+      >
         <FlatList
           data={addresses}
           renderItem={renderAddressItem}
@@ -198,6 +218,9 @@ const styles = StyleSheet.create({
   },
   placeholder: {
     width: 40,
+  },
+  headerPressablePressed: {
+    opacity: 0.65,
   },
   scrollView: {
     flex: 1,

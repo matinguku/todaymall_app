@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG, PAGINATION } from '../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG, PAGINATION, BACK_NAVIGATION_HIT_SLOP } from '../../constants';
 import { RootStackParamList } from '../../types';
 import { usePlatformStore } from '../../store/platformStore';
 import { useTranslation } from '../../hooks/useTranslation';
@@ -1328,6 +1328,7 @@ const CartScreen: React.FC = () => {
               </TouchableOpacity>
             )}
             <TouchableOpacity
+              hitSlop={BACK_NAVIGATION_HIT_SLOP}
               style={styles.continueShoppingButton}
               onPress={() => navigation.goBack()}
             >

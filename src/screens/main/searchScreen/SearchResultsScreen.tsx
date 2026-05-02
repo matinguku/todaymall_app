@@ -18,7 +18,7 @@ import Icon from '../../../components/Icon';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
 import { RootStackParamList, Product, SearchFilters } from '../../../types';
 
 type SearchResultsScreenRouteProp = RouteProp<RootStackParamList, 'Search'>;
@@ -107,7 +107,7 @@ const SearchResultsScreen: React.FC = () => {
   };
 
   const renderProductItem = useCallback(({ item }: { item: Product }) => (
-    <TouchableOpacity
+    <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
       style={styles.productCard}
       onPress={() => {
         const productId = (item as any).offerId || (item as any).externalId || item.id;
@@ -131,13 +131,13 @@ const SearchResultsScreen: React.FC = () => {
             <Text style={styles.discountText}>{item.discountPercentage}% Off</Text>
           </View>
         )}
-        <TouchableOpacity style={styles.likeButton}>
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.likeButton}>
           <Icon name="heart-outline" size={18} color={COLORS.white} />
         </TouchableOpacity>
       </View>
       <View style={styles.productInfo}>
         <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
-        <TouchableOpacity 
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
           style={styles.sellerInfo}
           onPress={() => navigation.navigate('SellerProfile', { sellerId: item.seller.id })}
         >
@@ -167,13 +167,13 @@ const SearchResultsScreen: React.FC = () => {
         <View style={styles.modalContent}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Sort By</Text>
-            <TouchableOpacity onPress={() => setSortModalVisible(false)}>
+            <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} onPress={() => setSortModalVisible(false)}>
               <Icon name="close" size={24} color={COLORS.text.primary} />
             </TouchableOpacity>
           </View>
           <View style={{ paddingHorizontal: SPACING.lg }}>
             {['Popularity', 'Top', 'Price High to Low', 'Price Low to High', 'Newest'].map((option) => (
-              <TouchableOpacity
+              <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
                 key={option}
                 style={styles.sortOption}
                 onPress={() => {
@@ -207,7 +207,7 @@ const SearchResultsScreen: React.FC = () => {
     <View style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.backButton} onPress={() => navigation.goBack()}>
             <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
           </TouchableOpacity>
           <View style={styles.searchContainer}>

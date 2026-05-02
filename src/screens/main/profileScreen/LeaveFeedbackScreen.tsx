@@ -15,7 +15,7 @@ import Icon from '../../../components/Icon';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { COLORS, FONTS, SHADOWS, SPACING } from '../../../constants';
+import { COLORS, FONTS, SHADOWS, SPACING, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
 import { RootStackParamList, CustomerOrderDetails } from '../../../types';
 
 type LeaveFeedbackRouteProp = RouteProp<RootStackParamList, 'LeaveFeedback'>;
@@ -127,7 +127,7 @@ const LeaveFeedbackScreen: React.FC = () => {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity
+      <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
         style={styles.backButton}
         onPress={() => navigation.goBack()}
       >

@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { BORDER_RADIUS, COLORS, FONTS, SHADOWS, SPACING } from '../../../../constants';
+import { BORDER_RADIUS, COLORS, FONTS, SHADOWS, SPACING, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
 import Icon from '../../../../components/Icon';
 import { RootStackParamList, Address } from '../../../../types';
 
@@ -42,7 +42,7 @@ const FinanceScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} onPress={() => navigation.goBack()} style={styles.backButton}>
           <Icon name="arrow-back" size={18} color={COLORS.text.primary} />
         </TouchableOpacity>
         <Text style={styles.title}>Finance</Text>

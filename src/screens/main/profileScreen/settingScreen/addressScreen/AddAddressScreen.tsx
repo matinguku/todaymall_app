@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import Icon from '../../../../../components/Icon';
 import { useNavigation } from '@react-navigation/native';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, BACK_NAVIGATION_HIT_SLOP } from '../../../../../constants';
 
 const AddAddressScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -60,7 +60,7 @@ const AddAddressScreen: React.FC = () => {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity 
+      <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
         style={styles.backButton}
         onPress={() => navigation.goBack()}
       >

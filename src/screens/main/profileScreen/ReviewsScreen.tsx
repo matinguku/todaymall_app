@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ActivityIn
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 // import Ionicons from 'react-native-vector-icons/Ionicons';
 import { Icon } from '../../../components';
-import { COLORS, FONTS, SHADOWS, SPACING, BORDER_RADIUS } from '../../../constants';
+import { COLORS, FONTS, SHADOWS, SPACING, BORDER_RADIUS, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
 import { RootStackParamList } from '../../../types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -53,7 +53,7 @@ const ReviewsScreen: React.FC = () => {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity
+      <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
         style={styles.backButton}
         onPress={() => navigation.goBack()}
         activeOpacity={0.85}

@@ -6,7 +6,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import Icon from '../../../../components/Icon';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
 import { formatPriceKRW } from '../../../../utils/i18nHelpers';
 import { useToast } from '../../../../context/ToastContext';
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
@@ -94,7 +94,7 @@ const RefundRequestScreen: React.FC = () => {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Refund Request</Text>

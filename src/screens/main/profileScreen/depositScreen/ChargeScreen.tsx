@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
 import { LinearGradient } from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
-import { COLORS, FONTS, SPACING } from '../../../../constants';
+import { COLORS, FONTS, SPACING, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
 import { useAuth } from '../../../../context/AuthContext';
 
 const ChargeScreen = () => {
@@ -51,7 +51,7 @@ const ChargeScreen = () => {
         colors={['#FFE4E6', '#FFF0F1', '#FFFFFF']}
         style={styles.header}
       >
-        <TouchableOpacity 
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >

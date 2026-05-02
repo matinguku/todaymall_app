@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import Text from '../../components/Text';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SCREEN_WIDTH } from '../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SCREEN_WIDTH, BACK_NAVIGATION_HIT_SLOP } from '../../constants';
 import { useSellerDetailMutation } from '../../hooks/useSellerDetailMutation';
 import { useAppSelector } from '../../store/hooks';
 import { useToast } from '../../context/ToastContext';
@@ -127,7 +127,7 @@ const SellerDetailScreen: React.FC = () => {
   };
 
   const renderProductCard = ({ item }: { item: any }) => (
-    <TouchableOpacity
+    <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
       style={styles.productCard}
       onPress={() => {
         navigation.navigate('ProductDetail', {
@@ -182,7 +182,7 @@ const SellerDetailScreen: React.FC = () => {
         style={styles.headerGradient}
       >
         <View style={styles.headerTop}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} onPress={() => navigation.goBack()}>
             <ArrowBackIcon width={24} height={24} color={COLORS.white} />
           </TouchableOpacity>
           <View style={styles.headerCenter}>

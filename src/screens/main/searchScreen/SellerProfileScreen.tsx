@@ -16,7 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../components/Icon';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { COLORS, FONTS, SPACING, SHADOWS, IMAGE_CONFIG } from '../../../constants';
+import { COLORS, FONTS, SPACING, SHADOWS, IMAGE_CONFIG, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
 import { ProductCard } from '../../../components';
 import { productsApi } from '../../../services/productsApi';
 import { useToast } from '../../../context/ToastContext';
@@ -373,7 +373,7 @@ const SellerProfileScreen: React.FC = () => {
               })()}
             </View>
           </View>
-          <TouchableOpacity 
+          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
             style={[styles.followButton, isFollowing && styles.followingButton]}
             onPress={handleToggleFollow}
             disabled={isTogglingFollow}
@@ -432,7 +432,7 @@ const SellerProfileScreen: React.FC = () => {
     <View style={styles.container}>
       <SafeAreaView edges={['top']} style={styles.safeArea}>
         <View style={styles.header}>
-          <TouchableOpacity
+          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
             style={styles.backButton}
             onPress={() => navigation.goBack()}
           >

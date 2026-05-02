@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
 import { useNavigation } from '@react-navigation/native';
 import { useFocusEffect } from '@react-navigation/native';
+import { BackNavTouchableOpacity } from '../../../../components/BackNavTouchable';
 import { COLORS, FONTS, SPACING } from '../../../../constants';
 import { DatePickerModal, Button } from '../../../../components';
 import { depositApi } from '../../../../services/depositApi';
@@ -306,9 +307,9 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false }) => {
       {/* Header */}
       <View style={styles.header}>
         {!embedded && (
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <BackNavTouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
             <Icon name="arrow-back" size={16} color={COLORS.black} />
-          </TouchableOpacity>
+          </BackNavTouchableOpacity>
         )}
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>{t('deposit.title')}</Text>

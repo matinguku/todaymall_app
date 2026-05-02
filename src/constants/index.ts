@@ -1,4 +1,4 @@
-import { Dimensions, Platform } from 'react-native';
+import { Dimensions, Platform, type Insets } from 'react-native';
 
 // Screen Dimensions
 export const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -153,6 +153,17 @@ export const SPACING = {
   xxl: 40,
   '2xl': 48,
   '3xl': 64,
+};
+
+/**
+ * Extra bounds for back/return navigation controls. Keeps icon size unchanged;
+ * expands the touch target (~2× area vs a bare icon). Use on TouchableOpacity / Pressable that call goBack().
+ */
+export const BACK_NAVIGATION_HIT_SLOP: Insets = {
+  top: 24,
+  bottom: 24,
+  left: 24,
+  right: 24,
 };
 
 // Border Radius

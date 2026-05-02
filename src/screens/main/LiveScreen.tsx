@@ -933,8 +933,48 @@ const LiveScreen: React.FC = () => {
               </View>
             )}
 
-            {/* Mobile: Live Stream Schedule */}
-            {!isTablet && schedule.length > 0 && (
+            {/* Mobile: Live Stream Schedule + Top Seller — shared column so widths and gutters match */}
+            {!isTablet && schedule.length > 0 && topSellers.length > 0 && (
+              <View style={styles.mobileScheduleTopSellerColumn}>
+                <View style={[styles.section, styles.mobileScheduleTopSellerSection]}>
+                  <View style={styles.sectionHeaderRow}>
+                    <Text style={styles.sectionTitle}>{t('live.liveStreamSchedule')}</Text>
+                    {liveNowCount > 0 && (
+                      <Text style={styles.liveNowCountText}>
+                        {liveNowCount}{' '}
+                        <Text style={{ color: COLORS.text.secondary }}>{t('live.liveNowStatus')}</Text>
+                      </Text>
+                    )}
+                  </View>
+                  {schedule.slice(0, 6).map((item: any, i: number) => (
+                    <ScheduleItem key={item._id || item.id || i} item={item} locale={locale} />
+                  ))}
+                </View>
+                <View style={[styles.section, styles.mobileScheduleTopSellerSection]}>
+                  <View style={styles.topSellerHeader}>
+                    <Text style={styles.sectionTitle}>{t('live.topSeller')}</Text>
+                  </View>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.topSellerRowContent}
+                  >
+                    {topSellers.slice(0, 10).map((seller: any, i: number) => (
+                      <TopSellerItem
+                        key={seller._id || i}
+                        seller={seller}
+                        onPress={() => navigation.navigate('LiveSellerDetail', {
+                          sellerId: seller._id || seller.id || '',
+                          sellerName: seller.nickname || seller.userName || '',
+                          source: 'ownmall',
+                        })}
+                      />
+                    ))}
+                  </ScrollView>
+                </View>
+              </View>
+            )}
+            {!isTablet && schedule.length > 0 && topSellers.length === 0 && (
               <View style={styles.section}>
                 <View style={styles.sectionHeaderRow}>
                   <Text style={styles.sectionTitle}>{t('live.liveStreamSchedule')}</Text>
@@ -950,9 +990,7 @@ const LiveScreen: React.FC = () => {
                 ))}
               </View>
             )}
-
-            {/* Mobile: Top Seller */}
-            {!isTablet && topSellers.length > 0 && (
+            {!isTablet && topSellers.length > 0 && schedule.length === 0 && (
               <View style={styles.section}>
                 <View style={styles.topSellerHeader}>
                   <Text style={styles.sectionTitle}>{t('live.topSeller')}</Text>
@@ -1447,6 +1485,16 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.smmd,
     paddingHorizontal: SPACING.sm,
   },
+  /** When schedule + top seller both show on phone, one column so card widths match */
+  mobileScheduleTopSellerColumn: {
+    marginHorizontal: SPACING.sm,
+    marginTop: SPACING.lg,
+    gap: SPACING.md,
+  },
+  mobileScheduleTopSellerSection: {
+    marginHorizontal: 0,
+    marginTop: 0,
+  },
   sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1865,24 +1913,24 @@ const styles = StyleSheet.create({
   },
   tabletPortraitScheduleTopRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: SPACING.md,
+    alignItems: 'stretch',
     width: '100%',
     alignSelf: 'stretch',
-    paddingHorizontal: SPACING.xs,
+    paddingHorizontal: 0,
+    gap: SPACING.smmd,
   },
   tabletPortraitHalfCard: {
-    width: '40%',
-    flexGrow: 0,
-    flexShrink: 1,
+    flex: 1,
+    flexBasis: 0,
     minWidth: 0,
     marginTop: 0,
     marginHorizontal: 0,
   },
   tabletPortraitHalfCardOnly: {
-    width: '100%',
-    flexShrink: 0,
+    flex: 1,
+    flexBasis: '100%',
+    maxWidth: '100%',
+    alignSelf: 'stretch',
   },
   tabletPortraitScrollContent: {
     flexGrow: 1,
@@ -1890,11 +1938,15 @@ const styles = StyleSheet.create({
   },
   tabletSchedulePanel: {
     flex: 2,
+    flexBasis: 0,
+    minWidth: 0,
     marginTop: 0,
     marginHorizontal: 0,
   },
   tabletTopSellerPanel: {
     flex: 2,
+    flexBasis: 0,
+    minWidth: 0,
     marginTop: 0,
     marginHorizontal: 0,
   },

@@ -11,7 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import LinearGradient from 'react-native-linear-gradient';
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SCREEN_HEIGHT } from '../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SCREEN_HEIGHT, BACK_NAVIGATION_HIT_SLOP } from '../../constants';
 import { RootStackParamList } from '../../types';
 import { useTranslation } from '../../hooks/useTranslation';
 import ArrowBackIcon from '../../assets/icons/ArrowBackIcon';
@@ -41,6 +41,7 @@ const NotFoundScreen: React.FC = () => {
         style={styles.gradientBackground}
       />
       <TouchableOpacity
+        hitSlop={BACK_NAVIGATION_HIT_SLOP}
         style={styles.secondaryButton}
         onPress={handleGoBack}
         activeOpacity={0.8}

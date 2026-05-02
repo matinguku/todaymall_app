@@ -14,7 +14,7 @@ import Icon from '../../../../../components/Icon';
 import type { SellerStackParamList } from '../../../../../types';
 import { useTranslation } from '../../../../../hooks/useTranslation';
 import { useSellerDashboardMutation } from '../../../../../hooks/useSellerDashboardMutation';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, BACK_NAVIGATION_HIT_SLOP } from '../../../../../constants';
 
 type NavigationProp = StackNavigationProp<SellerStackParamList, 'SellerSalesRefundInfo'>;
 
@@ -84,7 +84,7 @@ const SellerSalesRefundInfoScreen: React.FC<SellerSalesRefundInfoScreenProps> = 
   const renderHeader = () => (
     <View style={styles.header}>
       {!embedded ? (
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.backButton} onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
         </TouchableOpacity>
       ) : (

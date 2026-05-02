@@ -23,7 +23,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { setPassword } from '../../services/authApi';
 import { useSocialLoginMutation } from '../../hooks/useAuthMutations';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SCREEN_HEIGHT } from '../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SCREEN_HEIGHT, BACK_NAVIGATION_HIT_SLOP } from '../../constants';
 import { useAppSelector } from '../../store/hooks';
 import { translations } from '../../i18n/translations';
 import { AuthStackParamList } from '../../types';
@@ -205,7 +205,7 @@ const SetPasswordScreen = () => {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
-            <TouchableOpacity 
+            <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
               style={styles.backButton}
               onPress={() => navigation.goBack()}
             >

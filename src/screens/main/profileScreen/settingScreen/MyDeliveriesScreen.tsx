@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
 import { useNavigation } from '@react-navigation/native';
-import { COLORS, FONTS, SPACING, IMAGE_CONFIG } from '../../../../constants';
+import { COLORS, FONTS, SPACING, IMAGE_CONFIG, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
 
 type DeliveryStatus = 'awaiting_pickup' | 'out_for_delivery' | 'in_transit' | 'awaiting_shipment' | 'delivered';
 
@@ -52,7 +52,7 @@ const MyDeliveriesScreen: React.FC = () => {
     const isActive = selectedTab === status;
     
     return (
-      <TouchableOpacity
+      <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
         style={[
           styles.tabButton,
           isActive && styles.tabButtonActive
@@ -70,7 +70,7 @@ const MyDeliveriesScreen: React.FC = () => {
   };
 
   const renderDeliveryItem = ({ item }: { item: Delivery }) => (
-    <TouchableOpacity
+    <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
       style={styles.deliveryCard}
       onPress={() => (navigation as any).navigate('DeliveryDetail', { deliveryId: item.id })}
     >
@@ -91,7 +91,7 @@ const MyDeliveriesScreen: React.FC = () => {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >

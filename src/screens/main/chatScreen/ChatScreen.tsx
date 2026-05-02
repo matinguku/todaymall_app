@@ -20,7 +20,7 @@ import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../../components/Icon';
-import { COLORS, FONTS, SHADOWS, SPACING, IMAGE_CONFIG } from '../../../constants';
+import { COLORS, FONTS, SHADOWS, SPACING, IMAGE_CONFIG, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
 import { RootStackParamList } from '../../../types';
 import { launchCamera, launchImageLibrary, MediaType, ImagePickerResponse, CameraOptions, ImageLibraryOptions } from 'react-native-image-picker';
 import { useAppSelector } from '../../../store/hooks';
@@ -712,7 +712,7 @@ const ChatScreen: React.FC = () => {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
           style={styles.backButton}
           onPress={() => navigation.goBack()}
           activeOpacity={0.85}

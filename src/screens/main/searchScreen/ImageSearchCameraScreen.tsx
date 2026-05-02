@@ -23,7 +23,7 @@ import { launchImageLibrary, MediaType, ImagePickerResponse, ImageLibraryOptions
 import ImagePicker from 'react-native-image-crop-picker';
 import { CameraRoll, GetPhotosParams, PhotoIdentifier } from '@react-native-camera-roll/camera-roll';
 import { requestPhotoLibraryPermission } from '../../../utils/permissions';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, IMAGE_CONFIG } from '../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, IMAGE_CONFIG, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
 import { RootStackParamList } from '../../../types';
 import ArrowBackIcon from '../../../assets/icons/ArrowBackIcon';
 import CameraIcon from '../../../assets/icons/CameraIcon';
@@ -969,7 +969,7 @@ const ImageSearchCameraScreen: React.FC = () => {
             {!hasPermission ? t('imageSearch.cameraPermissionRequired') : t('imageSearch.cameraNotAvailable')}
           </Text>
           {!hasPermission && (
-            <TouchableOpacity 
+            <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
               style={styles.permissionButton}
               onPress={requestPermission}
             >
@@ -984,7 +984,7 @@ const ImageSearchCameraScreen: React.FC = () => {
       {/* Top Bar */}
       <SafeAreaView style={styles.topBar} edges={['top']}>
         <View style={styles.topBarContent}>
-          <TouchableOpacity style={styles.topBarButton} onPress={() => navigation.goBack()}>
+          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.topBarButton} onPress={() => navigation.goBack()}>
             <ArrowBackIcon width={20} height={20} color={COLORS.white} />
           </TouchableOpacity>
 

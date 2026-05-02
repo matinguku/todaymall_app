@@ -16,7 +16,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, BACK_NAVIGATION_HIT_SLOP } from '../../../../../constants';
 import { RootStackParamList, Address, CustomSwitchProps } from '../../../../../types';
 import { useAuth } from '../../../../../context/AuthContext';
 import { useUpdateAddressMutation } from '../../../../../hooks/useUpdateAddressMutation';
@@ -161,7 +161,7 @@ const EditAddressScreen: React.FC = () => {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity
+      <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
         style={styles.backButton}
         onPress={() => navigation.goBack()}
       >

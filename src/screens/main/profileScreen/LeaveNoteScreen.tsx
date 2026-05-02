@@ -16,7 +16,7 @@ import Icon from '../../../components/Icon';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
 import { RootStackParamList } from '../../../types';
 
 type LeaveNoteScreenNavigationProp = StackNavigationProp<RootStackParamList, 'LeaveNote'>;
@@ -58,7 +58,7 @@ const LeaveNoteScreen: React.FC = () => {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+      <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.backButton} onPress={() => navigation.goBack()}>
         <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
       </TouchableOpacity>
       <Text style={styles.headerTitle}>Leave Note</Text>

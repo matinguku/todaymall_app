@@ -13,6 +13,7 @@ import {
   FlatList,
   TextInput as RNTextInput,
   StatusBar,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
@@ -24,7 +25,7 @@ import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/nativ
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { useLoginMutation, useSocialLoginMutation } from '../../hooks/useAuthMutations';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, VALIDATION_RULES, ERROR_MESSAGES, SCREEN_HEIGHT } from '../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, VALIDATION_RULES, ERROR_MESSAGES, SCREEN_HEIGHT, SCREEN_WIDTH, BACK_NAVIGATION_HIT_SLOP } from '../../constants';
 import { resendLoginVerificationCode } from '../../services/authApi';
 import { useAppSelector } from '../../store/hooks';
 import { translations } from '../../i18n/translations';
@@ -263,6 +264,11 @@ const LoginScreen: React.FC = () => {
   const [showCountryCodeModal, setShowCountryCodeModal] = useState(false);
   const [countryCode, setCountryCode] = useState('+82');
   const [showPassword, setShowPassword] = useState(false);
+
+  const [showNonMemberModal, setShowNonMemberModal] = useState(false);
+  const [nonMemberRecipientName, setNonMemberRecipientName] = useState('');
+  const [nonMemberPhoneLocal, setNonMemberPhoneLocal] = useState('');
+  const nonMemberCountryCode = '+82';
   
   // Common email domains
   const commonEmailDomains = [
@@ -383,6 +389,29 @@ const LoginScreen: React.FC = () => {
     navigation.navigate('Signup' as never);
   };
 
+  const closeNonMemberModal = () => {
+    setShowNonMemberModal(false);
+    setNonMemberRecipientName('');
+    setNonMemberPhoneLocal('');
+  };
+
+  const handleNonMemberGetCode = () => {
+    if (!nonMemberRecipientName.trim() || !nonMemberPhoneLocal.trim()) {
+      showToast(t('auth.nonMemberFillFields'), 'info');
+      return;
+    }
+    showToast(t('auth.verificationCodeHint'), 'success');
+  };
+
+  const handleNonMemberOrderInquiry = () => {
+    if (!nonMemberRecipientName.trim() || !nonMemberPhoneLocal.trim()) {
+      showToast(t('auth.nonMemberFillFields'), 'info');
+      return;
+    }
+    showToast(t('auth.nonMemberOrderSubmitted'), 'success');
+    closeNonMemberModal();
+  };
+
   useFocusEffect(
     React.useCallback(() => {
       const onBackPress = () => {
@@ -421,7 +450,7 @@ const LoginScreen: React.FC = () => {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
-            <TouchableOpacity 
+            <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
               style={styles.backButton}
               onPress={() => {
                 if (route.params?.fromProfile) {
@@ -811,15 +840,28 @@ const LoginScreen: React.FC = () => {
 
             {/* Arrow down indicator below social icons */}
 
-            <View style={styles.loginContainer}>
-              <Text style={styles.loginText}>{t('auth.dontHaveAccount')} </Text>
-              <TouchableOpacity onPress={handleSignup}>
-                <Text style={styles.loginLink}>{t('auth.signup')}</Text>
+            <View style={styles.loginLinksColumn}>
+              <View style={styles.loginContainer}>
+                <Text style={styles.loginText}>{t('auth.dontHaveAccount')} </Text>
+                <TouchableOpacity onPress={handleSignup}>
+                  <Text style={styles.loginLink}>{t('auth.signup')}</Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity
+                style={styles.nonMemberSignupRow}
+                onPress={() => setShowNonMemberModal(true)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.loginLink}>{t('auth.nonMemberModal')}</Text>
+
               </TouchableOpacity>
             </View>
             {/* <TouchableOpacity style={styles.arrowDownContainer} onPress={handleSignup}>
               <ArrowDownIcon width={24} height={24} color={COLORS.text.primary} />
             </TouchableOpacity> */}
+
+            
+
 
             {/* <View style={styles.signupContainer}>
               <Text style={styles.signupText}>{t('auth.dontHaveAccount')} </Text>
@@ -845,9 +887,117 @@ const LoginScreen: React.FC = () => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={showNonMemberModal}
+        transparent
+        animationType="fade"
+        onRequestClose={closeNonMemberModal}
+      >
+        <KeyboardAvoidingView
+          style={styles.nonMemberModalRoot}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <Pressable style={styles.nonMemberModalBackdrop} onPress={closeNonMemberModal} accessibilityRole="button" />
+          <View style={styles.nonMemberModalCardOuter} pointerEvents="box-none">
+            <View style={styles.nonMemberModalCard}>
+              <TouchableOpacity
+                style={styles.nonMemberModalClose}
+                onPress={closeNonMemberModal}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Icon name="close" size={22} color={COLORS.text.secondary} />
+              </TouchableOpacity>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={styles.nonMemberModalScrollContent}
+              >
+                <Image
+                  source={require('../../assets/icons/logo.png')}
+                  style={styles.nonMemberModalLogo}
+                  resizeMode="contain"
+                />
+                <View style={styles.nonMemberTitleRow}>
+                  <View style={styles.nonMemberTitleIconBox}>
+                    <Icon name="note" size={22} color={COLORS.white} />
+                  </View>
+                  <Text style={styles.nonMemberModalTitle}>{t('auth.nonMemberModalTitle')}</Text>
+                </View>
+                <Text style={styles.nonMemberModalSubtitle}>{t('auth.nonMemberModalSubtitle')}</Text>
+
+                <View style={styles.nonMemberFieldBlock}>
+                  <View style={styles.nonMemberLabelRow}>
+                    <Icon name="person-outline" size={18} color={COLORS.primary} />
+                    <Text style={styles.nonMemberFieldLabel}>{t('auth.recipientNameLabel')}</Text>
+                  </View>
+                  <RNTextInput
+                    style={styles.nonMemberInput}
+                    placeholder={t('auth.recipientNamePlaceholder')}
+                    placeholderTextColor={COLORS.gray[500]}
+                    value={nonMemberRecipientName}
+                    onChangeText={setNonMemberRecipientName}
+                  />
+                </View>
+
+                <View style={styles.nonMemberFieldBlock}>
+                  <View style={styles.nonMemberLabelRow}>
+                    <Icon name="call-outline" size={18} color={COLORS.primary} />
+                    <Text style={styles.nonMemberFieldLabel}>{t('auth.phoneNumberShortLabel')}</Text>
+                  </View>
+                  <View style={styles.nonMemberPhoneRow}>
+                    <View style={styles.nonMemberCountryBox}>
+                      <Text style={styles.nonMemberCountryText}>{nonMemberCountryCode}</Text>
+                    </View>
+                    <RNTextInput
+                      style={[styles.nonMemberInput, styles.nonMemberPhoneInput]}
+                      placeholder={t('auth.phoneLocalPlaceholder')}
+                      placeholderTextColor={COLORS.gray[500]}
+                      value={nonMemberPhoneLocal}
+                      onChangeText={setNonMemberPhoneLocal}
+                      keyboardType="phone-pad"
+                    />
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.nonMemberVerifyButton}
+                  onPress={handleNonMemberGetCode}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.nonMemberVerifyButtonText}>{t('auth.getVerificationCode')}</Text>
+                </TouchableOpacity>
+
+                <View style={styles.nonMemberNoticeBox}>
+                  <View style={styles.nonMemberNoticeHeader}>
+                    <View style={styles.nonMemberInfoIconCircle}>
+                      <Icon name="information-circle-outline" size={14} color={COLORS.white} />
+                    </View>
+                    <Text style={styles.nonMemberNoticeTitle}>{t('auth.nonMemberNoticeTitle')}</Text>
+                  </View>
+                  <Text style={styles.nonMemberBullet}>{`\u2022 ${t('auth.nonMemberNotice1')}`}</Text>
+                  <Text style={styles.nonMemberBullet}>{`\u2022 ${t('auth.nonMemberNotice2')}`}</Text>
+                  <Text style={styles.nonMemberBullet}>{`\u2022 ${t('auth.nonMemberNotice3')}`}</Text>
+                  <Text style={styles.nonMemberPrivacyFooter}>{t('auth.nonMemberPrivacyFooter')}</Text>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.nonMemberPrimaryButton}
+                  onPress={handleNonMemberOrderInquiry}
+                  activeOpacity={0.9}
+                >
+                  <Text style={styles.nonMemberPrimaryButtonText}>{t('auth.orderInquiry')}</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 };
+
+const NON_MEMBER_MODAL_MAX_WIDTH = Math.min(420, SCREEN_WIDTH - SPACING.md * 2);
 
 const styles = StyleSheet.create({
   container: {
@@ -1400,6 +1550,192 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.md,
     color: COLORS.red,
     fontWeight: '700',
+  },
+  loginLinksColumn: {
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    gap: SPACING.sm,
+  },
+  nonMemberSignupRow: {
+    paddingVertical: SPACING.xs,
+  },
+  nonMemberModalRoot: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.md,
+  },
+  nonMemberModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  nonMemberModalCardOuter: {
+    width: '100%',
+    maxWidth: NON_MEMBER_MODAL_MAX_WIDTH,
+    alignSelf: 'center',
+    zIndex: 1,
+  },
+  nonMemberModalCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    maxHeight: SCREEN_HEIGHT * 0.9,
+    ...SHADOWS.lg,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  nonMemberModalClose: {
+    position: 'absolute',
+    top: SPACING.sm,
+    right: SPACING.sm,
+    zIndex: 10,
+    padding: SPACING.xs,
+  },
+  nonMemberModalScrollContent: {
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.xl + SPACING.sm,
+    paddingBottom: SPACING.xl,
+  },
+  nonMemberModalLogo: {
+    alignSelf: 'center',
+    width: Math.min(180, NON_MEMBER_MODAL_MAX_WIDTH - SPACING.lg * 2),
+    height: 44,
+    marginBottom: SPACING.md,
+  },
+  nonMemberTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+    flexWrap: 'wrap',
+  },
+  nonMemberTitleIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: BORDER_RADIUS.sm,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  nonMemberModalTitle: {
+    flex: 1,
+    minWidth: 120,
+    fontSize: FONTS.sizes.md + 1,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+  },
+  nonMemberModalSubtitle: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
+    lineHeight: 20,
+    marginBottom: SPACING.md,
+  },
+  nonMemberFieldBlock: {
+    marginBottom: SPACING.md,
+  },
+  nonMemberLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.xs,
+  },
+  nonMemberFieldLabel: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+  },
+  nonMemberInput: {
+    borderWidth: 1,
+    borderColor: COLORS.gray[300],
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.smmd,
+    fontSize: FONTS.sizes.md,
+    color: COLORS.text.primary,
+    backgroundColor: COLORS.white,
+  },
+  nonMemberPhoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  nonMemberCountryBox: {
+    borderWidth: 1,
+    borderColor: COLORS.gray[300],
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.smmd,
+    minWidth: 72,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.gray[50],
+  },
+  nonMemberCountryText: {
+    fontSize: FONTS.sizes.md,
+    fontWeight: '600',
+    color: COLORS.text.primary,
+  },
+  nonMemberPhoneInput: {
+    flex: 1,
+  },
+  nonMemberVerifyButton: {
+    backgroundColor: COLORS.lightRed,
+    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: SPACING.smmd,
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  nonMemberVerifyButtonText: {
+    fontSize: FONTS.sizes.md,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  nonMemberNoticeBox: {
+    backgroundColor: COLORS.gray[100],
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  nonMemberNoticeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  nonMemberInfoIconCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  nonMemberNoticeTitle: {
+    flex: 1,
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+  },
+  nonMemberBullet: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.gray[600],
+    lineHeight: 18,
+    marginBottom: SPACING.xs,
+  },
+  nonMemberPrivacyFooter: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.text.secondary,
+    marginTop: SPACING.sm,
+    lineHeight: 18,
+  },
+  nonMemberPrimaryButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+  },
+  nonMemberPrimaryButtonText: {
+    fontSize: FONTS.sizes.md,
+    fontWeight: '700',
+    color: COLORS.white,
   },
 });
 

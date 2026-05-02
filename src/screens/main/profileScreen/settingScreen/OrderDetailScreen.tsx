@@ -9,7 +9,7 @@ import { WebView } from 'react-native-webview';
 import Icon from '../../../../components/Icon';
 import EditIcon from '../../../../assets/icons/EditIcon';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
 import { useToast } from '../../../../context/ToastContext';
 import { formatPriceKRW } from '../../../../utils/i18nHelpers';
 import { orderApi } from '../../../../services/orderApi';
@@ -42,7 +42,7 @@ const OrderDetailScreen: React.FC = () => {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} onPress={() => navigation.goBack()} style={styles.backButton}>
             <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Order Detail</Text>
@@ -163,7 +163,7 @@ const OrderDetailScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} onPress={() => navigation.goBack()} style={styles.backButton}>
           <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{order.progressStatus || order.orderStatus || 'Order Detail'}</Text>

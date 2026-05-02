@@ -15,7 +15,7 @@ import { LinearGradient } from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { COLORS, FONTS, SPACING } from '../../../../constants';
+import { COLORS, FONTS, SPACING, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
 import { RootStackParamList } from '../../../../types';
 import { useChangePasswordMutation } from '../../../../hooks/useAuthMutations';
 import { useAppSelector } from '../../../../store/hooks';
@@ -123,6 +123,7 @@ const ChangePasswordScreen: React.FC<ChangePasswordScreenProps> = ({
     >
       {!embedded || onBackToSecuritySettings ? (
         <TouchableOpacity
+          hitSlop={BACK_NAVIGATION_HIT_SLOP}
           style={styles.backButton}
           onPress={goBackToSecurity}
         >

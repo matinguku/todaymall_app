@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import ArrowBackIcon from '../../assets/icons/ArrowBackIcon';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SCREEN_HEIGHT } from '../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SCREEN_HEIGHT, BACK_NAVIGATION_HIT_SLOP } from '../../constants';
 import { useAppSelector } from '../../store/hooks';
 import { translations } from '../../i18n/translations';
 import { AuthStackParamList } from '../../types';
@@ -412,7 +412,7 @@ const EmailVerificationScreen = () => {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
-            <TouchableOpacity 
+            <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
               style={styles.backButton}
               onPress={() => navigation.goBack()}
             >

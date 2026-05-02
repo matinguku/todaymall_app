@@ -21,7 +21,7 @@ import HeadsetMicIcon from '../../../../assets/icons/HeadsetMicIcon';
 import NotificationBadge from '../../../../components/NotificationBadge';
 import EditIcon from '../../../../assets/icons/EditIcon';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
 import { useAppSelector } from '../../../../store/hooks';
 import { translations } from '../../../../i18n/translations';
 import { PhotoCaptureModal } from '../../../../components';
@@ -382,7 +382,7 @@ const PaymentScreen: React.FC = () => {
   const renderHeader = () => (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
-        <TouchableOpacity 
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
@@ -740,7 +740,7 @@ const PaymentScreen: React.FC = () => {
         <View style={styles.addressSection}>
           <TouchableOpacity 
             style={styles.addressRow}
-            onPress={() => navigation.navigate('AddressBook')}
+            onPress={() => navigation.push('AddressBook')}
           >
             <Icon name="location-outline" size={24} color={COLORS.black} />
             <Text style={styles.addressText}>{t('payment.addAddress')}</Text>
@@ -795,7 +795,7 @@ const PaymentScreen: React.FC = () => {
               <EditIcon width={20} height={20} color={COLORS.gray[600]} />
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => navigation.navigate('AddressBook' as never)}
+              onPress={() => navigation.push('AddressBook')}
               activeOpacity={0.7}
             >
               <Icon name="chevron-forward" size={20} color={COLORS.gray[600]} />
@@ -956,7 +956,7 @@ const PaymentScreen: React.FC = () => {
       <View style={styles.priceRow}>
         <Text style={styles.priceRowLabel}>서비스 수수료</Text>
         <Text style={[styles.priceRowValue, { fontSize: FONTS.sizes.md }]}>
-          {formatPriceKRW(serviceFee)}
+          {formatPriceKRW(serviceFeeAmountKRW)}
         </Text>
       </View>
 
@@ -965,14 +965,6 @@ const PaymentScreen: React.FC = () => {
         <Text style={styles.priceRowLabelGray}>{t('payment.shipping')}</Text>
         <Text style={styles.priceRowValue}>{formatPriceKRW(shippingTotalKRW)}</Text>
       </View>
-
-      {/* Service fee */}
-      {serviceFeeAmountKRW > 0 && (
-        <View style={styles.priceRow}>
-          <Text style={styles.priceRowLabelGray}>Service fee</Text>
-          <Text style={styles.priceRowValue}>{formatPriceKRW(serviceFeeAmountKRW)}</Text>
-        </View>
-      )}
 
       {/* Shipping coupon selector */}
       {shippingCoupons.length > 0 && (

@@ -14,7 +14,7 @@ import { LinearGradient } from 'react-native-linear-gradient';
 import { useNavigation, CommonActions } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { BORDER_RADIUS, COLORS, FONTS, SPACING } from '../../../../constants';
+import { BORDER_RADIUS, COLORS, FONTS, SPACING, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
 import { RootStackParamList } from '../../../../types';
 import { useAuth } from '../../../../context/AuthContext';
 import { DeleteAccountModal } from '../../../../components';
@@ -138,7 +138,7 @@ const ProfileSettingsScreen: React.FC = () => {
     <View
       style={styles.header}
     >
-      <TouchableOpacity 
+      <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
         style={styles.backButton}
         onPress={() => navigation.goBack()}
       >

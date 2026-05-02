@@ -12,7 +12,7 @@ import Icon from '../../../../../components/Icon';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../../../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, BACK_NAVIGATION_HIT_SLOP } from '../../../../../constants';
 import { RootStackParamList } from '../../../../../types';
 import { useAppSelector } from '../../../../../store/hooks';
 import { translations } from '../../../../../i18n/translations';
@@ -183,7 +183,7 @@ const HelpSearchScreen: React.FC = () => {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity 
+      <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
         style={styles.backButton}
         onPress={() => navigation.goBack()}
       >

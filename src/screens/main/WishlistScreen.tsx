@@ -15,11 +15,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
+import { BackNavTouchableOpacity } from '../../components/BackNavTouchable';
 import { useNavigation } from '@react-navigation/native';
 import TuneIcon from '../../assets/icons/TuneIcon';
 import ImageSearchResultsModal from './searchScreen/ImageSearchResultsModal';
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, BACK_NAVIGATION_HIT_SLOP } from '../../constants';
 import { Product } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { usePlatformStore } from '../../store/platformStore';
@@ -380,9 +381,9 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false }) => 
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           {!embedded && (
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <BackNavTouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
               <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-            </TouchableOpacity>
+            </BackNavTouchableOpacity>
           )}
           <Text style={styles.headerTitle}>{t('profile.wishlistTitle')}</Text>
           <View style={styles.placeholder} />
@@ -399,7 +400,7 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false }) => 
           <Text style={styles.loginPrompt}>
             {t('profile.wishlistLoginPrompt')}
           </Text>
-          <TouchableOpacity
+          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
             style={styles.loginButton}
             onPress={() => (navigation as any).navigate('Auth')}
           >
@@ -501,12 +502,9 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false }) => 
     <View style={styles.header}>
       <View style={styles.headerLeft}>
         {!embedded && (
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
+          <BackNavTouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
             <Icon name="chevron-back" size={24} color={COLORS.black} />
-          </TouchableOpacity>
+          </BackNavTouchableOpacity>
         )}
           <Text style={styles.headerTitle}>
           {t('profile.wishlistTitleWithCount', { count: wishlistItems.length })}

@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import Icon from '../../../../components/Icon';
+import { BackNavTouchableOpacity } from '../../../../components/BackNavTouchable';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS, FONTS, SPACING } from '../../../../constants';
 import { useAppSelector } from '../../../../store/hooks';
@@ -82,12 +83,9 @@ const PointDetailScreen: React.FC<PointDetailScreenProps> = ({ embedded = false,
           {/* Header */}
           <View style={styles.header}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-              <TouchableOpacity 
-                style={styles.backButton}
-                onPress={() => navigation.goBack()}
-              >
+              <BackNavTouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
                 <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
-              </TouchableOpacity>
+              </BackNavTouchableOpacity>
               <Text style={styles.headerTitle}>{t('home.voucherWallet')}</Text>
             </View>
             {/* <TouchableOpacity style={styles.menuButton}>

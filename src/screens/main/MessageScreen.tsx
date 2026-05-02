@@ -60,7 +60,16 @@ const MessageScreen: React.FC<MessageScreenProps> = ({ initialTabOverride }) => 
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
   const { isAuthenticated } = useAuth();
-  const { isConnected, unreadCount: orderUnreadCount, generalInquiryUnreadCount, getUnreadCounts, getGeneralInquiryUnreadCounts, onMessageReceived, onGeneralInquiryMessageReceived } = useSocket();
+  const {
+    isConnected,
+    unreadCount: orderUnreadCount,
+    generalInquiryUnreadCount,
+    getUnreadCounts,
+    getGeneralInquiryUnreadCounts,
+    markGeneralInquiryAsRead,
+    onMessageReceived,
+    onGeneralInquiryMessageReceived,
+  } = useSocket();
   const locale = useAppSelector((s) => s.i18n.locale) as 'en' | 'ko' | 'zh';
 
   // Layout-first paint: render header + tab switcher immediately and defer
@@ -266,6 +275,67 @@ const MessageScreen: React.FC<MessageScreenProps> = ({ initialTabOverride }) => 
       }
     });
   }, [onMessageReceived, onGeneralInquiryMessageReceived]);
+
+  // When the user opens the Order inquiry tab, treat the list as viewed: mark
+  // each thread read (REST), zero local badges, refresh socket total for nav tab.
+  useEffect(() => {
+    if (!isAuthenticated || !showHeavyContent || activeTab !== 'order') return;
+    const unreadItems = orderInquiries.filter((i) => i.unreadCount > 0);
+    if (unreadItems.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      await Promise.all(
+        unreadItems.map((i) => inquiryApi.markAsRead(i.inquiryId).catch(() => {})),
+      );
+      if (cancelled) return;
+      setOrderInquiries((prev) =>
+        prev.map((inq) => (inq.unreadCount > 0 ? { ...inq, unreadCount: 0 } : inq)),
+      );
+      if (isConnected) getUnreadCounts();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeTab,
+    orderInquiries,
+    isAuthenticated,
+    showHeavyContent,
+    isConnected,
+    getUnreadCounts,
+  ]);
+
+  // When the user opens the 1:1 inquiry tab, mark each unread thread read via
+  // socket and refresh the general inquiry total unread count.
+  useEffect(() => {
+    if (!isAuthenticated || !showHeavyContent || activeTab !== 'general') return;
+    const unreadIds = generalInquiriesLocal
+      .filter((i: any) => (i.unreadCount || 0) > 0)
+      .map((i: any) => i._id as string);
+    if (unreadIds.length === 0) return;
+
+    unreadIds.forEach((id) => markGeneralInquiryAsRead(id));
+    setGeneralInquiriesLocal((prev: any[]) =>
+      prev.map((inq: any) =>
+        unreadIds.includes(inq._id) ? { ...inq, unreadCount: 0 } : inq,
+      ),
+    );
+
+    const t = setTimeout(() => {
+      if (isConnected) getGeneralInquiryUnreadCounts();
+    }, 450);
+    return () => clearTimeout(t);
+  }, [
+    activeTab,
+    generalInquiriesLocal,
+    isAuthenticated,
+    showHeavyContent,
+    isConnected,
+    markGeneralInquiryAsRead,
+    getGeneralInquiryUnreadCounts,
+  ]);
 
   const handleOrderRefresh = useCallback(async () => {
     setOrderRefreshing(true);

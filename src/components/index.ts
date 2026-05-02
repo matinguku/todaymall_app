@@ -23,6 +23,7 @@ export { default as SortModal } from './SortModal';
 // More reusable components
 export { default as NotificationBadge } from './NotificationBadge';
 export { default as Icon } from './Icon';
+export { BackNavTouchableOpacity, BackNavPressable } from './BackNavTouchable';
 export { default as PlatformMenu } from './PlatformMenu';
 export { default as SearchButton } from './SearchButton';
 export { default as ImagePickerModal } from './ImagePickerModal';

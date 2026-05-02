@@ -25,7 +25,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { useRegisterMutation } from '../../hooks/useAuthMutations';
 import { useSocialLogin } from '../../services/socialAuth';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, VALIDATION_RULES, ERROR_MESSAGES, SCREEN_HEIGHT } from '../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, VALIDATION_RULES, ERROR_MESSAGES, SCREEN_HEIGHT, BACK_NAVIGATION_HIT_SLOP } from '../../constants';
 import { useAppSelector } from '../../store/hooks';
 import { translations } from '../../i18n/translations';
 import ShieldCheckIcon from '../../assets/icons/ShieldCheckIcon';
@@ -334,7 +334,7 @@ const SignupScreen: React.FC = () => {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
-            <TouchableOpacity 
+            <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
               style={styles.backButton}
               onPress={() => navigation.goBack()}
             >

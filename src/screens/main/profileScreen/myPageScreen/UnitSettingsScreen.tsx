@@ -11,7 +11,7 @@ import Icon from '../../../../components/Icon';
 import { LinearGradient } from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { COLORS, FONTS, SPACING, STORAGE_KEYS } from '../../../../constants';
+import { COLORS, FONTS, SPACING, STORAGE_KEYS, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
 import { useAppSelector } from '../../../../store/hooks';
 import { translations } from '../../../../i18n/translations';
 
@@ -73,7 +73,7 @@ const UnitSettingsScreen = () => {
       <View
         style={styles.header}
       >
-        <TouchableOpacity 
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >

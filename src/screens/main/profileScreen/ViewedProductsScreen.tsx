@@ -11,8 +11,9 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import Icon from '../../../components/Icon';
+import { BackNavTouchableOpacity } from '../../../components/BackNavTouchable';
 import { useNavigation } from '@react-navigation/native';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
 import { useAppSelector } from '../../../store/hooks';
 import { translations } from '../../../i18n/translations';
 import { productsApi } from '../../../services/productsApi';
@@ -337,7 +338,7 @@ const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = 
           const hasProducts = viewedDates.has(currentDay);
           
           weekDays.push(
-            <TouchableOpacity 
+            <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
               key={`current-${dayCounter}`} 
               style={styles.calendarDay}
               onPress={() => {
@@ -389,12 +390,9 @@ const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = 
     <View style={styles.header}>
       <View style={styles.headerLeft}>
         {!embedded && (
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
+          <BackNavTouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
             <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
-          </TouchableOpacity>
+          </BackNavTouchableOpacity>
         )}
         <Text style={styles.headerTitle}>{t('profile.viewedProducts')}</Text>
       </View>

@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, BACK_NAVIGATION_HIT_SLOP } from '../../constants';
 import { useAuth } from '../../context/AuthContext';
 
 const WishlistScreenDemo: React.FC = () => {
@@ -20,7 +20,7 @@ const WishlistScreenDemo: React.FC = () => {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity 
+          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
             style={styles.backButton}
             onPress={() => navigation.goBack()}
           >
@@ -38,7 +38,7 @@ const WishlistScreenDemo: React.FC = () => {
           <Text style={styles.emptySubtitle}>
             Please login to view your wishlist
           </Text>
-          <TouchableOpacity 
+          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
             style={styles.loginButton}
             onPress={() => navigation.navigate('Login' as never)}
           >
@@ -54,7 +54,7 @@ const WishlistScreenDemo: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity 
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >

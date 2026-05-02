@@ -12,7 +12,7 @@ import {
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import Icon from '../../../components/Icon';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
 import { RootStackParamList } from '../../../types';
 import { useGeneralInquiry } from '../../../hooks/useGeneralInquiry';
 import { useSocket } from '../../../context/SocketContext';
@@ -125,7 +125,7 @@ const GeneralInquiryListScreen: React.FC = () => {
     const lastMessageTime = item.lastMessageAt || item.createdAt;
 
     return (
-      <TouchableOpacity
+      <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
         style={styles.inquiryItem}
         onPress={() => {
           navigation.navigate('GeneralInquiryChat', { inquiryId: item._id });
@@ -184,7 +184,7 @@ const GeneralInquiryListScreen: React.FC = () => {
       <Text style={styles.emptySubtext}>
         {t('inquiry.createFirst') || 'Create your first inquiry to get started'}
       </Text>
-      <TouchableOpacity
+      <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
         style={styles.createButton}
         onPress={() => navigation.navigate('CreateGeneralInquiry')}
       >
@@ -199,7 +199,7 @@ const GeneralInquiryListScreen: React.FC = () => {
   const renderStatusTabs = () => (
     <View style={styles.statusTabs}>
       {(['all', 'open', 'closed', 'resolved'] as const).map((status) => (
-        <TouchableOpacity
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
           key={status}
           style={[
             styles.statusTab,
@@ -232,7 +232,7 @@ const GeneralInquiryListScreen: React.FC = () => {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} onPress={() => navigation.goBack()} style={styles.backButton}>
             <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>
@@ -252,7 +252,7 @@ const GeneralInquiryListScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} onPress={() => navigation.goBack()} style={styles.backButton}>
           <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>

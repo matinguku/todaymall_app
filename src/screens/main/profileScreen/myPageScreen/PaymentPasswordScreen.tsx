@@ -13,7 +13,7 @@ import {
 import Icon from '../../../../components/Icon';
 import { LinearGradient } from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
-import { COLORS, FONTS, SPACING } from '../../../../constants';
+import { COLORS, FONTS, SPACING, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
 import { useAuth } from '../../../../context/AuthContext';
 import { useAppSelector } from '../../../../store/hooks';
 import { translations } from '../../../../i18n/translations';
@@ -141,7 +141,7 @@ const PaymentPasswordScreen: React.FC<PaymentPasswordScreenProps> = ({
         style={styles.header}
       >
         {!embedded || onBackToSecuritySettings ? (
-          <TouchableOpacity style={styles.backButton} onPress={goBackToSecurity}>
+          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.backButton} onPress={goBackToSecurity}>
             <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
           </TouchableOpacity>
         ) : (

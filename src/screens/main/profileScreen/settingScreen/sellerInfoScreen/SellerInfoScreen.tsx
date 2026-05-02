@@ -11,7 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import Icon from '../../../../../components/Icon';
 import { RootStackParamList } from '../../../../../types';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../../../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, BACK_NAVIGATION_HIT_SLOP } from '../../../../../constants';
 import { useTranslation } from '../../../../../hooks/useTranslation';
 
 type SellerInfoNavigationProp = StackNavigationProp<RootStackParamList, 'Main'>;
@@ -22,7 +22,7 @@ const SellerInfoScreen: React.FC = () => {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+      <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.backButton} onPress={() => navigation.goBack()}>
         <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
       </TouchableOpacity>
       <Text style={styles.headerTitle}>{t('sellerInfoScreen.title')}</Text>

@@ -13,7 +13,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import Icon from '../../../components/Icon';
-import { COLORS, FONTS, SHADOWS, SPACING, BORDER_RADIUS } from '../../../constants';
+import { COLORS, FONTS, SHADOWS, SPACING, BORDER_RADIUS, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
 import { RootStackParamList } from '../../../types';
 import { useGeneralInquiry } from '../../../hooks/useGeneralInquiry';
 import { useTranslation } from '../../../hooks/useTranslation';
@@ -110,7 +110,7 @@ const CreateGeneralInquiryScreen: React.FC = () => {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} onPress={() => navigation.goBack()} style={styles.backButton}>
             <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>
@@ -130,7 +130,7 @@ const CreateGeneralInquiryScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} onPress={() => navigation.goBack()} style={styles.backButton}>
           <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>

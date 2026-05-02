@@ -11,7 +11,7 @@ import Icon from '../../../../components/Icon';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { COLORS, FONTS, SPACING } from '../../../../constants';
+import { COLORS, FONTS, SPACING, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
 import { RootStackParamList } from '../../../../types';
 import { useAppSelector } from '../../../../store/hooks';
 import { translations } from '../../../../i18n/translations';
@@ -71,7 +71,7 @@ const SecuritySettingsScreen: React.FC<SecuritySettingsScreenProps> = ({
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         {!embedded ? (
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.backButton} onPress={() => navigation.goBack()}>
             <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
           </TouchableOpacity>
         ) : (

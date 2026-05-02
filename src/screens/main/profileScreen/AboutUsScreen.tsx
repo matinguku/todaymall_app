@@ -9,7 +9,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Icon from '../../../components/Icon';
-import { COLORS, FONTS, SHADOWS, SPACING } from '../../../constants';
+import { COLORS, FONTS, SHADOWS, SPACING, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
 import { useAppSelector } from '../../../store/hooks';
 import { translations } from '../../../i18n/translations';
 
@@ -34,7 +34,7 @@ const AboutUsScreen: React.FC<AboutUsScreenProps> = ({ embedded = false }) => {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         {!embedded ? (
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.backButton} onPress={() => navigation.goBack()}>
             <Icon name="arrow-back" size={18} color={COLORS.text.primary} />
           </TouchableOpacity>
         ) : (

@@ -11,10 +11,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../components/Icon';
+import { BackNavTouchableOpacity } from '../../../components/BackNavTouchable';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG } from '../../../constants';
 import { useToast } from '../../../context/ToastContext';
 import { useTranslation } from '../../../hooks/useTranslation';
+import { productsApi } from '../../../services/productsApi';
 
 interface Store {
   storeId: string;
@@ -145,12 +147,9 @@ const FollowedStoreScreen: React.FC<FollowedStoreScreenProps> = ({ embedded = fa
     <View style={styles.header}>
       <View style={styles.headerLeft}>
         {!embedded && (
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
+          <BackNavTouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
             <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
-          </TouchableOpacity>
+          </BackNavTouchableOpacity>
         )}
         <Text style={styles.headerTitle}>{t('profile.followStore')}</Text>
       </View>

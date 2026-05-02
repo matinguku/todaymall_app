@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,12 +10,13 @@ import {
   Alert,
   ActivityIndicator,
   SafeAreaView,
+  Pressable,
 } from 'react-native';
 import Icon from '../../../../../components/Icon';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, BACK_NAVIGATION_HIT_SLOP } from '../../../../../constants';
 import { CustomSwitchProps, RootStackParamList, Address } from '../../../../../types';
 import { AddressSearchModal } from '../../../../../components';
 import { useAuth } from '../../../../../context/AuthContext';
@@ -124,14 +125,25 @@ const AddNewAddressScreen: React.FC = () => {
     }
   }, [isSuccess]);
 
+  const handleGoBack = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+    navigation.navigate('Main');
+  }, [navigation]);
+
   const renderHeader = () => (
     <View style={styles.header}>
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => navigation.goBack()}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+        hitSlop={BACK_NAVIGATION_HIT_SLOP}
+        style={({ pressed }) => [styles.backButton, pressed && { opacity: 0.65 }]}
+        onPress={handleGoBack}
       >
         <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-      </TouchableOpacity>
+      </Pressable>
       <Text style={styles.headerTitle}>Add Shipping Address</Text>
       <View style={styles.placeholder} />
     </View>

@@ -6,7 +6,7 @@ import { launchCamera, launchImageLibrary, MediaType, ImagePickerResponse, Camer
 import Icon from '../../../../components/Icon';
 import ImagePickerModal from '../../../../components/ImagePickerModal';
 import DatePickerModal from '../../../../components/DatePickerModal';
-import { COLORS, FONTS, SPACING, IMAGE_CONFIG } from '../../../../constants';
+import { COLORS, FONTS, SPACING, IMAGE_CONFIG, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
 import { RootStackParamList } from '../../../../types';
 import { useAuth } from '../../../../context/AuthContext';
 import { useAppSelector } from '../../../../store/hooks';
@@ -270,7 +270,7 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ embedded = false 
       <Text style={styles.modalLabel}>{label}</Text>
       <View style={styles.passwordWrapper}>
         <RNTextInput style={styles.passwordInput} value={value} onChangeText={onChangeText} secureTextEntry={secure} autoCapitalize="none" autoCorrect={false} placeholder={placeholder} placeholderTextColor={COLORS.text.secondary} />
-        <TouchableOpacity onPress={onToggle} style={styles.eyeButton}>
+        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} onPress={onToggle} style={styles.eyeButton}>
           <Icon name={secure ? 'eye-outline' : 'eye-off-outline'} size={20} color={COLORS.gray[500]} />
         </TouchableOpacity>
       </View>
@@ -282,7 +282,7 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ embedded = false 
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           {!embedded ? (
-            <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.backButton} onPress={() => navigation.goBack()}>
               <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
             </TouchableOpacity>
           ) : (
@@ -304,7 +304,7 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ embedded = false 
       {/* Header */}
       <View style={styles.header}>
         {!embedded ? (
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.backButton} onPress={() => navigation.goBack()}>
             <Icon name="arrow-back" size={16} color={COLORS.text.primary} />
           </TouchableOpacity>
         ) : (
