@@ -494,6 +494,7 @@ export type AuthStackParamList = {
   OtpVerification: { email: string; phoneNumber?: string; countryCode?: string; recoveryMethod?: 'email' | 'phone' };
   EmailVerification: { email: string; verified?: boolean; source?: 'signup' | 'login'; token?: string; userData?: any };
   SetPassword: { email: string; code: string };
+  GuestOrderResult: { response: any };
 };
 
 export type MainTabParamList = {

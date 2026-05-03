@@ -36,6 +36,7 @@ import EmailVerificationScreen from '../screens/auth/EmailVerificationScreen';
 import SetPasswordScreen from '../screens/auth/SetPasswordScreen';
 import QrLoginConfirmScreen from '../screens/auth/QrLoginConfirmScreen';
 import SocialReferralCodeScreen from '../screens/auth/SocialReferralCodeScreen';
+import GuestOrderResultScreen from '../screens/auth/GuestOrderResultScreen';
 import HomeScreen from '../screens/main/HomeScreen';
 import SearchScreen from '../screens/main/searchScreen/SearchScreen';
 import CartScreen from '../screens/main/CartScreen';
@@ -176,6 +177,7 @@ const AuthNavigator = React.memo(() => {
       <AuthStack.Screen name="OtpVerification" component={OtpVerificationScreen} />
       <AuthStack.Screen name="EmailVerification" component={EmailVerificationScreen} />
       <AuthStack.Screen name="SetPassword" component={SetPasswordScreen} />
+      <AuthStack.Screen name="GuestOrderResult" component={GuestOrderResultScreen} />
     </AuthStack.Navigator>
   );
 });

@@ -27,6 +27,7 @@ import { useToast } from '../../context/ToastContext';
 import { useLoginMutation, useSocialLoginMutation } from '../../hooks/useAuthMutations';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, VALIDATION_RULES, ERROR_MESSAGES, SCREEN_HEIGHT, SCREEN_WIDTH, BACK_NAVIGATION_HIT_SLOP } from '../../constants';
 import { resendLoginVerificationCode } from '../../services/authApi';
+import { guestOrderApi } from '../../services/guestOrderApi';
 import { useAppSelector } from '../../store/hooks';
 import { translations } from '../../i18n/translations';
 import ShieldCheckIcon from '../../assets/icons/ShieldCheckIcon';
@@ -268,7 +269,28 @@ const LoginScreen: React.FC = () => {
   const [showNonMemberModal, setShowNonMemberModal] = useState(false);
   const [nonMemberRecipientName, setNonMemberRecipientName] = useState('');
   const [nonMemberPhoneLocal, setNonMemberPhoneLocal] = useState('');
+  // Toggled true once "Get verification code" succeeds (toast fires); reveals
+  // the 6-digit code input below the button.
+  const [nonMemberCodeSent, setNonMemberCodeSent] = useState(false);
+  const [nonMemberVerificationCode, setNonMemberVerificationCode] = useState('');
+  // In-flight guard for the request-code call (prevents double-tap).
+  const [nonMemberCodeRequesting, setNonMemberCodeRequesting] = useState(false);
+  // In-flight guard for the auto-verify call.
+  const [nonMemberCodeVerifying, setNonMemberCodeVerifying] = useState(false);
+  // Latches true after verifyCode succeeds; locks the input so the request
+  // does not re-fire while the user inspects the verified code.
+  const [nonMemberCodeVerified, setNonMemberCodeVerified] = useState(false);
+  // Token returned by verifyCode; required as the path segment for the
+  // lookupOrders call. Cleared whenever verification is dropped.
+  const [nonMemberVerifyToken, setNonMemberVerifyToken] = useState<string | null>(null);
+  // In-flight guard for the lookupOrders call (Order Inquiry button).
+  const [nonMemberInquirySubmitting, setNonMemberInquirySubmitting] = useState(false);
   const nonMemberCountryCode = '+82';
+
+  // Build the API phone string from the country code + local number, keeping
+  // digits only (e.g. "+82" + "010-1234-5678" -> "821012345678").
+  const buildNonMemberPhone = () =>
+    `${nonMemberCountryCode.replace(/\D/g, '')}${nonMemberPhoneLocal.replace(/\D/g, '')}`;
   
   // Common email domains
   const commonEmailDomains = [
@@ -393,23 +415,137 @@ const LoginScreen: React.FC = () => {
     setShowNonMemberModal(false);
     setNonMemberRecipientName('');
     setNonMemberPhoneLocal('');
+    setNonMemberCodeSent(false);
+    setNonMemberVerificationCode('');
+    setNonMemberCodeRequesting(false);
+    setNonMemberCodeVerifying(false);
+    setNonMemberCodeVerified(false);
+    setNonMemberVerifyToken(null);
+    setNonMemberInquirySubmitting(false);
   };
 
-  const handleNonMemberGetCode = () => {
+  const handleNonMemberGetCode = async () => {
     if (!nonMemberRecipientName.trim() || !nonMemberPhoneLocal.trim()) {
       showToast(t('auth.nonMemberFillFields'), 'info');
       return;
     }
-    showToast(t('auth.verificationCodeHint'), 'success');
+    if (nonMemberCodeRequesting) return;
+    setNonMemberCodeRequesting(true);
+    // If the user re-requests after already verifying, drop the verified
+    // latch, any previously typed code, and the stale token so the new
+    // code can be entered and re-verified.
+    setNonMemberVerificationCode('');
+    setNonMemberCodeVerified(false);
+    setNonMemberVerifyToken(null);
+
+    const phone = buildNonMemberPhone();
+    const result = await guestOrderApi.requestCode(phone);
+    setNonMemberCodeRequesting(false);
+
+    if (!result.success) {
+      showToast(result.error || t('auth.failedToSendCode') || 'Failed to send verification code', 'error');
+      return;
+    }
+    // Server message is intentionally vague ("If this number has guest
+    // orders, a verification code was sent.") — relay it verbatim when
+    // available, fall back to our existing localized hint otherwise.
+    showToast(result.message || t('auth.verificationCodeHint'), 'success');
+    setNonMemberCodeSent(true);
   };
 
-  const handleNonMemberOrderInquiry = () => {
+  // Auto-verify the 6-digit code: as soon as the input reaches 6 digits we
+  // POST to the verify endpoint. If the user backspaces below 6, drop the
+  // verified latch so a fresh 6-digit entry triggers another verify.
+  useEffect(() => {
+    if (!nonMemberCodeSent) return;
+    if (nonMemberVerificationCode.length !== 6) {
+      if (nonMemberCodeVerified) setNonMemberCodeVerified(false);
+      return;
+    }
+    if (nonMemberCodeVerifying || nonMemberCodeVerified) return;
+
+    let cancelled = false;
+    setNonMemberCodeVerifying(true);
+    (async () => {
+      const phone = buildNonMemberPhone();
+      const result = await guestOrderApi.verifyCode(phone, nonMemberVerificationCode);
+      if (cancelled) return;
+      setNonMemberCodeVerifying(false);
+      if (result.success) {
+        setNonMemberCodeVerified(true);
+        // Capture the token returned by the verify endpoint — required as
+        // the path segment for the lookupOrders call below.
+        const token = (result.data as any)?.token || (result.data as any)?.orderAccessToken || null;
+        setNonMemberVerifyToken(token);
+        showToast(result.message || t('auth.verificationSuccess') || 'Verification successful', 'success');
+      } else {
+        showToast(result.error || t('auth.invalidCode') || 'Invalid verification code', 'error');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nonMemberVerificationCode, nonMemberCodeSent]);
+
+  const handleNonMemberOrderInquiry = async () => {
     if (!nonMemberRecipientName.trim() || !nonMemberPhoneLocal.trim()) {
       showToast(t('auth.nonMemberFillFields'), 'info');
       return;
     }
-    showToast(t('auth.nonMemberOrderSubmitted'), 'success');
+    if (!nonMemberCodeVerified || !nonMemberVerifyToken) {
+      showToast(
+        t('auth.enterCompleteCode') || 'Please verify the 6-digit code first',
+        'info',
+      );
+      return;
+    }
+    if (nonMemberInquirySubmitting) return;
+    setNonMemberInquirySubmitting(true);
+
+    const phone = buildNonMemberPhone();
+    // Body composition: name/phone come from the modal; remaining fields
+    // (quantity, price, address, customs code, etc.) are placeholders
+    // matching the example payload — replace these with real sources when
+    // the upstream UI/state for them is in place.
+    const body = {
+      quantity: 2,
+      price: 18900,
+      paymentMethod: 'deposit',
+      netExpectedTotalKRW: 0,
+      estimatedShippingCostBySeller: {},
+      userName: nonMemberRecipientName.trim(),
+      phone,
+      recipient: nonMemberRecipientName.trim(),
+      contact: phone,
+      personalCustomsCode: 'P872150282703', // TODO: source
+      mainAddress:
+        'Building 102, 30 Yanggi-gil, Gongdo-eup, Anseong-si, Gyeonggi-do', // TODO: source
+      detailedAddress: 'Room 2102', // TODO: source
+      zipCode: '17558', // TODO: source
+    };
+
+    const result = await guestOrderApi.lookupOrders(nonMemberVerifyToken, body);
+    setNonMemberInquirySubmitting(false);
+
+    if (!result.success) {
+      showToast(
+        result.error || t('chat.failedToSubmitOrderInquiry') || 'Failed to load order',
+        'error',
+      );
+      return;
+    }
+
+    // Reconstruct the original-shaped envelope so the result screen can
+    // read `response.data.order` exactly as documented.
+    const responseEnvelope = {
+      status: 'success',
+      message: result.message,
+      data: result.data,
+    };
+
     closeNonMemberModal();
+    (navigation as any).navigate('GuestOrderResult', { response: responseEnvelope });
   };
 
   useFocusEffect(
@@ -964,9 +1100,41 @@ const LoginScreen: React.FC = () => {
                   style={styles.nonMemberVerifyButton}
                   onPress={handleNonMemberGetCode}
                   activeOpacity={0.85}
+                  disabled={nonMemberCodeRequesting}
                 >
-                  <Text style={styles.nonMemberVerifyButtonText}>{t('auth.getVerificationCode')}</Text>
+                  <Text style={styles.nonMemberVerifyButtonText}>
+                    {nonMemberCodeRequesting
+                      ? (t('auth.sendingCode') || 'Sending…')
+                      : t('auth.getVerificationCode')}
+                  </Text>
                 </TouchableOpacity>
+
+                {nonMemberCodeSent && (
+                  <View style={styles.nonMemberFieldBlock}>
+                    <View style={styles.nonMemberLabelRow}>
+                      <Icon
+                        name={nonMemberCodeVerified ? 'checkmark-circle' : 'key-outline'}
+                        size={18}
+                        color={nonMemberCodeVerified ? COLORS.primary : COLORS.primary}
+                      />
+                      <Text style={styles.nonMemberFieldLabel}>
+                        {t('auth.enterVerificationCode') || 'Verification code'}
+                      </Text>
+                    </View>
+                    <RNTextInput
+                      style={styles.nonMemberInput}
+                      placeholder={t('auth.enterCompleteCode') || 'Enter the 6-digit code'}
+                      placeholderTextColor={COLORS.gray[500]}
+                      value={nonMemberVerificationCode}
+                      onChangeText={(text) =>
+                        setNonMemberVerificationCode(text.replace(/\D/g, '').slice(0, 6))
+                      }
+                      keyboardType="number-pad"
+                      maxLength={6}
+                      editable={!nonMemberCodeVerifying && !nonMemberCodeVerified}
+                    />
+                  </View>
+                )}
 
                 <View style={styles.nonMemberNoticeBox}>
                   <View style={styles.nonMemberNoticeHeader}>
@@ -982,11 +1150,19 @@ const LoginScreen: React.FC = () => {
                 </View>
 
                 <TouchableOpacity
-                  style={styles.nonMemberPrimaryButton}
+                  style={[
+                    styles.nonMemberPrimaryButton,
+                    (!nonMemberCodeVerified || nonMemberInquirySubmitting) && { opacity: 0.5 },
+                  ]}
                   onPress={handleNonMemberOrderInquiry}
                   activeOpacity={0.9}
+                  disabled={!nonMemberCodeVerified || nonMemberInquirySubmitting}
                 >
-                  <Text style={styles.nonMemberPrimaryButtonText}>{t('auth.orderInquiry')}</Text>
+                  <Text style={styles.nonMemberPrimaryButtonText}>
+                    {nonMemberInquirySubmitting
+                      ? (t('chat.submitting') || 'Submitting…')
+                      : t('auth.orderInquiry')}
+                  </Text>
                 </TouchableOpacity>
               </ScrollView>
             </View>
