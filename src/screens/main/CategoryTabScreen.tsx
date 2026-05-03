@@ -820,7 +820,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: FONTS.sizes.md * 1.5,
     fontWeight: '600',
-    color: COLORS.text.primary,
+    color: COLORS.text.red,
   },
   browseLevel3Row: {
     flexDirection: 'row',

@@ -6,10 +6,11 @@
     "start": "node ./scripts/adbReverse.js && react-native start --custom-log-reporter-path ./scripts/metroFilteredReporter.js",
     "start:reset": "node ./scripts/adbReverse.js && react-native start --reset-cache --custom-log-reporter-path ./scripts/metroFilteredReporter.js",
     "android": "node ./scripts/run-android.js",
-    "android:clean": "cd android && ./gradlew clean && cd .. && node ./scripts/run-android.js",
+    "android:clean": "node ./scripts/run-gradle.js clean && node ./scripts/run-android.js",
     "dev:android": "concurrently -n metro,android -c cyan,green \"npm run start\" \"npx wait-on tcp:127.0.0.1:8081 && npm run android\"",
     "ios": "react-native run-ios",
-    "adb:reverse": "node ./scripts/adbReverse.js"
+    "adb:reverse": "node ./scripts/adbReverse.js",
+    "gradle": "node ./scripts/run-gradle.js"
   },
   "dependencies": {
     "@d11/react-native-fast-image": "^8.13.0",

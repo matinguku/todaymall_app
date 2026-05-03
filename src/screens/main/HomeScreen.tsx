@@ -551,20 +551,9 @@ const AutoLiveChannelSection = React.memo(({
           const promoTopImages = promoImages.slice(0, 2).filter((img: unknown) => img != null);
           const promoThirdImage = promoImages[2];
           return (
-          <TouchableOpacity
+          <View
             key={card.id || `promo-${cardIdx}`}
             style={[styles.liveChannelPromoCard, { backgroundColor: COLORS.white }]}
-            activeOpacity={0.85}
-            onPress={() => {
-              const pid = card.externalIds?.[0];
-              if (card.ids?.[0] && pid != null) {
-                navigation.navigate('ProductDetail', {
-                  productId: pid,
-                  source: selectedPlatform || '1688',
-                  country: locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en',
-                });
-              }
-            }}
           >
             <LinearGradient
               colors={[card.backgroundColor, COLORS.transparent]}
@@ -670,7 +659,7 @@ const AutoLiveChannelSection = React.memo(({
                     <Text style={styles.promoCardTitleSmall}>{card.title}</Text>
                   </View>
 
-                  <TouchableOpacity style={styles.promoCardImages} activeOpacity={0.7}>
+                  <View style={styles.promoCardImages}>
                     {promoTopImages.map((img: any, idx: number) => (
                         <TouchableOpacity
                           key={`${card.id}-img-${idx}`}
@@ -696,7 +685,7 @@ const AutoLiveChannelSection = React.memo(({
                           />
                         </TouchableOpacity>
                     ))}
-                  </TouchableOpacity>
+                  </View>
                 </View>
                 <TouchableOpacity
                   style={[styles.promoCardPriceTag, { marginLeft: 'auto', marginRight: SPACING.sm, marginTop: SPACING.sm }]}
@@ -733,7 +722,7 @@ const AutoLiveChannelSection = React.memo(({
                 </TouchableOpacity>
               </View>
             )}
-          </TouchableOpacity>
+          </View>
           );
         })}
       </View>

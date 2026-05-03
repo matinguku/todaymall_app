@@ -19,6 +19,11 @@ const postUnauthenticated = async <T>(
   body: Record<string, any>,
 ): Promise<GuestApiResponse<T>> => {
   const url = `${API_BASE_URL}/${path.replace(/^\//, '')}`;
+  // Explicitly stringify the body once so we (a) print the same bytes that
+  // get sent over the wire and (b) avoid RN's noisy object dump.
+  const bodyString = JSON.stringify(body);
+  console.log('[guestOrderApi] POST URL  :', url);
+  console.log('[guestOrderApi] POST BODY :', bodyString);
   const signatureHeaders = await buildSignatureHeaders('POST', url, body);
 
   const controller = new AbortController();
@@ -33,11 +38,14 @@ const postUnauthenticated = async <T>(
         'ngrok-skip-browser-warning': 'true',
         ...signatureHeaders,
       },
-      body: JSON.stringify(body),
+      body: bodyString,
       signal: controller.signal,
     });
+
+    //console.log('[guestOrderApi] fetch completed', response?.message);
   } catch (err: any) {
     clearTimeout(timeoutId);
+    console.log('[guestOrderApi] fetch threw', err?.name, err?.message);
     if (err?.name === 'AbortError') {
       return { success: false, error: 'Request timed out. Please try again.' };
     }
@@ -45,11 +53,16 @@ const postUnauthenticated = async <T>(
   }
   clearTimeout(timeoutId);
 
+  console.log('[guestOrderApi] response', response.status, url);
   const text = await response.text();
+  // Truncate long bodies so the log line stays readable; full payloads
+  // (e.g. the lookupOrders response) can be many kilobytes.
+  console.log('[guestOrderApi] response BODY:', text.slice(0, 800));
   let data: any;
   try {
     data = JSON.parse(text);
   } catch {
+    console.log('[guestOrderApi] non-JSON body:', text.slice(0, 200));
     return { success: false, error: 'Invalid response from server.' };
   }
 
@@ -100,10 +113,10 @@ export const guestOrderApi = {
    * guest-checkout/orders/lookup/verify-code  body: { phone, code }.
    * The token returned in `data.token` is what `lookupOrders` consumes.
    */
-  verifyCode: (phone: string, code: string) =>
+  verifyCode: (phone: string, code: string, recipient: string) =>
     postUnauthenticated<{ verified?: boolean; token?: string }>(
       'guest-checkout/orders/lookup/verify-code',
-      { phone, code },
+      { phone, code, recipient },
     ),
 
   /**

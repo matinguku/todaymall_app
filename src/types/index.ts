@@ -495,6 +495,7 @@ export type AuthStackParamList = {
   EmailVerification: { email: string; verified?: boolean; source?: 'signup' | 'login'; token?: string; userData?: any };
   SetPassword: { email: string; code: string };
   GuestOrderResult: { response: any };
+  GuestOrderInquiry: undefined;
 };
 
 export type MainTabParamList = {

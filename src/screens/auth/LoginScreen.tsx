@@ -280,17 +280,20 @@ const LoginScreen: React.FC = () => {
   // Latches true after verifyCode succeeds; locks the input so the request
   // does not re-fire while the user inspects the verified code.
   const [nonMemberCodeVerified, setNonMemberCodeVerified] = useState(false);
-  // Token returned by verifyCode; required as the path segment for the
-  // lookupOrders call. Cleared whenever verification is dropped.
-  const [nonMemberVerifyToken, setNonMemberVerifyToken] = useState<string | null>(null);
-  // In-flight guard for the lookupOrders call (Order Inquiry button).
-  const [nonMemberInquirySubmitting, setNonMemberInquirySubmitting] = useState(false);
+  // Full response.data from verifyCode — already contains `orders[]`, so
+  // the Order Inquiry button does not need a second API call. Cleared
+  // whenever verification is dropped.
+  const [nonMemberVerifyData, setNonMemberVerifyData] = useState<any | null>(null);
+  // Stored response from the Order Inquiry call. When non-null, the modal
+  // swaps from the input form to the compact "1 order found" card view.
+  const [nonMemberInquiryResult, setNonMemberInquiryResult] = useState<any | null>(null);
   const nonMemberCountryCode = '+82';
 
-  // Build the API phone string from the country code + local number, keeping
-  // digits only (e.g. "+82" + "010-1234-5678" -> "821012345678").
-  const buildNonMemberPhone = () =>
-    `${nonMemberCountryCode.replace(/\D/g, '')}${nonMemberPhoneLocal.replace(/\D/g, '')}`;
+  // Build the API phone string: local-only digits, no country code, no
+  // dashes (e.g. "010-1234-5678" -> "01012345678"). The server keys the
+  // verification code by this exact string, so request-code and verify-code
+  // must use the same builder.
+  const buildNonMemberPhone = () => nonMemberPhoneLocal.replace(/\D/g, '');
   
   // Common email domains
   const commonEmailDomains = [
@@ -420,25 +423,54 @@ const LoginScreen: React.FC = () => {
     setNonMemberCodeRequesting(false);
     setNonMemberCodeVerifying(false);
     setNonMemberCodeVerified(false);
-    setNonMemberVerifyToken(null);
-    setNonMemberInquirySubmitting(false);
+    setNonMemberVerifyData(null);
+    setNonMemberInquiryResult(null);
+  };
+
+  // "Re-check" link in the result view: clear the result so the form is
+  // shown again. The user keeps their already-entered name + phone +
+  // verified code, so they can immediately retap "Order Inquiry" if they
+  // just want to refetch.
+  const handleNonMemberRecheck = () => {
+    setNonMemberInquiryResult(null);
+  };
+
+  // Tapping a card in the result view drills into the full details screen
+  // for that specific order. The detail screen reads `response.data.order`
+  // (single), so we wrap the tapped order in that envelope shape.
+  const handleNonMemberResultCardPress = (order: any) => {
+    if (!order) return;
+    const responseEnvelope = {
+      status: 'success',
+      data: { order },
+    };
+    closeNonMemberModal();
+    (navigation as any).navigate('GuestOrderResult', { response: responseEnvelope });
   };
 
   const handleNonMemberGetCode = async () => {
+    console.log('[NonMember] Get verification code pressed', {
+      name: nonMemberRecipientName,
+      phoneLocal: nonMemberPhoneLocal,
+    });
     if (!nonMemberRecipientName.trim() || !nonMemberPhoneLocal.trim()) {
+      console.log('[NonMember] validation rejected — empty name or phone');
       showToast(t('auth.nonMemberFillFields'), 'info');
       return;
     }
-    if (nonMemberCodeRequesting) return;
+    if (nonMemberCodeRequesting) {
+      console.log('[NonMember] already requesting; ignoring tap');
+      return;
+    }
     setNonMemberCodeRequesting(true);
     // If the user re-requests after already verifying, drop the verified
-    // latch, any previously typed code, and the stale token so the new
-    // code can be entered and re-verified.
+    // latch, any previously typed code, and the stale verify-data so the
+    // new code can be entered and re-verified.
     setNonMemberVerificationCode('');
     setNonMemberCodeVerified(false);
-    setNonMemberVerifyToken(null);
+    setNonMemberVerifyData(null);
 
-    const phone = buildNonMemberPhone();
+    const phone = nonMemberPhoneLocal.trim();
     const result = await guestOrderApi.requestCode(phone);
     setNonMemberCodeRequesting(false);
 
@@ -446,10 +478,13 @@ const LoginScreen: React.FC = () => {
       showToast(result.error || t('auth.failedToSendCode') || 'Failed to send verification code', 'error');
       return;
     }
-    // Server message is intentionally vague ("If this number has guest
-    // orders, a verification code was sent.") — relay it verbatim when
-    // available, fall back to our existing localized hint otherwise.
-    showToast(result.message || t('auth.verificationCodeHint'), 'success');
+    // Always prefer the localized hint over the server's English message
+    // so the toast respects the user's locale. The server message is only
+    // used when no translation is available.
+    showToast(
+      t('auth.verificationCodeHint') || result.message || 'Verification code sent.',
+      'success',
+    );
     setNonMemberCodeSent(true);
   };
 
@@ -468,18 +503,27 @@ const LoginScreen: React.FC = () => {
     setNonMemberCodeVerifying(true);
     (async () => {
       const phone = buildNonMemberPhone();
-      const result = await guestOrderApi.verifyCode(phone, nonMemberVerificationCode);
+      const result = await guestOrderApi.verifyCode(phone, nonMemberVerificationCode, nonMemberRecipientName.trim());
       if (cancelled) return;
       setNonMemberCodeVerifying(false);
       if (result.success) {
         setNonMemberCodeVerified(true);
-        // Capture the token returned by the verify endpoint — required as
-        // the path segment for the lookupOrders call below.
-        const token = (result.data as any)?.token || (result.data as any)?.orderAccessToken || null;
-        setNonMemberVerifyToken(token);
-        showToast(result.message || t('auth.verificationSuccess') || 'Verification successful', 'success');
+        // The verify endpoint already returns the orders list under
+        // `data.orders[]` — no separate token / lookup call is needed. The
+        // Order Inquiry button reads from this state to swap the modal.
+        setNonMemberVerifyData(result.data);
+        // Localized first so the toast respects the user's locale.
+        showToast(
+          t('auth.verificationCodeHint') ||
+            result.message ||
+            'Verification successful',
+          'success',
+        );
       } else {
-        showToast(result.error || t('auth.invalidCode') || 'Invalid verification code', 'error');
+        showToast(
+          t('auth.failedToSendCode') || result.error || 'Invalid verification code',
+          'error',
+        );
       }
     })();
     return () => {
@@ -488,64 +532,22 @@ const LoginScreen: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nonMemberVerificationCode, nonMemberCodeSent]);
 
-  const handleNonMemberOrderInquiry = async () => {
+  const handleNonMemberOrderInquiry = () => {
     if (!nonMemberRecipientName.trim() || !nonMemberPhoneLocal.trim()) {
       showToast(t('auth.nonMemberFillFields'), 'info');
       return;
     }
-    if (!nonMemberCodeVerified || !nonMemberVerifyToken) {
+    if (!nonMemberCodeVerified || !nonMemberVerifyData) {
       showToast(
         t('auth.enterCompleteCode') || 'Please verify the 6-digit code first',
         'info',
       );
       return;
     }
-    if (nonMemberInquirySubmitting) return;
-    setNonMemberInquirySubmitting(true);
-
-    const phone = buildNonMemberPhone();
-    // Body composition: name/phone come from the modal; remaining fields
-    // (quantity, price, address, customs code, etc.) are placeholders
-    // matching the example payload — replace these with real sources when
-    // the upstream UI/state for them is in place.
-    const body = {
-      quantity: 2,
-      price: 18900,
-      paymentMethod: 'deposit',
-      netExpectedTotalKRW: 0,
-      estimatedShippingCostBySeller: {},
-      userName: nonMemberRecipientName.trim(),
-      phone,
-      recipient: nonMemberRecipientName.trim(),
-      contact: phone,
-      personalCustomsCode: 'P872150282703', // TODO: source
-      mainAddress:
-        'Building 102, 30 Yanggi-gil, Gongdo-eup, Anseong-si, Gyeonggi-do', // TODO: source
-      detailedAddress: 'Room 2102', // TODO: source
-      zipCode: '17558', // TODO: source
-    };
-
-    const result = await guestOrderApi.lookupOrders(nonMemberVerifyToken, body);
-    setNonMemberInquirySubmitting(false);
-
-    if (!result.success) {
-      showToast(
-        result.error || t('chat.failedToSubmitOrderInquiry') || 'Failed to load order',
-        'error',
-      );
-      return;
-    }
-
-    // Reconstruct the original-shaped envelope so the result screen can
-    // read `response.data.order` exactly as documented.
-    const responseEnvelope = {
-      status: 'success',
-      message: result.message,
-      data: result.data,
-    };
-
-    closeNonMemberModal();
-    (navigation as any).navigate('GuestOrderResult', { response: responseEnvelope });
+    // verifyCode already fetched the order list — just swap the modal to
+    // the compact "N orders found" view using the cached response.data.
+    // No second network call is needed.
+    setNonMemberInquiryResult(nonMemberVerifyData);
   };
 
   useFocusEffect(
@@ -985,7 +987,7 @@ const LoginScreen: React.FC = () => {
               </View>
               <TouchableOpacity
                 style={styles.nonMemberSignupRow}
-                onPress={() => setShowNonMemberModal(true)}
+                onPress={() => (navigation as any).navigate('GuestOrderInquiry')}
                 activeOpacity={0.7}
               >
                 <Text style={styles.loginLink}>{t('auth.nonMemberModal')}</Text>
@@ -1062,6 +1064,109 @@ const LoginScreen: React.FC = () => {
                 </View>
                 <Text style={styles.nonMemberModalSubtitle}>{t('auth.nonMemberModalSubtitle')}</Text>
 
+                {nonMemberInquiryResult ? (
+                  (() => {
+                    // Compact result view. The verify-code response puts the
+                    // matches under `data.orders[]` (array), so iterate and
+                    // render one card per order. Field accesses tolerate
+                    // partial data so the modal never crashes on unexpected
+                    // shapes.
+                    const orders: any[] = Array.isArray(
+                      (nonMemberInquiryResult as any)?.orders,
+                    )
+                      ? (nonMemberInquiryResult as any).orders
+                      : [];
+                    const count = orders.length;
+                    return (
+                      <>
+                        <View style={styles.nonMemberResultHeader}>
+                          <Text style={styles.nonMemberResultCount}>
+                            {`${count} order${count === 1 ? '' : 's'} found`}
+                          </Text>
+                          <TouchableOpacity
+                            onPress={handleNonMemberRecheck}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Text style={styles.nonMemberResultRecheck}>Re-check</Text>
+                          </TouchableOpacity>
+                        </View>
+                        {orders.map((order: any) => {
+                          const items = Array.isArray(order.items) ? order.items : [];
+                          const firstItem = items[0] || {};
+                          const subjectVal = firstItem.subject;
+                          const subject =
+                            typeof subjectVal === 'object' && subjectVal
+                              ? subjectVal[locale] ||
+                                subjectVal.en ||
+                                subjectVal.ko ||
+                                subjectVal.zh ||
+                                ''
+                              : subjectVal || '';
+                          const price =
+                            firstItem.userPrice ?? firstItem.salePriceKrw ?? 0;
+                          const status = String(
+                            order.orderStatus || 'pending',
+                          ).toUpperCase();
+                          const created = order.createdAt
+                            ? new Date(order.createdAt)
+                            : null;
+                          const dateStr =
+                            created && !isNaN(created.getTime())
+                              ? created.toLocaleDateString()
+                              : '';
+                          return (
+                            <TouchableOpacity
+                              key={order._id || order.orderNumber}
+                              style={[styles.nonMemberResultCard, { marginBottom: SPACING.sm }]}
+                              activeOpacity={0.85}
+                              onPress={() => handleNonMemberResultCardPress(order)}
+                            >
+                              <View style={styles.nonMemberResultTopRow}>
+                                <Text style={styles.nonMemberResultOrderNo} numberOfLines={1}>
+                                  {order.orderNumber || ''}
+                                </Text>
+                                <Text style={styles.nonMemberResultDate}>{dateStr}</Text>
+                              </View>
+                              <View style={styles.nonMemberResultBody}>
+                                {firstItem.imageUrl ? (
+                                  <Image
+                                    source={{ uri: firstItem.imageUrl }}
+                                    style={styles.nonMemberResultImage}
+                                    resizeMode="cover"
+                                  />
+                                ) : (
+                                  <View
+                                    style={[
+                                      styles.nonMemberResultImage,
+                                      { backgroundColor: COLORS.gray[200] },
+                                    ]}
+                                  />
+                                )}
+                                <View style={styles.nonMemberResultMeta}>
+                                  <Text style={styles.nonMemberResultSubject} numberOfLines={2}>
+                                    {subject}
+                                  </Text>
+                                  <Text style={styles.nonMemberResultPrice}>
+                                    {`₩${Math.round(Number(price)).toLocaleString('ko-KR')}`}
+                                  </Text>
+                                </View>
+                                <View style={styles.nonMemberResultStatusBox}>
+                                  <Text style={styles.nonMemberResultStatus}>{status}</Text>
+                                  <Icon
+                                    name="chevron-forward"
+                                    size={14}
+                                    color={COLORS.text.secondary}
+                                  />
+                                </View>
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </>
+                    );
+                  })()
+                ) : (
+                  <>
                 <View style={styles.nonMemberFieldBlock}>
                   <View style={styles.nonMemberLabelRow}>
                     <Icon name="person-outline" size={18} color={COLORS.primary} />
@@ -1152,18 +1257,18 @@ const LoginScreen: React.FC = () => {
                 <TouchableOpacity
                   style={[
                     styles.nonMemberPrimaryButton,
-                    (!nonMemberCodeVerified || nonMemberInquirySubmitting) && { opacity: 0.5 },
+                    (!nonMemberCodeVerified || !nonMemberVerifyData) && { opacity: 0.5 },
                   ]}
                   onPress={handleNonMemberOrderInquiry}
                   activeOpacity={0.9}
-                  disabled={!nonMemberCodeVerified || nonMemberInquirySubmitting}
+                  disabled={!nonMemberCodeVerified || !nonMemberVerifyData}
                 >
                   <Text style={styles.nonMemberPrimaryButtonText}>
-                    {nonMemberInquirySubmitting
-                      ? (t('chat.submitting') || 'Submitting…')
-                      : t('auth.orderInquiry')}
+                    {t('auth.orderInquiry')}
                   </Text>
                 </TouchableOpacity>
+                  </>
+                )}
               </ScrollView>
             </View>
           </View>
@@ -1912,6 +2017,85 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.md,
     fontWeight: '700',
     color: COLORS.white,
+  },
+
+  // ─── Result view ("1 order found" card) ─────────────────────────
+  nonMemberResultHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  nonMemberResultCount: {
+    fontSize: FONTS.sizes.md,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+  },
+  nonMemberResultRecheck: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '600',
+    color: COLORS.error,
+  },
+  nonMemberResultCard: {
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md,
+    backgroundColor: COLORS.white,
+  },
+  nonMemberResultTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  nonMemberResultOrderNo: {
+    flex: 1,
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.gray[500],
+  },
+  nonMemberResultDate: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.gray[500],
+    marginLeft: SPACING.sm,
+  },
+  nonMemberResultBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  nonMemberResultImage: {
+    width: 56,
+    height: 56,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.gray[100],
+  },
+  nonMemberResultMeta: {
+    flex: 1,
+    minWidth: 0,
+  },
+  nonMemberResultSubject: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '600',
+    color: COLORS.text.primary,
+    marginBottom: 2,
+  },
+  nonMemberResultPrice: {
+    fontSize: FONTS.sizes.md,
+    fontWeight: '700',
+    color: COLORS.error,
+  },
+  nonMemberResultStatusBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  nonMemberResultStatus: {
+    fontSize: FONTS.sizes.xs,
+    fontWeight: '600',
+    color: COLORS.text.secondary,
+    letterSpacing: 0.5,
   },
 });
 

@@ -1,43 +1,17 @@
 const { existsSync } = require('fs');
 const { join } = require('path');
 const { spawnSync } = require('child_process');
+const { buildAndroidToolchainEnv } = require('./androidToolchainEnv');
 
-function pickFirstExisting(paths) {
-  for (const p of paths) {
-    if (p && existsSync(p)) return p;
-  }
-  return null;
+const { env, javaHome, androidHome } = buildAndroidToolchainEnv();
+
+if (!javaHome) {
+  console.error(
+    'JAVA_HOME is not set and no JDK was found (checked Android Studio jbr/jre under Program Files).',
+  );
+  console.error('Install Android Studio or set JAVA_HOME to a JDK 17+ install.');
+  process.exit(1);
 }
-
-const localAppData = process.env.LOCALAPPDATA || '';
-const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
-
-const androidHome =
-  process.env.ANDROID_HOME ||
-  pickFirstExisting([join(localAppData, 'Android', 'Sdk')]);
-
-const javaHome =
-  process.env.JAVA_HOME ||
-  pickFirstExisting([
-    join(programFiles, 'Android', 'Android Studio', 'jbr'),
-    join(programFiles, 'Android', 'Android Studio', 'jre'),
-  ]);
-
-const env = { ...process.env };
-const pathEntries = [];
-
-if (javaHome) {
-  env.JAVA_HOME = javaHome;
-  pathEntries.push(join(javaHome, 'bin'));
-}
-
-if (androidHome) {
-  env.ANDROID_HOME = androidHome;
-  pathEntries.push(join(androidHome, 'platform-tools'));
-  pathEntries.push(join(androidHome, 'emulator'));
-}
-
-env.PATH = `${pathEntries.join(';')};${process.env.PATH || ''}`;
 
 const adbPath = androidHome
   ? join(

@@ -72,6 +72,10 @@ def enableProguardInReleaseBuilds = true
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+// Release keystore is optional in-repo; Play Store / production builds should place `app/todaymall.keystore`.
+def releaseKeystoreFile = file('todaymall.keystore')
+def hasReleaseKeystore = releaseKeystoreFile.exists()
+
 android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
@@ -95,10 +99,16 @@ android {
     }
     signingConfigs {
         release {
-            storeFile file('todaymall.keystore')
-            storePassword '123456'
-            keyAlias 'todaymall_alias'
-            keyPassword '123456'
+            if (hasReleaseKeystore) {
+                storeFile releaseKeystoreFile
+                storePassword '123456'
+                keyAlias 'todaymall_alias'
+                keyPassword '123456'
+            } else {
+                // No keystore in tree: use debug signing so `assembleRelease` / bundles still build locally.
+                // Add android/app/todaymall.keystore (and keep it out of git) for store uploads.
+                initWith signingConfigs.debug
+            }
         }
     }
     buildTypes {
