@@ -5,13 +5,14 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Linking,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../components/Icon';
+import { BackNavTouchableOpacity } from '../../../components/BackNavTouchable';
 import { useNavigation } from '@react-navigation/native';
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../constants';
 
 type PrivacyPolicyScreenProps = {
   embedded?: boolean;
@@ -41,9 +42,9 @@ const PrivacyPolicyScreen: React.FC<PrivacyPolicyScreenProps> = ({
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         {!embedded || onBackToSecuritySettings ? (
-          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.backButton} onPress={goBackToSecurity}>
+          <BackNavTouchableOpacity style={styles.backButton} onPress={goBackToSecurity}>
             <Icon name="arrow-back" size={18} color={COLORS.text.primary} />
-          </TouchableOpacity>
+          </BackNavTouchableOpacity>
         ) : (
           <View style={styles.placeholder} />
         )}

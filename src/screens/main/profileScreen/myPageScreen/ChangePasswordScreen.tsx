@@ -8,14 +8,15 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
+import { BackNavTouchableOpacity } from '../../../../components/BackNavTouchable';
 import { LinearGradient } from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { COLORS, FONTS, SPACING, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
+import { COLORS, FONTS, SPACING } from '../../../../constants';
 import { RootStackParamList } from '../../../../types';
 import { useChangePasswordMutation } from '../../../../hooks/useAuthMutations';
 import { useAppSelector } from '../../../../store/hooks';
@@ -122,13 +123,9 @@ const ChangePasswordScreen: React.FC<ChangePasswordScreenProps> = ({
       style={styles.header}
     >
       {!embedded || onBackToSecuritySettings ? (
-        <TouchableOpacity
-          hitSlop={BACK_NAVIGATION_HIT_SLOP}
-          style={styles.backButton}
-          onPress={goBackToSecurity}
-        >
+        <BackNavTouchableOpacity style={styles.backButton} onPress={goBackToSecurity}>
           <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-        </TouchableOpacity>
+        </BackNavTouchableOpacity>
       ) : (
         <View style={styles.placeholder} />
       )}

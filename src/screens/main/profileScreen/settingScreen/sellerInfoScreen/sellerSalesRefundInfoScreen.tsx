@@ -3,18 +3,19 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   TouchableOpacity,
   TextInput,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import Icon from '../../../../../components/Icon';
+import { BackNavTouchableOpacity } from '../../../../../components/BackNavTouchable';
 import type { SellerStackParamList } from '../../../../../types';
 import { useTranslation } from '../../../../../hooks/useTranslation';
 import { useSellerDashboardMutation } from '../../../../../hooks/useSellerDashboardMutation';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, BACK_NAVIGATION_HIT_SLOP } from '../../../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../../../constants';
 
 type NavigationProp = StackNavigationProp<SellerStackParamList, 'SellerSalesRefundInfo'>;
 
@@ -35,9 +36,10 @@ type SellerDashboardItem = {
 
 type SellerSalesRefundInfoScreenProps = {
   embedded?: boolean;
+  onEmbeddedBack?: () => void;
 };
 
-const SellerSalesRefundInfoScreen: React.FC<SellerSalesRefundInfoScreenProps> = ({ embedded = false }) => {
+const SellerSalesRefundInfoScreen: React.FC<SellerSalesRefundInfoScreenProps> = ({ embedded = false, onEmbeddedBack }) => {
   const navigation = useNavigation<NavigationProp>();
   const { t } = useTranslation();
   const revenueTab = t('sellerInfo.orderData.revenueTab');
@@ -83,10 +85,19 @@ const SellerSalesRefundInfoScreen: React.FC<SellerSalesRefundInfoScreenProps> = 
 
   const renderHeader = () => (
     <View style={styles.header}>
-      {!embedded ? (
-        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.backButton} onPress={() => navigation.goBack()}>
+      {!embedded || onEmbeddedBack ? (
+        <BackNavTouchableOpacity
+          style={styles.backButton}
+          onPress={() => {
+            if (embedded && onEmbeddedBack) {
+              onEmbeddedBack();
+              return;
+            }
+            navigation.goBack();
+          }}
+        >
           <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-        </TouchableOpacity>
+        </BackNavTouchableOpacity>
       ) : (
         <View style={styles.headerPlaceholder} />
       )}

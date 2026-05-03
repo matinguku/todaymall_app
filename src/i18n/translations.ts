@@ -370,6 +370,9 @@ export const translations = {
     },
     category: {
       searchPlaceholder: 'Search products...',
+      browseSubcategories: 'View by Category',
+      combinedLevel3Jump: 'All subcategories',
+      combinedLevel3JumpHint: 'Tap a name to scroll to its section',
       showMore: 'Show more',
       loadingProducts: 'Loading products...',
       failedToLoadCategories: 'Failed to load categories',
@@ -3219,6 +3222,9 @@ Supports credit and check cards from various banks for recharging and payments.`
     },
     category: {
       searchPlaceholder: '搜索产品...',
+      browseSubcategories: '按分类查看',
+      combinedLevel3Jump: '全部三级分类',
+      combinedLevel3JumpHint: '点击名称跳转到对应分组',
       showMore: '显示更多',
       loadingProducts: '加载产品中...',
       failedToLoadCategories: '加载分类失败',
@@ -5052,6 +5058,9 @@ Supports credit and check cards from various banks for recharging and payments.`
     },
     category: {
       searchPlaceholder: '제품 검색...',
+      browseSubcategories: '카테고리로 보기',
+      combinedLevel3Jump: '세부 카테고리 전체',
+      combinedLevel3JumpHint: '이름을 누르면 해당 구역으로 이동합니다',
       showMore: '더 보기',
       loadingProducts: '제품 로딩 중...',
       failedToLoadCategories: '카테고리를 불러오지 못했습니다',

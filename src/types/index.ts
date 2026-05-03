@@ -470,6 +470,8 @@ export type RootStackParamList = {
     subcategoryId?: string;
     subsubcategories?: any[];
     source?: string; // Platform/source (e.g., 'taobao', '1688')
+    /** When set, selects this level-3 filter after subsubcategories load */
+    initialSubSubCategoryId?: string;
   };
   Reviews: { productId: string };
   Following: undefined;

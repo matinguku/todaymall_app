@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput as RNTextInput, TouchableOpacity, Alert, ActivityIndicator, SafeAreaView, Image, Modal, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput as RNTextInput, TouchableOpacity, Alert, ActivityIndicator, Image, Modal, Pressable } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { launchCamera, launchImageLibrary, MediaType, ImagePickerResponse, CameraOptions, ImageLibraryOptions } from 'react-native-image-picker';
 import Icon from '../../../../components/Icon';
+import { BackNavTouchableOpacity } from '../../../../components/BackNavTouchable';
 import ImagePickerModal from '../../../../components/ImagePickerModal';
 import DatePickerModal from '../../../../components/DatePickerModal';
 import { COLORS, FONTS, SPACING, IMAGE_CONFIG, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
@@ -20,6 +22,7 @@ type GenderValue = '' | 'male' | 'female';
 type EmailStep = 'request' | 'confirm';
 type EditProfileScreenProps = {
   embedded?: boolean;
+  onEmbeddedBack?: () => void;
 };
 
 interface ProfileFormData {
@@ -31,7 +34,7 @@ interface ProfileFormData {
   birthday: string;
 }
 
-const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ embedded = false }) => {
+const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ embedded = false, onEmbeddedBack }) => {
   const navigation = useNavigation<EditProfileScreenNavigationProp>();
   const { user, updateUser } = useAuth();
   const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
@@ -281,10 +284,19 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ embedded = false 
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          {!embedded ? (
-            <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.backButton} onPress={() => navigation.goBack()}>
+          {!embedded || onEmbeddedBack ? (
+            <BackNavTouchableOpacity
+              style={styles.backButton}
+              onPress={() => {
+                if (embedded && onEmbeddedBack) {
+                  onEmbeddedBack();
+                  return;
+                }
+                navigation.goBack();
+              }}
+            >
               <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-            </TouchableOpacity>
+            </BackNavTouchableOpacity>
           ) : (
             <View style={styles.placeholder} />
           )}
@@ -303,10 +315,19 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ embedded = false 
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        {!embedded ? (
-          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.backButton} onPress={() => navigation.goBack()}>
+        {!embedded || onEmbeddedBack ? (
+          <BackNavTouchableOpacity
+            style={styles.backButton}
+            onPress={() => {
+              if (embedded && onEmbeddedBack) {
+                onEmbeddedBack();
+                return;
+              }
+              navigation.goBack();
+            }}
+          >
             <Icon name="arrow-back" size={16} color={COLORS.text.primary} />
-          </TouchableOpacity>
+          </BackNavTouchableOpacity>
         ) : (
           <View style={styles.placeholder} />
         )}

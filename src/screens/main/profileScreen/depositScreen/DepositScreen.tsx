@@ -35,9 +35,10 @@ interface Transaction {
 
 interface DepositScreenProps {
   embedded?: boolean;
+  onEmbeddedBack?: () => void;
 }
 
-const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false }) => {
+const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbeddedBack }) => {
   const navigation = useNavigation();
   const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
@@ -306,8 +307,17 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false }) => {
       {/* Header with Gradient */}
       {/* Header */}
       <View style={styles.header}>
-        {!embedded && (
-          <BackNavTouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        {(!embedded || onEmbeddedBack) && (
+          <BackNavTouchableOpacity
+            style={styles.backButton}
+            onPress={() => {
+              if (embedded && onEmbeddedBack) {
+                onEmbeddedBack();
+                return;
+              }
+              (navigation as any).goBack();
+            }}
+          >
             <Icon name="arrow-back" size={16} color={COLORS.black} />
           </BackNavTouchableOpacity>
         )}

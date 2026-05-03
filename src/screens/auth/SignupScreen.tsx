@@ -8,13 +8,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  SafeAreaView,
   BackHandler,
   Modal,
   FlatList,
   TextInput as RNTextInput,
   StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
 import ArrowBackIcon from '../../assets/icons/ArrowBackIcon';
 import ArrowDownIcon from '../../assets/icons/ArrowDownIcon';

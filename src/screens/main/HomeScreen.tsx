@@ -1152,6 +1152,14 @@ const HomeScreen: React.FC = () => {
   const categoryScrollRef = useRef<ScrollView>(null);
   const scrollY = useRef(new Animated.Value(0)).current;
   const SCROLL_THRESHOLD = 5; // Very fast animated color change
+
+  /** Categories + banner row below search: hide on scroll down, show on scroll up. */
+  const lastScrollYSubHeaderRef = useRef(0);
+  const isSubHeaderCollapsedRef = useRef(false);
+  const subHeaderExpandAnim = useRef(new Animated.Value(1)).current; // 1 = fully visible
+  /** Max measured height only — avoids interpolate jumping when inner layout shifts. */
+  const subHeaderMeasuredMaxRef = useRef(0);
+  const [subHeaderSectionHeight, setSubHeaderSectionHeight] = useState(0);
   
   // State for scroll to top button
   const [showScrollToTop, setShowScrollToTop] = useState(false);
@@ -2704,6 +2712,41 @@ const HomeScreen: React.FC = () => {
         const scrollPosition = contentOffset.y;
         const scrollHeight = contentSize.height;
         const screenHeight = layoutMeasurement.height;
+
+        const y = Math.max(0, scrollPosition);
+        const prevY = lastScrollYSubHeaderRef.current;
+        const dy = y - prevY;
+        lastScrollYSubHeaderRef.current = y;
+
+        // Collapse needs a clearer downward intent; reveal reacts to slight upward scroll.
+        const SUB_HEADER_COLLAPSE_DELTA = 12;
+        const SUB_HEADER_REVEAL_DELTA = 3;
+        const SUB_HEADER_TOP_REVEAL = 12;
+        const runSubHeaderAnim = (toExpanded: boolean) => {
+          subHeaderExpandAnim.stopAnimation();
+          isSubHeaderCollapsedRef.current = !toExpanded;
+          Animated.timing(subHeaderExpandAnim, {
+            toValue: toExpanded ? 1 : 0,
+            duration: toExpanded ? 160 : 200,
+            useNativeDriver: false,
+          }).start();
+        };
+
+        if (subHeaderSectionHeight > 0) {
+          if (y <= SUB_HEADER_TOP_REVEAL) {
+            if (isSubHeaderCollapsedRef.current) {
+              runSubHeaderAnim(true);
+            }
+          } else if (dy > SUB_HEADER_COLLAPSE_DELTA && y > 48) {
+            if (!isSubHeaderCollapsedRef.current) {
+              runSubHeaderAnim(false);
+            }
+          } else if (dy < -SUB_HEADER_REVEAL_DELTA) {
+            if (isSubHeaderCollapsedRef.current) {
+              runSubHeaderAnim(true);
+            }
+          }
+        }
         
         // Update isScrolled state based on threshold
         if (scrollPosition > SCROLL_THRESHOLD && !isScrolled) {
@@ -2763,9 +2806,35 @@ const HomeScreen: React.FC = () => {
       />
       <View style={styles.fixedTopBars}>
         {renderHeader()}
-        {renderCategories()}
+        <Animated.View
+          style={
+            subHeaderSectionHeight > 0
+              ? {
+                  height: subHeaderExpandAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, subHeaderSectionHeight +1],
+                  }),
+                  overflow: 'hidden',
+                }
+              : styles.subHeaderMeasureWrap
+          }
+        >
+          <View
+            onLayout={(e) => {
+              const h = Math.round(e.nativeEvent.layout.height);
+              if (h <= 0) return;
+              const nextMax = Math.max(subHeaderMeasuredMaxRef.current, h);
+              if (nextMax !== subHeaderMeasuredMaxRef.current || nextMax !== subHeaderSectionHeight) {
+                subHeaderMeasuredMaxRef.current = nextMax;
+                setSubHeaderSectionHeight(nextMax);
+              }
+            }}
+          >
+            {renderCategories()}
+            {renderBanners()}
+          </View>
+        </Animated.View>
         {/* {renderCategoryTabs()} */}
-        {renderBanners()}
       </View>
       
       <Animated.ScrollView
@@ -2777,7 +2846,7 @@ const HomeScreen: React.FC = () => {
         }
         showsVerticalScrollIndicator={false}
         onScroll={handleScroll}
-        scrollEventThrottle={32}
+        scrollEventThrottle={16}
       >
         <View style={styles.contentWrapper}>
           {/* {renderQuickCategories()} */}
@@ -2859,6 +2928,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     zIndex: 10,
     // marginBottom: -80,
+  },
+  /** Until first layout, let categories+banners size naturally for height measurement. */
+  subHeaderMeasureWrap: {
+    overflow: 'hidden',
   },
   headerPlaceholder: {
     backgroundColor: COLORS.white,
@@ -3362,11 +3435,11 @@ const styles = StyleSheet.create({
   },
    newInGridContainer: {
     width: '100%',
-    paddingHorizontal: SPACING.sm,
+    paddingHorizontal: SPACING.md,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: SPACING.sm,
+    justifyContent: 'flex-start',
+    gap: SPACING.smmd,
    },
    newInGridCard: {
      width: GRID_CARD_WIDTH,
@@ -4168,8 +4241,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: SPACING.lg,
-    gap: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.xs,
   },
   moreToLoveFooterText: {
     fontSize: FONTS.sizes.sm,

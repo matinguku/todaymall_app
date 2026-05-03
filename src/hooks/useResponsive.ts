@@ -19,8 +19,17 @@ export function useResponsive() {
     // fit the new column count automatically.
     const moreToLoveColumns = isTablet ? (isLandscape ? 4 : 3) : 2;
 
-    const gridCardWidth =
-      (contentWidth - SPACING.sm * (moreToLoveColumns - 1) - SPACING.sm * 2) / moreToLoveColumns;
+    // Match HomeScreen `newInGridContainer` paddingHorizontal + gap between columns.
+    // Inner row width = screen - 2*outerPadding; n cards + (n-1)*gaps must equal that.
+    // (Previously an extra - SPACING.sm*2 made cards too narrow and space-between
+    // blew out the center gutter.)
+    const moreToLoveOuterPadding = SPACING.md;
+    const moreToLoveGap = SPACING.smmd;
+    const moreToLoveInnerWidth = screenWidth - moreToLoveOuterPadding * 2;
+    const gridCardWidth = Math.floor(
+      (moreToLoveInnerWidth - moreToLoveGap * (moreToLoveColumns - 1)) /
+        moreToLoveColumns,
+    );
 
     const newInColumns = isTablet ? 5 : 3;
     const newInGaps = SPACING.xs * (newInColumns - 1);

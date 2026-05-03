@@ -332,6 +332,25 @@ const ProfileScreen: React.FC = () => {
     return () => clearTimeout(id);
   }, [tabletSection, embeddedCouponPointOpen]);
 
+  /** Tablet landscape: collapse overlay panels (orders / coupon tabs opened from dashboard). */
+  const closeTabletOverlayPanels = useCallback(() => {
+    setEmbeddedOrdersOpen(false);
+    setEmbeddedCouponPointOpen(false);
+  }, []);
+
+  /** Tablet landscape: leave an embedded detail panel and return to the main account dashboard. */
+  const exitTabletEmbeddedToOverview = useCallback(() => {
+    closeTabletOverlayPanels();
+    setEmbeddedSettingsPage(null);
+    setTabletSection('overview');
+  }, [closeTabletOverlayPanels]);
+
+  /** Tablet landscape: leave a settings sub-page opened from the sidebar. */
+  const exitTabletSettingsEmbedded = useCallback(() => {
+    setEmbeddedSettingsPage(null);
+    setTabletSection('overview');
+  }, []);
+
   const [wishlistCount, setWishlistCount] = useState(0);
   const [wishlistFirstImage, setWishlistFirstImage] = useState<string>('');
   const [viewedCount, setViewedCount] = useState(0);
@@ -1833,23 +1852,23 @@ const ProfileScreen: React.FC = () => {
       case 'wishlist':
         // Render the actual wishlist page in the right panel.
         // (Matches what you'd see after tapping the dashboard card.)
-        return <WishlistScreen embedded />;
+        return <WishlistScreen embedded onEmbeddedBack={exitTabletEmbeddedToOverview} />;
 
       case 'following':
-        return <FollowedStoreScreen embedded />;
+        return <FollowedStoreScreen embedded onEmbeddedBack={exitTabletEmbeddedToOverview} />;
 
       case 'viewed':
-        return <ViewedProductsScreen embedded />;
+        return <ViewedProductsScreen embedded onEmbeddedBack={exitTabletEmbeddedToOverview} />;
 
       case 'billing':
-        return <DepositScreen embedded />;
+        return <DepositScreen embedded onEmbeddedBack={exitTabletEmbeddedToOverview} />;
 
       case 'feedback': {
-        return <MessageScreen initialTabOverride="general" />;
+        return <MessageScreen initialTabOverride="general" onEmbeddedBack={exitTabletEmbeddedToOverview} />;
       }
 
       case 'returns':
-        return <BuyListScreen embedded initialTabOverride="error" />;
+        return <BuyListScreen embedded initialTabOverride="error" onEmbeddedBack={exitTabletEmbeddedToOverview} />;
 
       case 'settings':
         // Settings summary card intentionally removed from dashboard.
@@ -1865,6 +1884,7 @@ const ProfileScreen: React.FC = () => {
     <SafeAreaView style={styles.container}>
       {/* Top half linear gradient background */}
       <LinearGradient
+        pointerEvents="none"
         colors={['#FFE1D4', '#FAFAFA']}
         style={styles.gradientBackground}
       />
@@ -1877,7 +1897,11 @@ const ProfileScreen: React.FC = () => {
           {isAuthenticated && renderTabletSidebar()}
           {embeddedOrdersOpen ? (
             <View style={styles.tabletDashboardPanel}>
-              <BuyListScreen embedded initialTabOverride={embeddedOrdersInitialTab} />
+              <BuyListScreen
+                embedded
+                initialTabOverride={embeddedOrdersInitialTab}
+                onEmbeddedBack={() => setEmbeddedOrdersOpen(false)}
+              />
             </View>
           ) : embeddedCouponPointOpen ? (
             <View style={styles.tabletDashboardPanel}>
@@ -1886,6 +1910,7 @@ const ProfileScreen: React.FC = () => {
               {embeddedCouponPointTab === 'coupon' ? (
                 <CouponScreen
                   embedded
+                  onEmbeddedBack={() => setEmbeddedCouponPointOpen(false)}
                   onMainTabChange={(tab) => {
                     setEmbeddedCouponPointTab(tab);
                     setTabletSection('coupon_point');
@@ -1894,6 +1919,7 @@ const ProfileScreen: React.FC = () => {
               ) : (
                 <PointDetailScreen
                   embedded
+                  onEmbeddedBack={() => setEmbeddedCouponPointOpen(false)}
                   onMainTabChange={(tab) => {
                     setEmbeddedCouponPointTab(tab);
                     setTabletSection('coupon_point');
@@ -1903,36 +1929,37 @@ const ProfileScreen: React.FC = () => {
             </View>
           ) : tabletSection === 'wishlist' ? (
             <View style={styles.tabletDashboardPanel}>
-              <WishlistScreen embedded />
+              <WishlistScreen embedded onEmbeddedBack={exitTabletEmbeddedToOverview} />
             </View>
           ) : tabletSection === 'following' ? (
             <View style={styles.tabletDashboardPanel}>
-              <FollowedStoreScreen embedded />
+              <FollowedStoreScreen embedded onEmbeddedBack={exitTabletEmbeddedToOverview} />
             </View>
           ) : tabletSection === 'viewed' ? (
             <View style={styles.tabletDashboardPanel}>
-              <ViewedProductsScreen embedded />
+              <ViewedProductsScreen embedded onEmbeddedBack={exitTabletEmbeddedToOverview} />
             </View>
           ) : tabletSection === 'billing' ? (
             <View style={styles.tabletDashboardPanel}>
-              <DepositScreen embedded />
+              <DepositScreen embedded onEmbeddedBack={exitTabletEmbeddedToOverview} />
             </View>
           ) : tabletSection === 'feedback' ? (
             <View style={styles.tabletDashboardPanel}>
-              <MessageScreen initialTabOverride="general" />
+              <MessageScreen initialTabOverride="general" onEmbeddedBack={exitTabletEmbeddedToOverview} />
             </View>
           ) : tabletSection === 'returns' ? (
             <View style={styles.tabletDashboardPanel}>
-              <BuyListScreen embedded initialTabOverride="error" />
+              <BuyListScreen embedded initialTabOverride="error" onEmbeddedBack={exitTabletEmbeddedToOverview} />
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'shippingAddress' ? (
             <View style={styles.tabletDashboardPanel}>
-              <AddressBookScreen embedded />
+              <AddressBookScreen embedded onEmbeddedBack={exitTabletSettingsEmbedded} />
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'securitySettings' ? (
             <View style={styles.tabletDashboardPanel}>
               <SecuritySettingsScreen
                 embedded
+                onEmbeddedBack={exitTabletSettingsEmbedded}
                 onSelectEmbeddedPage={(page) => {
                   setEmbeddedSettingsPage(page);
                   setTabletSection('settings');
@@ -1962,28 +1989,29 @@ const ProfileScreen: React.FC = () => {
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'personalInformation' ? (
             <View style={styles.tabletDashboardPanel}>
-              <EditProfileScreen embedded />
+              <EditProfileScreen embedded onEmbeddedBack={exitTabletSettingsEmbedded} />
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'affiliateMarketing' ? (
             <View style={styles.tabletDashboardPanel}>
-              <AffiliateMarketingScreen embedded />
+              <AffiliateMarketingScreen embedded onEmbeddedBack={exitTabletSettingsEmbedded} />
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'sellerDashboard' ? (
             <View style={styles.tabletDashboardPanel}>
-              <SellerPageScreen embedded />
+              <SellerPageScreen embedded onEmbeddedBack={exitTabletSettingsEmbedded} />
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'sellerOrdersRefunds' ? (
             <View style={styles.tabletDashboardPanel}>
-              <SellerSalesRefundInfoScreen embedded />
+              <SellerSalesRefundInfoScreen embedded onEmbeddedBack={exitTabletSettingsEmbedded} />
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'sellerTeamPerformance' ? (
             <View style={styles.tabletDashboardPanel}>
-              <SellerTeamInfoScreen embedded />
+              <SellerTeamInfoScreen embedded onEmbeddedBack={exitTabletSettingsEmbedded} />
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'helpCenter' ? (
             <View style={styles.tabletDashboardPanel}>
               <HelpCenterScreen
                 embedded
+                onEmbeddedBack={exitTabletSettingsEmbedded}
                 onGuidePress={(guide) => {
                   setEmbeddedHelpSubPageData(guide);
                   setEmbeddedSettingsPage('helpChapter');
@@ -2039,7 +2067,7 @@ const ProfileScreen: React.FC = () => {
             </View>
           ) : tabletSection === 'settings' && embeddedSettingsPage === 'todayMallIntroduction' ? (
             <View style={styles.tabletDashboardPanel}>
-              <AboutUsScreen embedded />
+              <AboutUsScreen embedded onEmbeddedBack={exitTabletSettingsEmbedded} />
             </View>
           ) : (
             <ScrollView
@@ -2597,8 +2625,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.red,
   },
   moreToLoveSection: {
-    paddingHorizontal: SPACING.xs,
-    paddingVertical: SPACING.lg,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
     marginBottom: SPACING.xl,
   },
   moreToLoveCardWrap: {

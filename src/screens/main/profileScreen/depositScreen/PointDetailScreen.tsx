@@ -5,9 +5,9 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
 import { BackNavTouchableOpacity } from '../../../../components/BackNavTouchable';
 import { useNavigation } from '@react-navigation/native';
@@ -22,9 +22,10 @@ type CouponMainTab = 'coupon' | 'point';
 interface PointDetailScreenProps {
   embedded?: boolean;
   onMainTabChange?: (tab: CouponMainTab) => void;
+  onEmbeddedBack?: () => void;
 }
 
-const PointDetailScreen: React.FC<PointDetailScreenProps> = ({ embedded = false, onMainTabChange }) => {
+const PointDetailScreen: React.FC<PointDetailScreenProps> = ({ embedded = false, onMainTabChange, onEmbeddedBack }) => {
   const navigation = useNavigation();
   const { showToast } = useToast();
   const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
@@ -78,12 +79,21 @@ const PointDetailScreen: React.FC<PointDetailScreenProps> = ({ embedded = false,
 
   return (
     <Container style={styles.container}>
-      {!embedded && (
+      {(!embedded || onEmbeddedBack) && (
         <>
           {/* Header */}
           <View style={styles.header}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-              <BackNavTouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+              <BackNavTouchableOpacity
+                style={styles.backButton}
+                onPress={() => {
+                  if (embedded && onEmbeddedBack) {
+                    onEmbeddedBack();
+                    return;
+                  }
+                  (navigation as any).goBack();
+                }}
+              >
                 <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
               </BackNavTouchableOpacity>
               <Text style={styles.headerTitle}>{t('home.voucherWallet')}</Text>

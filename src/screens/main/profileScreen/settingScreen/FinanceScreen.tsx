@@ -5,8 +5,8 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { BORDER_RADIUS, COLORS, FONTS, SHADOWS, SPACING, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';

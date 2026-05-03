@@ -7,13 +7,13 @@ import {
   TouchableOpacity,
   Alert,
   ScrollView,
-  SafeAreaView,
   Modal,
   TextInput,
   ActivityIndicator,
   Pressable,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import Icon from '../../../../../components/Icon';
 import { BackNavPressable } from '../../../../../components/BackNavTouchable';
@@ -36,9 +36,10 @@ type AddressBookScreenNavigationProp = StackNavigationProp<RootStackParamList, '
 type AddressBookScreenRouteProp = RouteProp<RootStackParamList, 'AddressBook'>;
 type AddressBookScreenProps = {
   embedded?: boolean;
+  onEmbeddedBack?: () => void;
 };
 
-const AddressBookScreen: React.FC<AddressBookScreenProps> = ({ embedded = false }) => {
+const AddressBookScreen: React.FC<AddressBookScreenProps> = ({ embedded = false, onEmbeddedBack }) => {
   const navigation = useNavigation<AddressBookScreenNavigationProp>();
   const route = useRoute<AddressBookScreenRouteProp>();
   const { user, updateUser } = useAuth();
@@ -357,12 +358,18 @@ const AddressBookScreen: React.FC<AddressBookScreenProps> = ({ embedded = false 
 
   const renderHeader = () => (
     <View style={styles.header}>
-      {!embedded && (
+      {(!embedded || onEmbeddedBack) && (
         <BackNavPressable
           accessibilityRole="button"
           accessibilityLabel="Go back"
           style={({ pressed }) => [styles.backButton, pressed && styles.headerPressablePressed]}
-          onPress={handleGoBack}
+          onPress={() => {
+            if (embedded && onEmbeddedBack) {
+              onEmbeddedBack();
+              return;
+            }
+            handleGoBack();
+          }}
         >
           <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
         </BackNavPressable>

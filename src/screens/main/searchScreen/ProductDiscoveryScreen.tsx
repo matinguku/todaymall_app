@@ -10,12 +10,12 @@ import {
   Dimensions,
   TextInput,
   Animated,
-  SafeAreaView,
   ActivityIndicator,
   RefreshControl,
   useWindowDimensions,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -58,7 +58,15 @@ const ProductDiscoveryScreen: React.FC = () => {
   const { user, isGuest } = useAuth();
   const { showToast } = useToast();
   
-  const { subCategoryName, categoryId, categoryName, subcategoryId, subsubcategories: passedSubSubCategories, source: routeSource } = route.params;
+  const {
+    subCategoryName,
+    categoryId,
+    categoryName,
+    subcategoryId,
+    subsubcategories: passedSubSubCategories,
+    source: routeSource,
+    initialSubSubCategoryId,
+  } = route.params;
   
   // Search context removed - using local state
   const [searchQuery, setSearchQuery] = useState<string>(subCategoryName || categoryName || '');
@@ -329,6 +337,24 @@ const ProductDiscoveryScreen: React.FC = () => {
   const indicatorX = useRef(new Animated.Value(0)).current;
   const indicatorW = useRef(new Animated.Value(0)).current;
   const scrollX = useRef(new Animated.Value(0)).current;
+  const initialSubSubAppliedRef = useRef(false);
+
+  useEffect(() => {
+    initialSubSubAppliedRef.current = false;
+  }, [subcategoryId, categoryId, initialSubSubCategoryId]);
+
+  useEffect(() => {
+    if (initialSubSubAppliedRef.current) return;
+    if (!initialSubSubCategoryId) return;
+    if (displaySubSubCategories.length === 0) return;
+    const found = displaySubSubCategories.find(
+      (s: any) => s && s.id !== 'all' && String(s.id) === String(initialSubSubCategoryId).trim(),
+    );
+    if (found) {
+      setSelectedSubSubCategory(String(found.id));
+      initialSubSubAppliedRef.current = true;
+    }
+  }, [initialSubSubCategoryId, displaySubSubCategories]);
 
   // Add useEffect to refresh wishlist when component mounts
   // On mount, just ensure externalIds are loaded (handled inside useWishlistStatus)

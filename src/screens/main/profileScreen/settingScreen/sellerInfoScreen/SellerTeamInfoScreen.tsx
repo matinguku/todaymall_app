@@ -3,16 +3,17 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   TouchableOpacity,
   ScrollView,
   Dimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import Icon from '../../../../../components/Icon';
+import { BackNavTouchableOpacity } from '../../../../../components/BackNavTouchable';
 import type { SellerStackParamList } from '../../../../../types';
-import { COLORS, BACK_NAVIGATION_HIT_SLOP } from '../../../../../constants';
+import { COLORS } from '../../../../../constants';
 import { useTranslation } from '../../../../../hooks/useTranslation';
 
 const { width } = Dimensions.get('window');
@@ -45,9 +46,10 @@ const sellerData: Seller[] = [
 
 type SellerTeamInfoProps = {
   embedded?: boolean;
+  onEmbeddedBack?: () => void;
 };
 
-const SellerTeamInfo: React.FC<SellerTeamInfoProps> = ({ embedded = false }) => {
+const SellerTeamInfo: React.FC<SellerTeamInfoProps> = ({ embedded = false, onEmbeddedBack }) => {
   const navigation = useNavigation<NavigationProp>();
   const { t } = useTranslation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -72,10 +74,19 @@ const SellerTeamInfo: React.FC<SellerTeamInfoProps> = ({ embedded = false }) => 
 
   const renderHeader = () => (
     <View style={styles.header}>
-      {!embedded ? (
-        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.backButton} onPress={() => navigation.goBack()}>
+      {!embedded || onEmbeddedBack ? (
+        <BackNavTouchableOpacity
+          style={styles.backButton}
+          onPress={() => {
+            if (embedded && onEmbeddedBack) {
+              onEmbeddedBack();
+              return;
+            }
+            navigation.goBack();
+          }}
+        >
           <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-        </TouchableOpacity>
+        </BackNavTouchableOpacity>
       ) : (
         <View style={styles.headerPlaceholder} />
       )}

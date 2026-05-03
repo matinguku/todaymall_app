@@ -3,7 +3,11 @@
     "allow": [
       "Bash(npx tsc *)",
       "WebFetch(domain:www.figma.com)",
-      "Bash(grep -E \"\\\\.\\(tsx?|jsx?\\)$\")"
+      "Bash(grep -E \"\\\\.\\(tsx?|jsx?\\)$\")",
+      "PowerShell($adbPath = \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; if \\(Test-Path $adbPath\\) { \"FOUND: $adbPath\" } else { \"NOT FOUND at $adbPath\" })",
+      "PowerShell($cmd = Get-Command adb -ErrorAction SilentlyContinue; if \\($cmd\\) { \"adb on PATH: $\\($cmd.Source\\)\" } else { \"adb NOT on PATH\" })",
+      "PowerShell(\"ANDROID_HOME=$env:ANDROID_HOME\"; \"ANDROID_SDK_ROOT=$env:ANDROID_SDK_ROOT\")",
+      "PowerShell($env:ANDROID_HOME = \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\"; $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME; $env:Path = \"$env:Path;$env:ANDROID_HOME\\\\platform-tools\"; & adb version)"
     ]
   }
 }

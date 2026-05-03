@@ -6,10 +6,11 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  SafeAreaView,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../../../components/Icon';
+import { BackNavTouchableOpacity } from '../../../../../components/BackNavTouchable';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
@@ -22,6 +23,7 @@ import { useHelpCenterMutation } from '../../../../../hooks/useHelpCenterMutatio
 type HelpCenterScreenNavigationProp = StackNavigationProp<RootStackParamList, 'HelpCenter'>;
 type HelpCenterScreenProps = {
   embedded?: boolean;
+  onEmbeddedBack?: () => void;
   onGuidePress?: (guide: any) => void;
   onFAQPress?: (faqsByCategory: any[]) => void;
 };
@@ -63,7 +65,7 @@ const SearchSection = React.memo(({ placeholder, onSearch }: SearchSectionProps)
   );
 });
 
-const HelpCenterScreen: React.FC<HelpCenterScreenProps> = ({ embedded = false, onGuidePress, onFAQPress }) => {
+const HelpCenterScreen: React.FC<HelpCenterScreenProps> = ({ embedded = false, onEmbeddedBack, onGuidePress, onFAQPress }) => {
   const navigation = useNavigation<HelpCenterScreenNavigationProp>();
   const locale = useAppSelector((state) => state.i18n.locale);
   
@@ -115,13 +117,19 @@ const HelpCenterScreen: React.FC<HelpCenterScreenProps> = ({ embedded = false, o
 
   const renderHeader = () => (
     <View style={styles.header}>
-      {!embedded ? (
-        <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
+      {!embedded || onEmbeddedBack ? (
+        <BackNavTouchableOpacity
           style={styles.backButton}
-          onPress={() => navigation.goBack()}
+          onPress={() => {
+            if (embedded && onEmbeddedBack) {
+              onEmbeddedBack();
+              return;
+            }
+            navigation.goBack();
+          }}
         >
           <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-        </TouchableOpacity>
+        </BackNavTouchableOpacity>
       ) : (
         <View style={styles.placeholder} />
       )}

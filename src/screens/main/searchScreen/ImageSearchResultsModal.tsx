@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useAppSelector } from '../../../store/hooks';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, PAGINATION } from '../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../../../constants';
 import { RootStackParamList, Product } from '../../../types';
 import { ProductCard, SortDropdown, PriceFilterModal } from '../../../components';
 import { useAuth } from '../../../context/AuthContext';
@@ -34,6 +34,11 @@ import {
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - SPACING.md * 3) / 2;
+
+/** Backend caps ~20 items per combined round; we query 1688 + Taobao in parallel (half each). */
+const IMAGE_SEARCH_COMBINED_PAGE_SIZE = 20;
+const IMAGE_SEARCH_MAX_PAGES = 50;
+const getPerPlatformPageSize = () => Math.ceil(IMAGE_SEARCH_COMBINED_PAGE_SIZE / 2);
 
 type ImageSearchResultsModalNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -84,15 +89,6 @@ const ImageSearchResultsModal: React.FC<ImageSearchResultsModalProps> = ({
   const [minPrice, setMinPrice] = useState<string>('');
   const [maxPrice, setMaxPrice] = useState<string>('');
   const [selectedSort, setSelectedSort] = useState<string>('best_match');
-  // Per-platform page size: a small first page so results appear quickly,
-  // even smaller pages on subsequent loads. Image search hits 1688 + Taobao
-  // in parallel so we split the combined budget evenly across the two.
-  const getPerPlatformPageSize = (page: number) => {
-    const combined = page === 1
-      ? PAGINATION.FEED_INITIAL_PAGE_SIZE
-      : PAGINATION.FEED_MORE_PAGE_SIZE;
-    return Math.ceil(combined / 2);
-  };
 
   // Sort options - Best Match and Price only (no Popular)
   const sortOptions = [
@@ -107,6 +103,7 @@ const ImageSearchResultsModal: React.FC<ImageSearchResultsModalProps> = ({
   const isLoadingMoreRef = useRef(false);
   const currentPageRef = useRef<number>(1);
   const hasMoreRef = useRef<boolean>(true);
+  const lastEndReachedAtRef = useRef<number>(0);
   
   // Helper function to navigate to product detail. The optional productData
   // payload lets ProductDetailScreen render the image / title / price
@@ -130,6 +127,10 @@ const ImageSearchResultsModal: React.FC<ImageSearchResultsModalProps> = ({
       if (page === 1 && isFetchingRef.current) return;
       if (page > 1 && isLoadingMoreRef.current) return;
       if (!imageBase64) return;
+      if (page > IMAGE_SEARCH_MAX_PAGES) {
+        hasMoreRef.current = false;
+        return;
+      }
 
       try {
         if (page === 1) {
@@ -171,7 +172,7 @@ const ImageSearchResultsModal: React.FC<ImageSearchResultsModalProps> = ({
         // Call both APIs in parallel with page + pageSize. Routed through
         // the prefetch cache so that page N+1 (warmed below after this page
         // lands) resolves from memory on the next "load more".
-        const perPlatformPageSize = getPerPlatformPageSize(page);
+        const perPlatformPageSize = getPerPlatformPageSize();
         const [response1688, responseTaobao] = await Promise.allSettled([
           prefetchImageSearch1688({
             imageBase64: base64,
@@ -197,15 +198,16 @@ const ImageSearchResultsModal: React.FC<ImageSearchResultsModalProps> = ({
             ? responseTaobao.value.data.products.map((item: any) => ({ ...item, source: 'taobao' }))
             : [];
 
-        // No more data if both return empty on subsequent pages
+        // Stop pagination only when both backends return zero items for this page index.
+        // (Previously we required "full" pages; the API often returns fewer than
+        // requested while still having more results on page+1 — that wrongly hid load-more.)
         if (raw1688.length === 0 && rawTaobao.length === 0) {
           hasMoreRef.current = false;
           return;
         }
 
-        // hasMore if either platform returned a full page (per-platform size
-        // varies between page 1 and subsequent pages — see getPerPlatformPageSize).
-        hasMoreRef.current = raw1688.length >= perPlatformPageSize || rawTaobao.length >= perPlatformPageSize;
+        // More pages may exist until we fetch a round where both return empty above.
+        hasMoreRef.current = true;
 
         const combined = [...raw1688, ...rawTaobao];
 
@@ -317,20 +319,20 @@ const ImageSearchResultsModal: React.FC<ImageSearchResultsModalProps> = ({
         // Pre-warm page N+1 on both platforms in the background so the next
         // "load more" hits cache instead of the network. Cost: at most one
         // wasted pair of requests when the user is already on the last page.
-        if (hasMoreRef.current) {
+        if (hasMoreRef.current && page < IMAGE_SEARCH_MAX_PAGES) {
           const nextPage = page + 1;
-          const nextPerPlatformPageSize = getPerPlatformPageSize(nextPage);
+          const nextPageSize = getPerPlatformPageSize();
           warmImageSearch1688({
             imageBase64: base64,
             language,
             page: nextPage,
-            pageSize: nextPerPlatformPageSize,
+            pageSize: nextPageSize,
           });
           warmImageSearchTaobao({
             imageBase64: base64,
             language,
             page: nextPage,
-            pageSize: nextPerPlatformPageSize,
+            pageSize: nextPageSize,
           });
         }
 
@@ -380,6 +382,9 @@ const ImageSearchResultsModal: React.FC<ImageSearchResultsModalProps> = ({
 
   const handleEndReached = useCallback(() => {
     if (isLoadingMoreRef.current || isFetchingRef.current || !hasMoreRef.current) return;
+    const now = Date.now();
+    if (now - lastEndReachedAtRef.current < 500) return;
+    lastEndReachedAtRef.current = now;
     loadProducts(currentPageRef.current + 1);
   }, [loadProducts]);
 
@@ -521,7 +526,8 @@ const ImageSearchResultsModal: React.FC<ImageSearchResultsModalProps> = ({
             initialNumToRender={10}
             updateCellsBatchingPeriod={50}
             onEndReached={handleEndReached}
-            onEndReachedThreshold={0.5}
+            onEndReachedThreshold={0.25}
+            scrollEventThrottle={16}
             extraData={products.length}
             style={{ backgroundColor: COLORS.background }}
             ListFooterComponent={

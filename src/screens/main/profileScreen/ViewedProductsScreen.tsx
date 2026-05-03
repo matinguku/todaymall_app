@@ -4,12 +4,12 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   FlatList,
   Image,
   Modal,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../components/Icon';
 import { BackNavTouchableOpacity } from '../../../components/BackNavTouchable';
 import { useNavigation } from '@react-navigation/native';
@@ -32,9 +32,10 @@ interface ViewedProduct {
 
 interface ViewedProductsScreenProps {
   embedded?: boolean;
+  onEmbeddedBack?: () => void;
 }
 
-const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = false }) => {
+const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = false, onEmbeddedBack }) => {
   const navigation = useNavigation();
   const locale = useAppSelector((s) => s.i18n.locale);
   const { showToast } = useToast();
@@ -389,8 +390,17 @@ const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = 
   const renderHeader = () => (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
-        {!embedded && (
-          <BackNavTouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        {(!embedded || onEmbeddedBack) && (
+          <BackNavTouchableOpacity
+            style={styles.backButton}
+            onPress={() => {
+              if (embedded && onEmbeddedBack) {
+                onEmbeddedBack();
+                return;
+              }
+              navigation.goBack();
+            }}
+          >
             <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
           </BackNavTouchableOpacity>
         )}

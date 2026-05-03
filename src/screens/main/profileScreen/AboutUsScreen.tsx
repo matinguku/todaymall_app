@@ -9,15 +9,17 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Icon from '../../../components/Icon';
-import { COLORS, FONTS, SHADOWS, SPACING, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
+import { BackNavTouchableOpacity } from '../../../components/BackNavTouchable';
+import { COLORS, FONTS, SHADOWS, SPACING } from '../../../constants';
 import { useAppSelector } from '../../../store/hooks';
 import { translations } from '../../../i18n/translations';
 
 type AboutUsScreenProps = {
   embedded?: boolean;
+  onEmbeddedBack?: () => void;
 };
 
-const AboutUsScreen: React.FC<AboutUsScreenProps> = ({ embedded = false }) => {
+const AboutUsScreen: React.FC<AboutUsScreenProps> = ({ embedded = false, onEmbeddedBack }) => {
   const navigation = useNavigation();
   const locale = useAppSelector((state) => state.i18n.locale);
 
@@ -33,10 +35,19 @@ const AboutUsScreen: React.FC<AboutUsScreenProps> = ({ embedded = false }) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        {!embedded ? (
-          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.backButton} onPress={() => navigation.goBack()}>
+        {!embedded || onEmbeddedBack ? (
+          <BackNavTouchableOpacity
+            style={styles.backButton}
+            onPress={() => {
+              if (embedded && onEmbeddedBack) {
+                onEmbeddedBack();
+                return;
+              }
+              navigation.goBack();
+            }}
+          >
             <Icon name="arrow-back" size={18} color={COLORS.text.primary} />
-          </TouchableOpacity>
+          </BackNavTouchableOpacity>
         ) : (
           <View style={styles.placeholder} />
         )}

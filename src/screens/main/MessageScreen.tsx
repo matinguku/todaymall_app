@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import Text from '../../components/Text';
 import Icon from '../../components/Icon';
+import { BackNavTouchableOpacity } from '../../components/BackNavTouchable';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../../constants';
 import { useAuth } from '../../context/AuthContext';
 import { useGeneralInquiry } from '../../hooks/useGeneralInquiry';
@@ -53,9 +54,12 @@ interface FormFile {
 
 interface MessageScreenProps {
   initialTabOverride?: TabType;
+  /** Profile tablet split panel */
+  embedded?: boolean;
+  onEmbeddedBack?: () => void;
 }
 
-const MessageScreen: React.FC<MessageScreenProps> = ({ initialTabOverride }) => {
+const MessageScreen: React.FC<MessageScreenProps> = ({ initialTabOverride, onEmbeddedBack }) => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
@@ -405,7 +409,14 @@ const MessageScreen: React.FC<MessageScreenProps> = ({ initialTabOverride }) => 
   // ═══════════════════════════════════════════════════════
   const renderHeader = () => (
     <View style={[styles.header, { paddingTop: insets.top + SPACING.xs }]}>
-      <Text style={styles.headerTitle}>문의</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+        {onEmbeddedBack ? (
+          <BackNavTouchableOpacity onPress={onEmbeddedBack} accessibilityRole="button" accessibilityLabel="Back">
+            <Icon name="arrow-back" size={22} color={COLORS.black} />
+          </BackNavTouchableOpacity>
+        ) : null}
+        <Text style={[styles.headerTitle, !!onEmbeddedBack && { marginLeft: SPACING.sm }]}>문의</Text>
+      </View>
       <View style={styles.headerRight}>
         <TouchableOpacity
           style={styles.headerIcon}

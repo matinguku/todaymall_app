@@ -7,14 +7,13 @@ import {
   TouchableOpacity,
   Image,
   FlatList,
-  SafeAreaView,
   ActivityIndicator,
   Alert,
   TextInput,
   Modal,
   useWindowDimensions,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -272,9 +271,11 @@ interface BuyListScreenProps {
    * panel (e.g. tablet dashboard).
    */
   embedded?: boolean;
+  /** Tablet Profile split panel: closes embedded panel instead of stack goBack. */
+  onEmbeddedBack?: () => void;
 }
 
-const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embedded }) => {
+const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embedded, onEmbeddedBack }) => {
   const navigation = useNavigation<BuyListScreenNavigationProp>();
   const { width: screenWidth } = useWindowDimensions();
   const route = useRoute<BuyListScreenRouteProp>();
@@ -1819,10 +1820,14 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
     <Container style={styles.container}>
       {/* Header */}
       <View style={styles.header} onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}>
-        {!embedded && (
+        {(!embedded || onEmbeddedBack) && (
           <BackNavTouchableOpacity
             style={styles.backButton}
             onPress={() => {
+              if (embedded && onEmbeddedBack) {
+                onEmbeddedBack();
+                return;
+              }
               if (navigation.canGoBack()) {
                 navigation.goBack();
               } else {

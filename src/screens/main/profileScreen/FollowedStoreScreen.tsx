@@ -37,9 +37,10 @@ interface Product {
 
 interface FollowedStoreScreenProps {
   embedded?: boolean;
+  onEmbeddedBack?: () => void;
 }
 
-const FollowedStoreScreen: React.FC<FollowedStoreScreenProps> = ({ embedded = false }) => {
+const FollowedStoreScreen: React.FC<FollowedStoreScreenProps> = ({ embedded = false, onEmbeddedBack }) => {
   const navigation = useNavigation();
   const { showToast } = useToast();
   const { t } = useTranslation();
@@ -146,8 +147,17 @@ const FollowedStoreScreen: React.FC<FollowedStoreScreenProps> = ({ embedded = fa
   const renderHeader = () => (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
-        {!embedded && (
-          <BackNavTouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        {(!embedded || onEmbeddedBack) && (
+          <BackNavTouchableOpacity
+            style={styles.backButton}
+            onPress={() => {
+              if (embedded && onEmbeddedBack) {
+                onEmbeddedBack();
+                return;
+              }
+              navigation.goBack();
+            }}
+          >
             <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
           </BackNavTouchableOpacity>
         )}

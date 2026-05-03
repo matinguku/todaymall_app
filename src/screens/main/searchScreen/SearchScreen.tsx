@@ -10,12 +10,12 @@ import {
   Dimensions,
   TextInput,
   Animated,
-  SafeAreaView,
   ActivityIndicator,
   RefreshControl,
   Modal,
   useWindowDimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from '../../../components/Icon';
 import { useNavigation } from '@react-navigation/native';

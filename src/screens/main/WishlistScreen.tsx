@@ -9,11 +9,10 @@ import {
   RefreshControl,
   ActivityIndicator,
   Dimensions,
-  SafeAreaView,
   ScrollView,
   Modal,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
 import { BackNavTouchableOpacity } from '../../components/BackNavTouchable';
 import { useNavigation } from '@react-navigation/native';
@@ -58,9 +57,10 @@ const WISHLIST_ITEM_STATUS_I18N: Record<WishlistItemStatusKey, string> = {
 
 interface WishlistScreenProps {
   embedded?: boolean;
+  onEmbeddedBack?: () => void;
 }
 
-const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false }) => {
+const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false, onEmbeddedBack }) => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { user, isAuthenticated } = useAuth();
@@ -380,8 +380,17 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false }) => 
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          {!embedded && (
-            <BackNavTouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          {(!embedded || onEmbeddedBack) && (
+            <BackNavTouchableOpacity
+              onPress={() => {
+                if (embedded && onEmbeddedBack) {
+                  onEmbeddedBack();
+                  return;
+                }
+                navigation.goBack();
+              }}
+              style={styles.backButton}
+            >
               <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
             </BackNavTouchableOpacity>
           )}
@@ -501,8 +510,17 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false }) => 
   const renderHeader = () => (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
-        {!embedded && (
-          <BackNavTouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        {(!embedded || onEmbeddedBack) && (
+          <BackNavTouchableOpacity
+            style={styles.backButton}
+            onPress={() => {
+              if (embedded && onEmbeddedBack) {
+                onEmbeddedBack();
+                return;
+              }
+              navigation.goBack();
+            }}
+          >
             <Icon name="chevron-back" size={24} color={COLORS.black} />
           </BackNavTouchableOpacity>
         )}

@@ -5,13 +5,14 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
+import { BackNavTouchableOpacity } from '../../../../components/BackNavTouchable';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { COLORS, FONTS, SPACING, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
+import { COLORS, FONTS, SPACING } from '../../../../constants';
 import { RootStackParamList } from '../../../../types';
 import { useAppSelector } from '../../../../store/hooks';
 import { translations } from '../../../../i18n/translations';
@@ -20,11 +21,13 @@ type SecuritySettingsScreenNavigationProp = StackNavigationProp<RootStackParamLi
 type SecuritySettingsScreenProps = {
   embedded?: boolean;
   onSelectEmbeddedPage?: (page: 'changePassword' | 'paymentPassword' | 'privacyPolicy') => void;
+  onEmbeddedBack?: () => void;
 };
 
 const SecuritySettingsScreen: React.FC<SecuritySettingsScreenProps> = ({
   embedded = false,
   onSelectEmbeddedPage,
+  onEmbeddedBack,
 }) => {
   const navigation = useNavigation<SecuritySettingsScreenNavigationProp>();
   const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
@@ -70,10 +73,19 @@ const SecuritySettingsScreen: React.FC<SecuritySettingsScreenProps> = ({
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        {!embedded ? (
-          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.backButton} onPress={() => navigation.goBack()}>
+        {!embedded || onEmbeddedBack ? (
+          <BackNavTouchableOpacity
+            style={styles.backButton}
+            onPress={() => {
+              if (embedded && onEmbeddedBack) {
+                onEmbeddedBack();
+                return;
+              }
+              navigation.goBack();
+            }}
+          >
             <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-          </TouchableOpacity>
+          </BackNavTouchableOpacity>
         ) : (
           <View style={styles.placeholder} />
         )}

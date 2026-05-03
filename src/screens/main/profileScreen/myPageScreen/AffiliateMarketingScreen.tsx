@@ -8,18 +8,19 @@ import {
   Image,
   Alert,
   Share,
-  SafeAreaView,
   Dimensions,
   Platform,
   PermissionsAndroid,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
+import { BackNavTouchableOpacity } from '../../../../components/BackNavTouchable';
 import { useNavigation } from '@react-navigation/native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import ViewShot from 'react-native-view-shot';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
-import { COLORS, FONTS, SPACING, SERVER_BASE_URL, IMAGE_CONFIG, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
+import { COLORS, FONTS, SPACING, SERVER_BASE_URL, IMAGE_CONFIG } from '../../../../constants';
 import { useAuth } from '../../../../context/AuthContext';
 import { useAppSelector } from '../../../../store/hooks';
 import { translations } from '../../../../i18n/translations';
@@ -31,9 +32,10 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 type AffiliateMarketingScreenProps = {
   embedded?: boolean;
+  onEmbeddedBack?: () => void;
 };
 
-const AffiliateMarketingScreen: React.FC<AffiliateMarketingScreenProps> = ({ embedded = false }) => {
+const AffiliateMarketingScreen: React.FC<AffiliateMarketingScreenProps> = ({ embedded = false, onEmbeddedBack }) => {
   const navigation = useNavigation();
   const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
   const { user } = useAuth();
@@ -139,13 +141,19 @@ const AffiliateMarketingScreen: React.FC<AffiliateMarketingScreenProps> = ({ emb
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        {!embedded ? (
-          <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP}
+        {!embedded || onEmbeddedBack ? (
+          <BackNavTouchableOpacity
             style={styles.backButton}
-            onPress={() => navigation.goBack()}
+            onPress={() => {
+              if (embedded && onEmbeddedBack) {
+                onEmbeddedBack();
+                return;
+              }
+              navigation.goBack();
+            }}
           >
             <Icon name="arrow-back" size={16} color={COLORS.text.primary} />
-          </TouchableOpacity>
+          </BackNavTouchableOpacity>
         ) : (
           <View style={styles.placeholder} />
         )}

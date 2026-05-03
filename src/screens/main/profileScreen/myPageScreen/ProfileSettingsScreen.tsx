@@ -6,9 +6,9 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
-  SafeAreaView,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
 import { LinearGradient } from 'react-native-linear-gradient';
 import { useNavigation, CommonActions } from '@react-navigation/native';
@@ -24,6 +24,14 @@ import { translations } from '../../../../i18n/translations';
 import LogoutIcon from '../../../../assets/icons/LogoutIcon';
 
 type ProfileSettingsScreenNavigationProp = StackNavigationProp<RootStackParamList, 'ProfileSettings'>;
+
+/** 2× BACK_NAVIGATION_HIT_SLOP — larger tap area only; icon / backButton layout unchanged */
+const PROFILE_SETTINGS_BACK_HIT_SLOP = {
+  top: BACK_NAVIGATION_HIT_SLOP.top * 2,
+  bottom: BACK_NAVIGATION_HIT_SLOP.bottom * 2,
+  left: BACK_NAVIGATION_HIT_SLOP.left * 2,
+  right: BACK_NAVIGATION_HIT_SLOP.right * 2,
+};
 
 const ProfileSettingsScreen: React.FC = () => {
   const navigation = useNavigation<ProfileSettingsScreenNavigationProp>();
@@ -138,7 +146,7 @@ const ProfileSettingsScreen: React.FC = () => {
     <View
       style={styles.header}
     >
-      <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} 
+      <TouchableOpacity hitSlop={PROFILE_SETTINGS_BACK_HIT_SLOP}
         style={styles.backButton}
         onPress={() => navigation.goBack()}
       >
