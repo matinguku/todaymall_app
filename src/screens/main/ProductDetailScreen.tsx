@@ -150,6 +150,36 @@ const ProductDetailScreen: React.FC = () => {
   const [similarSearchUri, setSimilarSearchUri] = useState<string>('');
   const [isFetchingBase64, setIsFetchingBase64] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  // Imperative handle on the image-gallery ScrollView so a color-option tap
+  // can jump it to the matching image. The gallery is a horizontal pager —
+  // each page is `dynWidth` wide.
+  const galleryScrollRef = useRef<ScrollView | null>(null);
+  // When a variation option carries an image that is NOT already in the
+  // product's gallery (apiImages), we append it as a "virtual" extra page
+  // so the user still sees the image they picked. Replaced each time the
+  // user picks a different out-of-gallery option; cleared when the chosen
+  // option's image is found in apiImages.
+  const [extraVariationImage, setExtraVariationImage] = useState<string | null>(null);
+
+  // When `extraVariationImage` is added/replaced, the gallery re-renders
+  // with one more page at index `apiImages.length`. Defer the scroll until
+  // after that render so the ScrollView has the new contentSize; otherwise
+  // it would clamp the scroll into the old (smaller) bounds.
+  useEffect(() => {
+    if (!extraVariationImage) return;
+    const apiImages = getApiProductImages(product);
+    const targetIdx = apiImages.length; // Appended page sits at the end.
+    const id = setTimeout(() => {
+      setSelectedImageIndex(targetIdx);
+      galleryScrollRef.current?.scrollTo({
+        x: targetIdx * dynWidth,
+        y: 0,
+        animated: true,
+      });
+    }, 50);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [extraVariationImage]);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedVariations, setSelectedVariations] = useState<Record<string, string>>({});
@@ -1957,9 +1987,15 @@ const ProductDetailScreen: React.FC = () => {
   };
 
   const renderImageGallery = () => {
-    // Use only API images (not from HTML description)
+    // Use only API images (not from HTML description). Append the
+    // currently-selected variation's picture as a virtual extra page when
+    // it is NOT already in apiImages (see `handleSelect` for the wiring).
     const apiImages = getApiProductImages(product);
-    const totalImages = apiImages.length;
+    const displayImages =
+      extraVariationImage && !apiImages.includes(extraVariationImage)
+        ? [...apiImages, extraVariationImage]
+        : apiImages;
+    const totalImages = displayImages.length;
     const currentStat = liveStats[currentStatIndex];
     console.log('apiImages', apiImages);
     
@@ -1970,6 +2006,7 @@ const ProductDetailScreen: React.FC = () => {
     return (
       <View style={styles.imageGalleryContainer}>
         <ScrollView
+          ref={galleryScrollRef}
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
@@ -1979,7 +2016,7 @@ const ProductDetailScreen: React.FC = () => {
           }}
           scrollEventThrottle={16}
         >
-          {apiImages.map((img: string, index: number) => {
+          {displayImages.map((img: string, index: number) => {
             // Ask the CDN (Cloudinary or Alibaba) for a thumbnail roughly
             // the size we render so the image loads at More-to-Love speed
             // instead of fetching the full-resolution asset.
@@ -2007,7 +2044,7 @@ const ProductDetailScreen: React.FC = () => {
         
         {/* Image indicators */}
         <View style={styles.imageIndicators}>
-          {apiImages.map((img: any, index: number) => (
+          {displayImages.map((img: any, index: number) => (
             <View
               key={`indicator-${index}`}
               style={[
@@ -2227,12 +2264,45 @@ const ProductDetailScreen: React.FC = () => {
         ...prev,
         [variationName]: value,
       }));
-      
+
       // Also update selectedColor and selectedSize for backward compatibility with addToCart
       if (variationName === 'color') {
         setSelectedColor(value);
       } else if (variationName === 'size') {
         setSelectedSize(value);
+      }
+
+      // If the chosen option carries an image, surface it on the gallery.
+      // 1. Try to find it in apiImages (exact match, then query-stripped).
+      // 2. If found, scroll the gallery to that index and drop any leftover
+      //    extra-variation image — we don't need the appended page.
+      // 3. If NOT found, the variation's picture isn't in the product's
+      //    gallery — stash it in `extraVariationImage` so the gallery and
+      //    viewer append it as one more page; the effect below will scroll
+      //    to that appended page once the gallery has rendered it.
+      const chosen = variationType.options.find((o: any) => o.value === value);
+      const targetUrl: string | undefined = chosen?.image;
+      if (targetUrl) {
+        const apiImages = getApiProductImages(product);
+        const stripQuery = (u: string) => (u || '').split('?')[0];
+        let idx = apiImages.findIndex((u: string) => u === targetUrl);
+        if (idx < 0) {
+          const target = stripQuery(targetUrl);
+          idx = apiImages.findIndex((u: string) => stripQuery(u) === target);
+        }
+        if (idx >= 0) {
+          setExtraVariationImage(null);
+          setSelectedImageIndex(idx);
+          galleryScrollRef.current?.scrollTo({
+            x: idx * dynWidth,
+            y: 0,
+            animated: true,
+          });
+        } else {
+          setExtraVariationImage(targetUrl);
+          // Scroll happens in the useEffect on extraVariationImage so the
+          // ScrollView has had a chance to render the appended page.
+        }
       }
     };
 
@@ -2252,8 +2322,17 @@ const ProductDetailScreen: React.FC = () => {
                 <TouchableOpacity
                   key={optIndex}
                   style={styles.colorOption}
-                  onPress={() => handleSelect(option.value)}
+                  onPress={() => {
+                    console.log('[ProductDetail] color option tapped', {
+                      optIndex,
+                      value: option.value,
+                      image: option.image,
+                      isSelected,
+                    });
+                    handleSelect(option.value);
+                  }}
                 >
+
                   {option.image && (
                     <Image
                       source={{ uri: option.image }}
@@ -2263,7 +2342,7 @@ const ProductDetailScreen: React.FC = () => {
                       ] as any}
                     />
                   )}
-                  <Text 
+                  <Text
                     style={[
                       styles.colorName,
                       isSelected && styles.selectedColorName,
@@ -2274,6 +2353,7 @@ const ProductDetailScreen: React.FC = () => {
                   </Text>
                 </TouchableOpacity>
               );
+              
             })}
           </ScrollView>
         </View>
@@ -2851,9 +2931,15 @@ const ProductDetailScreen: React.FC = () => {
   );}
 
   const renderImageViewer = () => {
-    // Use only API images for viewer
-    const images = getApiProductImages(product);
-    
+    // Same image set as the gallery: API images + the appended variation
+    // image (if any). Keeping the two lists identical means a tap on the
+    // appended page opens the viewer at the same index.
+    const apiImages = getApiProductImages(product);
+    const images =
+      extraVariationImage && !apiImages.includes(extraVariationImage)
+        ? [...apiImages, extraVariationImage]
+        : apiImages;
+
     return (
       <Modal
         visible={imageViewerVisible}

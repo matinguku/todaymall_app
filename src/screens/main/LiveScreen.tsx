@@ -10,6 +10,7 @@ import {
   TextInput,
   ActivityIndicator,
   useWindowDimensions,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
@@ -33,6 +34,19 @@ const CAROUSEL_WIDTH = SCREEN_WIDTH - SPACING.sm * 2;
 const CAROUSEL_HEIGHT = 420;
 
 const asArray = (value: any): any[] => (Array.isArray(value) ? value : []);
+
+/** `sellerLiveLink` from live-commerce reel (e.g. TikTok); ensures https scheme. */
+const normalizeSellerLiveUrl = (raw?: string | null): string | null => {
+  const s = (raw ?? '').trim();
+  if (!s) return null;
+  if (/^https?:\/\//i.test(s)) return s;
+  return `https://${s}`;
+};
+
+const pickSellerLiveLink = (item: any): string | null =>
+  normalizeSellerLiveUrl(
+    item?.sellerLiveLink ?? item?.liveSellerLink ?? item?.externalLiveUrl ?? null,
+  );
 
 const getLocalizedTitle = (item: any, locale: 'en' | 'ko' | 'zh') => {
   if (!item) return '';
@@ -214,20 +228,21 @@ const NoticeBanner: React.FC<{ text?: string }> = ({ text }) => (
 );
 
 // ─── Featured Live Carousel ──────────────────────────────
-const FeaturedLiveCarousel: React.FC<{ items: any[]; locale: 'en' | 'ko' | 'zh'; t: (key: string) => string; containerWidth?: number; containerStyle?: any }> = ({ items, locale, t, containerWidth, containerStyle }) => {
+const FeaturedLiveCarousel: React.FC<{
+  items: any[];
+  locale: 'en' | 'ko' | 'zh';
+  t: (key: string) => string;
+  containerWidth?: number;
+  containerStyle?: any;
+  onWatchLivePress?: (url: string) => void;
+}> = ({ items, locale, t, containerWidth, containerStyle, onWatchLivePress }) => {
   const itemWidth = containerWidth ?? CAROUSEL_WIDTH;
   const [activeIndex, setActiveIndex] = useState(0);
-  // Index of the item whose video the user explicitly started via the watch
-  // button. `null` = no item is playing, thumbnails are shown everywhere.
-  const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const scrollRef = useRef<FlatList>(null);
-  console.log('🎬 [FeaturedLiveCarousel] Items:', items);
   const onScroll = useCallback((event: any) => {
     const x = event.nativeEvent.contentOffset.x;
     const index = Math.round(x / itemWidth);
     setActiveIndex(index);
-    // Stop playback when the user swipes away from the playing card.
-    setPlayingIndex((prev) => (prev !== null && prev !== index ? null : prev));
   }, [itemWidth]);
 
   const displayItems = items.length > 0 ? items : [null]; // Show placeholder if empty
@@ -236,7 +251,9 @@ const FeaturedLiveCarousel: React.FC<{ items: any[]; locale: 'en' | 'ko' | 'zh';
     const sellerData = getSellerData(item);
     const viewers = getViewerCount(item);
     const title = item ? getLocalizedTitle(item, locale) : 'Celebrate LIVE Fest 2025 winners LIVE Fest 2025 winners';
-    const imageUrl = item?.imageUrl || item?.product?.imageUrl || item?.thumbnailUrl || 'https://via.placeholder.com/400x300.png?text=LIVE';
+    // Thumbnail / poster for the reel card (shown when the card is not the
+    // active video slide, or while the WebView video loads).
+    const imageUrl = item?.imageUrl || item?.product?.imageUrl || item?.thumbnailUrl || '';
 
     const tag = localeToTag(locale);
     // liveReels format: item.date + item.timeFrom/timeTo
@@ -250,6 +267,8 @@ const FeaturedLiveCarousel: React.FC<{ items: any[]; locale: 'en' | 'ko' | 'zh';
     const timeOpts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', hour12: true };
     const timeStr = `${startAt.toLocaleTimeString(tag, timeOpts)} - ${endAt.toLocaleTimeString(tag, timeOpts)}`;
     const status = item?.status || item?.currentLiveStatus || 'live';
+    const sellerLiveUrl = item ? pickSellerLiveLink(item) : null;
+    const hasSellerLiveLink = !!(sellerLiveUrl && onWatchLivePress);
 
     return (
       <View style={[styles.carouselItem, { width: itemWidth }]}>
@@ -262,16 +281,17 @@ const FeaturedLiveCarousel: React.FC<{ items: any[]; locale: 'en' | 'ko' | 'zh';
           </View>
         </View>
 
-        {/* Thumbnail by default; replaced by the video player only when the
-            user taps the watch button on this card. */}
-        {item?.videoUrl && index === playingIndex ? (
+        {/* Active card with `videoUrl`: inline reel video; others show poster image. */}
+        {item?.videoUrl && index === activeIndex ? (
           <ReelVideoPlayer
             videoUrl={item.videoUrl}
-            posterUrl={imageUrl}
+            posterUrl={imageUrl || undefined}
             style={styles.carouselImage}
           />
-        ) : (
+        ) : imageUrl ? (
           <Image source={{ uri: imageUrl }} style={styles.carouselImage} resizeMode="cover" />
+        ) : (
+          <View style={[styles.carouselImage, { backgroundColor: COLORS.gray[200] }]} />
         )}
 
         {/* LIVE NOW badge */}
@@ -289,21 +309,15 @@ const FeaturedLiveCarousel: React.FC<{ items: any[]; locale: 'en' | 'ko' | 'zh';
           <Text style={styles.carouselEventTime}>{timeStr}</Text>
         </View>
 
-        {/* Watch button — toggles video playback in place.
-            Only rendered when the item has a playable videoUrl. */}
-        {item?.videoUrl && (
+        {hasSellerLiveLink && sellerLiveUrl && (
           <View style={[styles.carouselWatchButtonContainer, { width: itemWidth }]}>
             <TouchableOpacity
               style={styles.watchButton}
               activeOpacity={0.8}
-              onPress={() =>
-                setPlayingIndex((prev) => (prev === index ? null : index))
-              }
+              onPress={() => onWatchLivePress?.(sellerLiveUrl)}
             >
-              <Text style={styles.watchButtonEmoji}>{index === playingIndex ? '↩️' : '👉'}</Text>
-              <Text style={styles.watchButtonText}>
-                {index === playingIndex ? t('live.back') : t('live.watchvideo')}
-              </Text>
+              <Text style={styles.watchButtonEmoji}>▶</Text>
+              <Text style={styles.watchButtonText}>{t('live.watchLive')}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -642,6 +656,10 @@ const LiveScreen: React.FC = () => {
 
   const onRefresh = () => fetchLiveCommerce();
 
+  const openSellerLiveWeb = useCallback((url: string) => {
+    Linking.openURL(url).catch(() => {});
+  }, []);
+
   // Layout-first paint: render header + search + featured carousel immediately
   // and defer the three heavy seller/product lists (Top Seller, Popular
   // Items, Point Partner) to the next frame so the user sees the page
@@ -829,6 +847,7 @@ const LiveScreen: React.FC = () => {
           t={t}
           containerWidth={isTabletPortrait ? tabletCarouselWidthPortrait : tabletCarouselWidth}
           containerStyle={{ marginTop: 0, marginHorizontal: 0 }}
+          onWatchLivePress={openSellerLiveWeb}
         />
       </View>
     ) : null;
@@ -905,7 +924,12 @@ const LiveScreen: React.FC = () => {
         {!isTablet && (
           showHeavyContent ? (
             featuredItems.length > 0 && (
-              <FeaturedLiveCarousel items={featuredItems.slice(0, 5)} locale={locale} t={t} />
+              <FeaturedLiveCarousel
+                items={featuredItems.slice(0, 5)}
+                locale={locale}
+                t={t}
+                onWatchLivePress={openSellerLiveWeb}
+              />
             )
           ) : (
             <View style={liveSkeletonStyles.featuredPlaceholder} />
@@ -2007,6 +2031,43 @@ const styles = StyleSheet.create({
   errorText: {
     color: '#D00000',
     fontWeight: '700',
+  },
+
+  sellerLiveWebRoot: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+  },
+  sellerLiveWebHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.gray[200],
+    backgroundColor: COLORS.white,
+  },
+  sellerLiveWebCloseBtn: {
+    minWidth: 72,
+  },
+  sellerLiveWebCloseText: {
+    fontSize: FONTS.sizes.md,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  sellerLiveWebTitle: {
+    flex: 1,
+    fontSize: FONTS.sizes.md,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+    textAlign: 'center',
+  },
+  sellerLiveWebHeaderSpacer: {
+    minWidth: 72,
+  },
+  sellerLiveWebView: {
+    flex: 1,
+    backgroundColor: COLORS.white,
   },
 });
 
