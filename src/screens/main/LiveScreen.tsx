@@ -172,31 +172,92 @@ const LiveHeader: React.FC<{ onSearchPress?: () => void; t: (key: string) => str
 );
 
 // ─── Search Bar ───────────────────────────────────────────
+type LiveSearchMode = 'sellers' | 'products';
+
 const SearchBar: React.FC<{
   searchText: string;
   onChangeText: (t: string) => void;
-  onSearch: () => void;
+  onSearch: (mode: LiveSearchMode) => void;
   t: (key: string) => string;
-}> = ({ searchText, onChangeText, onSearch, t }) => (
-  <View style={styles.searchBarContainer}>
-    <TouchableOpacity style={styles.sellerDropdown}>
-      <Text style={styles.sellerDropdownText}>{t('live.allSeller')}</Text>
-      <ArrowDropDownIcon width={8} height={8} color={COLORS.white} />
-    </TouchableOpacity>
-    <View style={styles.searchInputWrapper}>
-      <TextInput
-        style={styles.searchInput}
-        placeholder={t('live.searchNow')}
-        placeholderTextColor={COLORS.white}
-        value={searchText}
-        onChangeText={onChangeText}
-      />
+}> = ({ searchText, onChangeText, onSearch, t }) => {
+  // Currently-selected search target. Driven by the dropdown menu; the
+  // search button (and Enter on the input) routes via this mode. Default
+  // is Product Search per spec — sellers is an opt-in.
+  const [searchMode, setSearchMode] = useState<LiveSearchMode>('products');
+  // Two-item menu visibility. Tap the dropdown trigger to open/close.
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  const modeLabel =
+    searchMode === 'sellers'
+      ? t('live.searchModeSeller') || 'Seller Search'
+      : t('live.searchModeProduct') || 'Product Search';
+
+  const pickMode = (m: LiveSearchMode) => {
+    setSearchMode(m);
+    setDropdownOpen(false);
+  };
+
+  return (
+    <View style={styles.searchBarContainer}>
+      <View style={{ position: 'relative' }}>
+        <TouchableOpacity
+          style={styles.sellerDropdown}
+          onPress={() => setDropdownOpen((o) => !o)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.sellerDropdownText}>{modeLabel}</Text>
+          <ArrowDropDownIcon width={8} height={8} color={COLORS.white} />
+        </TouchableOpacity>
+
+        {/* Two-item menu rendered as an absolute child so it doesn't push
+            the rest of the search bar around. Tap an item to switch the
+            search mode; tapping the trigger again closes the menu. */}
+        {dropdownOpen && (
+          <View style={styles.sellerDropdownMenu}>
+            <TouchableOpacity
+              style={[
+                styles.sellerDropdownMenuItem,
+                searchMode === 'sellers' && styles.sellerDropdownMenuItemActive,
+              ]}
+              onPress={() => pickMode('sellers')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.sellerDropdownMenuItemText}>
+                {t('live.searchModeSeller') || 'Seller Search'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.sellerDropdownMenuItem,
+                searchMode === 'products' && styles.sellerDropdownMenuItemActive,
+              ]}
+              onPress={() => pickMode('products')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.sellerDropdownMenuItemText}>
+                {t('live.searchModeProduct') || 'Product Search'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+
+      <View style={styles.searchInputWrapper}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder={t('live.searchNow')}
+          placeholderTextColor={COLORS.white}
+          value={searchText}
+          onChangeText={onChangeText}
+          onSubmitEditing={() => onSearch(searchMode)}
+        />
+      </View>
+      <TouchableOpacity style={styles.searchButton} onPress={() => onSearch(searchMode)}>
+        <Text style={styles.searchButtonText}>{t('common.search')}</Text>
+      </TouchableOpacity>
     </View>
-    <TouchableOpacity style={styles.searchButton} onPress={onSearch}>
-      <Text style={styles.searchButtonText}>{t('common.search')}</Text>
-    </TouchableOpacity>
-  </View>
-);
+  );
+};
 
 // ─── Live Seller Chips ────────────────────────────────────
 const LiveSellerChip: React.FC<{ seller: any; onPress?: () => void; t: (key: string) => string }> = ({ seller, onPress, t }) => {
@@ -213,12 +274,14 @@ const LiveSellerChip: React.FC<{ seller: any; onPress?: () => void; t: (key: str
 };
 
 // ─── Notice Banner (same style as homepage) ──────────────
-const NoticeBanner: React.FC<{ text?: string }> = ({ text }) => (
+const NoticeBanner: React.FC<{ text?: string; t: (key: string) => string }> = ({ text, t }) => (
   <View style={styles.noticeBanner}>
     <BrandIcon width={16} height={16} style={styles.noticeBrandIcon} />
     <View style={styles.noticeBannerContent}>
       <Text style={styles.noticeText} numberOfLines={1}>
-        {text || '[Important Notice] Regarding the issue of modifying the time'}
+        {text ||
+          t('live.importantNoticeFallback') ||
+          '[Important Notice] Regarding the issue of modifying the time'}
       </Text>
     </View>
     <TouchableOpacity style={styles.noticeNextButton} activeOpacity={0.7}>
@@ -874,10 +937,19 @@ const LiveScreen: React.FC = () => {
         <SearchBar
           searchText={searchText}
           onChangeText={setSearchText}
-          onSearch={() => navigation.navigate('LiveSellerSearch', { query: searchText })}
+          // Routes by the dropdown's current mode. The receiving screen
+          // (LiveSellerSearchScreen) reads `searchMode` and renders its
+          // own dropdown with the same selection so the user keeps
+          // context across navigation. Default mode is 'products'.
+          onSearch={(mode) =>
+            navigation.navigate('LiveSellerSearch', {
+              query: searchText,
+              searchMode: mode,
+            })
+          }
           t={t}
         />
-        <NoticeBanner />
+        <NoticeBanner t={t} />
       </View>
 
       {/* Initial-load spinner: shown the first time the user lands on Live
@@ -1236,6 +1308,36 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.white,
     marginRight: 2,
+  },
+  // Two-item menu opened by tapping the seller dropdown. Absolutely
+  // positioned so it overlays the row below without affecting layout;
+  // elevation/zIndex put it above the search input.
+  sellerDropdownMenu: {
+    position: 'absolute',
+    top: 42,
+    left: 0,
+    minWidth: 140,
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: SPACING.xs,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    zIndex: 50,
+  },
+  sellerDropdownMenuItem: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  sellerDropdownMenuItemActive: {
+    backgroundColor: COLORS.gray[100],
+  },
+  sellerDropdownMenuItemText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '600',
+    color: COLORS.text.primary,
   },
   searchInputWrapper: {
     flex: 1,
@@ -1651,7 +1753,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.sm,
   },
   popularCard: {
-    width: 280,
+    // 280 / 1.5 ≈ 187
+    width: 187,
     borderRadius: BORDER_RADIUS.lg,
     backgroundColor: COLORS.transparent,
     marginRight: SPACING.smmd,
@@ -1662,7 +1765,8 @@ const styles = StyleSheet.create({
   popularImage: {
     marginTop: 8,
     width: '100%',
-    height: 506,
+    // 506 / 1.5 ≈ 337
+    height: 337,
     backgroundColor: COLORS.gray[200],
     borderRadius: BORDER_RADIUS.lg,
   },
@@ -2103,8 +2207,9 @@ const liveSkeletonStyles = StyleSheet.create({
     paddingHorizontal: SPACING.sm,
   },
   popularCard: {
-    width: 280,
-    height: 506,
+    // 280 / 1.5 ≈ 187, 506 / 1.5 ≈ 337
+    width: 187,
+    height: 337,
     marginTop: 8,
     borderRadius: BORDER_RADIUS.lg,
     backgroundColor: COLORS.gray[200],

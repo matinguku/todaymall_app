@@ -16,7 +16,8 @@ import LinearGradient from 'react-native-linear-gradient';
 import Text from '../../../components/Text';
 import Icon from '../../../components/Icon';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, SCREEN_WIDTH, IMAGE_CONFIG } from '../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, SCREEN_WIDTH, IMAGE_CONFIG, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
+import ArrowBackIcon from '../../../assets/icons/ArrowBackIcon';
 import { productsApi } from '../../../services/productsApi';
 import { useToast } from '../../../context/ToastContext';
 import { useAppSelector } from '../../../store/hooks';
@@ -65,6 +66,11 @@ const LiveSellerDetailScreen: React.FC = () => {
   const [isTogglingFollow, setIsTogglingFollow] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterTab>('bestMatch');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  // Date filter (YYYY-MM-DD). 'all' shows every product regardless of
+  // broadcast date. The trigger in the list header opens a Modal that
+  // lets the user pick a different date.
+  const [selectedDate, setSelectedDate] = useState<string>('all');
+  const [showDateDropdown, setShowDateDropdown] = useState(false);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [sellerProfile, setSellerProfile] = useState<any>({
     id: sellerId,
@@ -236,6 +242,27 @@ const LiveSellerDetailScreen: React.FC = () => {
             item.product?.liveCommerceCode ||
             null;
 
+          // Pull a date out of whichever field the API exposes; we
+          // store it as `YYYY-MM-DD` so products from the same broadcast
+          // day group together regardless of their exact timestamps.
+          const liveDateRaw: string | number | null =
+            item.liveDate ||
+            item.live_date ||
+            item.broadcastDate ||
+            item.broadcast_date ||
+            item.liveStartTime ||
+            item.startedAt ||
+            item.startAt ||
+            item.date ||
+            item.createdAt ||
+            null;
+          const liveDateKey = (() => {
+            if (!liveDateRaw) return '';
+            const d = new Date(liveDateRaw as any);
+            if (isNaN(d.getTime())) return '';
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          })();
+
           return {
             id: item.productId || item.product?.id || item.id || '',
             externalId: item.productId || item.product?.id || item.id || '',
@@ -256,6 +283,10 @@ const LiveSellerDetailScreen: React.FC = () => {
             category: item.product?.categoryName?.[locale] || item.product?.categoryName?.en || '',
             liveTitle: item.liveTitle || '',
             status: item.status || '',
+            // Date classification: empty string when the API didn't ship
+            // a date — those products end up in their own bucket.
+            liveDate: liveDateKey,
+            liveDateRaw: liveDateRaw ? String(liveDateRaw) : '',
             raw: item,
           };
         });
@@ -326,12 +357,39 @@ const LiveSellerDetailScreen: React.FC = () => {
     return ['all', ...Array.from(cats)];
   }, [allProducts]);
 
+  // Unique broadcast dates derived from the loaded products. Sorted
+  // descending so the most recent broadcast leads the chip row, with
+  // 'all' first as a reset option. Only built when there's at least
+  // one dated product — otherwise the row stays hidden.
+  const dateGroups = useMemo(() => {
+    const set = new Set<string>();
+    allProducts.forEach((p) => {
+      if (p.liveDate) set.add(p.liveDate);
+    });
+    return ['all', ...Array.from(set).sort((a, b) => b.localeCompare(a))];
+  }, [allProducts]);
+
+  const formatDateLabel = useCallback(
+    (key: string) => {
+      if (key === 'all') return t('live.allDates') || 'All dates';
+      const d = new Date(`${key}T00:00:00`);
+      if (isNaN(d.getTime())) return key;
+      return d.toLocaleDateString();
+    },
+    [t],
+  );
+
   const filteredProducts = useMemo(() => {
     let result = [...allProducts];
 
     // Filter by category
     if (selectedCategory !== 'all') {
       result = result.filter((p) => p.category === selectedCategory);
+    }
+
+    // Filter by broadcast date
+    if (selectedDate !== 'all') {
+      result = result.filter((p) => p.liveDate === selectedDate);
     }
 
     // Sort
@@ -346,7 +404,7 @@ const LiveSellerDetailScreen: React.FC = () => {
         break;
     }
     return result;
-  }, [allProducts, activeFilter, selectedCategory]);
+  }, [allProducts, activeFilter, selectedCategory, selectedDate]);
 
   const handleLoadMore = useCallback(() => {
     if (!loadingMore && hasMore) {
@@ -472,6 +530,22 @@ const LiveSellerDetailScreen: React.FC = () => {
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* Date classifier — entire row is tappable; opens a Modal that
+          lets the user pick a broadcast date. Hidden when no product
+          carries a date so the layout stays clean. */}
+      {dateGroups.length > 1 && (
+        <TouchableOpacity
+          style={styles.dateDropdown}
+          activeOpacity={0.8}
+          onPress={() => setShowDateDropdown(true)}
+        >
+          <Text style={styles.dateDropdownText}>
+            {formatDateLabel(selectedDate)}
+          </Text>
+          <ArrowDropDownIcon width={18} height={18} color={COLORS.text.primary} />
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -559,20 +633,36 @@ const LiveSellerDetailScreen: React.FC = () => {
       />
 
       <SafeAreaView edges={['top']} style={styles.safeArea}>
-        {/* Header - same as LiveScreen */}
+        {/* Header - back button + LIVE/CHANNEL chip */}
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.headerLeft}
-            onPress={() => navigation.navigate('Main', { screen: 'Live' })}
-          >
-            <View style={styles.broadcastIconContainer}>
-              <SensorsIcon width={24} height={24} />
-            </View>
-            <View>
-              <Text style={styles.headerTitle}>{t('live.live')}</Text>
-              <Text style={styles.headerSubtitle}>{t('live.channel')}</Text>
-            </View>
-          </TouchableOpacity>
+          <View style={styles.headerLeftRow}>
+            <TouchableOpacity
+              style={styles.backButton}
+              activeOpacity={0.7}
+              hitSlop={BACK_NAVIGATION_HIT_SLOP}
+              onPress={() => {
+                if (navigation.canGoBack()) {
+                  navigation.goBack();
+                } else {
+                  navigation.navigate('Main', { screen: 'Live' });
+                }
+              }}
+            >
+              <ArrowBackIcon width={20} height={20} color={COLORS.white} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerLeft}
+              onPress={() => navigation.navigate('Main', { screen: 'Live' })}
+            >
+              <View style={styles.broadcastIconContainer}>
+                <SensorsIcon width={24} height={24} />
+              </View>
+              <View>
+                <Text style={styles.headerTitle}>{t('live.live')}</Text>
+                <Text style={styles.headerSubtitle}>{t('live.channel')}</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
           {/* <TouchableOpacity style={styles.headerSearchBtn}>
             <SearchIcon width={24} height={24} color={COLORS.white} />
           </TouchableOpacity> */}
@@ -661,6 +751,45 @@ const LiveSellerDetailScreen: React.FC = () => {
         </TouchableOpacity>
       </Modal>
 
+      {/* Date Dropdown Modal — same UX as the category dropdown. */}
+      <Modal
+        visible={showDateDropdown}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDateDropdown(false)}
+      >
+        <TouchableOpacity
+          style={styles.dropdownModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowDateDropdown(false)}
+        >
+          <View style={styles.dropdownModalContent}>
+            {dateGroups.map((d) => (
+              <TouchableOpacity
+                key={`date-${d}`}
+                style={[
+                  styles.categoryDropdownItem,
+                  selectedDate === d && styles.categoryDropdownItemActive,
+                ]}
+                onPress={() => {
+                  setSelectedDate(d);
+                  setShowDateDropdown(false);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.categoryDropdownItemText,
+                    selectedDate === d && styles.categoryDropdownItemTextActive,
+                  ]}
+                >
+                  {formatDateLabel(d)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Unfollow Confirmation Modal */}
       <Modal
         visible={showUnfollowModal}
@@ -724,9 +853,38 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.smmd,
     zIndex: 1,
   },
+  // Back button + LIVE/CHANNEL chip share a horizontal row on the left.
+  headerLeftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  // Date classifier dropdown trigger — full-width row that opens the
+  // Modal date picker. Mirrors the look of the category dropdown above
+  // it for consistency.
+  dateDropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.gray[100],
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    marginHorizontal: SPACING.md,
+    marginTop: SPACING.sm,
+  },
+  dateDropdownText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '600',
+    color: COLORS.text.primary,
+  },
   backButton: {
     width: 36,
     height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'center',
     alignItems: 'center',
   },

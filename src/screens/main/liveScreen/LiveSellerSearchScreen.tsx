@@ -13,7 +13,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import Text from '../../../components/Text';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SCREEN_WIDTH } from '../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SCREEN_WIDTH, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
+import ArrowBackIcon from '../../../assets/icons/ArrowBackIcon';
 import { useAppSelector } from '../../../store/hooks';
 import { productsApi } from '../../../services/productsApi';
 import { useLiveCommerceMutation } from '../../../hooks/useLiveCommerceMutation';
@@ -92,10 +93,17 @@ const LiveSellerSearchScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const initialQuery = route.params?.query || '';
+  // Default to 'products' per spec; can be overridden by the calling
+  // screen via the `searchMode` route param.
+  type LiveSearchMode = 'sellers' | 'products';
+  const initialMode: LiveSearchMode =
+    (route.params?.searchMode as LiveSearchMode) || 'products';
   const locale = useAppSelector((s) => s.i18n.locale) as 'en' | 'ko' | 'zh';
   const { t } = useTranslation();
 
   const [searchText, setSearchText] = useState(initialQuery);
+  const [searchMode, setSearchMode] = useState<LiveSearchMode>(initialMode);
+  const [searchModeDropdownOpen, setSearchModeDropdownOpen] = useState(false);
   const [sortOption, setSortOption] = useState<SortOption>('bestMatch');
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -278,29 +286,93 @@ const LiveSellerSearchScreen: React.FC = () => {
       />
 
       <SafeAreaView edges={['top']} style={styles.safeArea}>
-        {/* Header - same as LiveScreen */}
+        {/* Header - back button + LIVE / CHANNEL chip */}
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.headerLeft}
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('Main', { screen: 'Live' })}
-          >
-            <View style={styles.broadcastIconContainer}>
-              <SensorsIcon width={24} height={24} />
-            </View>
-            <View>
-              <Text style={styles.headerTitle}>{t('live.live')}</Text>
-              <Text style={styles.headerSubtitle}>{t('live.channel')}</Text>
-            </View>
-          </TouchableOpacity>
+          <View style={styles.headerLeftRow}>
+            <TouchableOpacity
+              style={styles.backButton}
+              activeOpacity={0.7}
+              hitSlop={BACK_NAVIGATION_HIT_SLOP}
+              onPress={() => {
+                if (navigation.canGoBack()) {
+                  navigation.goBack();
+                } else {
+                  navigation.navigate('Main', { screen: 'Live' });
+                }
+              }}
+            >
+              <ArrowBackIcon width={20} height={20} color={COLORS.white} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerLeft}
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate('Main', { screen: 'Live' })}
+            >
+              <View style={styles.broadcastIconContainer}>
+                <SensorsIcon width={24} height={24} />
+              </View>
+              <View>
+                <Text style={styles.headerTitle}>{t('live.live')}</Text>
+                <Text style={styles.headerSubtitle}>{t('live.channel')}</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Search Bar */}
         <View style={styles.searchBarContainer}>
-          <TouchableOpacity style={styles.sellerDropdown}>
-            <Text style={styles.sellerDropdownText}>{t('live.allSeller')}</Text>
-            <ArrowDropDownIcon width={8} height={8} color={COLORS.white} />
-          </TouchableOpacity>
+          <View style={{ position: 'relative' }}>
+            <TouchableOpacity
+              style={styles.sellerDropdown}
+              onPress={() => setSearchModeDropdownOpen((o) => !o)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.sellerDropdownText}>
+                {searchMode === 'sellers'
+                  ? t('live.searchModeSeller') || 'Seller Search'
+                  : t('live.searchModeProduct') || 'Product Search'}
+              </Text>
+              <ArrowDropDownIcon width={8} height={8} color={COLORS.white} />
+            </TouchableOpacity>
+
+            {/* Two-item menu — same UX as the LiveScreen dropdown. Picking
+                a mode just switches state; user must press Search (or hit
+                Enter) to actually re-fetch. */}
+            {searchModeDropdownOpen && (
+              <View style={styles.searchModeMenu}>
+                <TouchableOpacity
+                  style={[
+                    styles.searchModeMenuItem,
+                    searchMode === 'sellers' && styles.searchModeMenuItemActive,
+                  ]}
+                  onPress={() => {
+                    setSearchMode('sellers');
+                    setSearchModeDropdownOpen(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.searchModeMenuItemText}>
+                    {t('live.searchModeSeller') || 'Seller Search'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.searchModeMenuItem,
+                    searchMode === 'products' && styles.searchModeMenuItemActive,
+                  ]}
+                  onPress={() => {
+                    setSearchMode('products');
+                    setSearchModeDropdownOpen(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.searchModeMenuItemText}>
+                    {t('live.searchModeProduct') || 'Product Search'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
           <View style={styles.searchInputWrapper}>
             <TextInput
               style={styles.searchInput}
@@ -408,6 +480,22 @@ const styles = StyleSheet.create({
     zIndex: 1,
     alignItems: 'flex-end',
   },
+  // Wraps the back button + the LIVE/CHANNEL chip on the left side of
+  // the header so they stay together while the right side is free for
+  // future actions (e.g. share, bookmark).
+  headerLeftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -460,6 +548,36 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.white,
     marginRight: 2,
+  },
+  // Two-item mode menu opened by tapping the seller dropdown. Absolute
+  // positioning keeps it from disturbing the search-bar layout; elevation
+  // / shadow / zIndex put it above the input on both platforms.
+  searchModeMenu: {
+    position: 'absolute',
+    top: 42,
+    left: 0,
+    minWidth: 140,
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: SPACING.xs,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    zIndex: 50,
+  },
+  searchModeMenuItem: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  searchModeMenuItemActive: {
+    backgroundColor: COLORS.gray[100],
+  },
+  searchModeMenuItemText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '600',
+    color: COLORS.text.primary,
   },
   searchInputWrapper: {
     flex: 1,

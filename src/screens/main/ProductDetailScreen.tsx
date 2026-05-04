@@ -161,6 +161,26 @@ const ProductDetailScreen: React.FC = () => {
   // option's image is found in apiImages.
   const [extraVariationImage, setExtraVariationImage] = useState<string | null>(null);
 
+  // Stock-text pulse animation. Idle at scale 1; runs 4 cycles of
+  // 1 → 1.15 → 1 (≈ 1.6 s total) when fired by `pulseStock()`. Fired from
+  // the Add to Cart / Buy Now button presses to draw the user's eye to the
+  // stock badge — works both as a confirmation tap when the item is in
+  // stock and as an alert when the item is out of stock and the buttons
+  // refuse to proceed.
+  const stockPulse = useRef(new Animated.Value(1)).current;
+  const pulseStock = useCallback(() => {
+    stockPulse.stopAnimation(() => {
+      stockPulse.setValue(1);
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(stockPulse, { toValue: 1.15, duration: 200, useNativeDriver: true }),
+          Animated.timing(stockPulse, { toValue: 1, duration: 200, useNativeDriver: true }),
+        ]),
+        { iterations: 4 },
+      ).start();
+    });
+  }, [stockPulse]);
+
   // When `extraVariationImage` is added/replaced, the gallery re-renders
   // with one more page at index `apiImages.length`. Defer the scroll until
   // after that render so the ScrollView has the new contentSize; otherwise
@@ -1243,6 +1263,16 @@ const ProductDetailScreen: React.FC = () => {
       return false;
     }
 
+    // Out-of-stock gate: once the detail API has resolved we trust
+    // `inStock`/`stockCount`. Either signal being zero blocks Add to Cart
+    // and Buy Now. Earlier than this point `detailFetched` keeps us false
+    // anyway, so we don't accidentally disable on an uninitialized 0.
+    const stockCount: number = (product as any)?.stockCount ?? 0;
+    const inStockFlag: boolean = (product as any)?.inStock ?? stockCount > 0;
+    if (!inStockFlag || stockCount === 0) {
+      return false;
+    }
+
     const variationTypes = getVariationTypes();
 
     // If there are no variations, buttons should be enabled
@@ -2254,11 +2284,60 @@ const ProductDetailScreen: React.FC = () => {
 
   const renderVariationSelector = (variationType: { name: string; options: Array<{ value: string; image?: string; [key: string]: any }> }, index: number) => {
     const variationName = variationType.name.toLowerCase();
-    
+
     // Get selected value from selectedVariations state
     const selectedValue = selectedVariations[variationName] || null;
+
+    // Display label translation. The API returns the variation type name
+    // in whatever language the source platform uses (1688 → 颜色 / 尺码,
+    // Taobao similar, sometimes Korean / English mixed). Map the common
+    // synonyms to the existing `product.color` / `product.size` i18n
+    // keys so the label always matches the user's locale. Unknown types
+    // (e.g. "규격" / "Specification") fall back to the raw API string —
+    // safer than silently mistranslating.
+    const VARIATION_NAME_I18N_MAP: Record<string, 'color' | 'size'> = {
+      // ─── Color ─────────────────────────────────
+      color: 'color',
+      colour: 'color',
+      '颜色': 'color',
+      '色彩': 'color',
+      '色': 'color',
+      '색상': 'color',
+      '색깔': 'color',
+      '컬러': 'color',
+      // ─── Size ──────────────────────────────────
+      size: 'size',
+      '尺码': 'size',
+      '尺寸': 'size',
+      '사이즈': 'size',
+      '크기': 'size',
+    };
+    const i18nKey =
+      VARIATION_NAME_I18N_MAP[variationName] ||
+      VARIATION_NAME_I18N_MAP[variationType.name];
+    const displayName = i18nKey ? t(`product.${i18nKey}`) : variationType.name;
     
     const handleSelect = (value: string) => {
+      // Toggle behavior: re-tapping the already-selected option deselects
+      // it and resets the gallery to its default first image. This lets the
+      // user clear a color choice without picking a different one.
+      if (selectedValue === value) {
+        setSelectedVariations(prev => {
+          const next = { ...prev };
+          delete next[variationName];
+          return next;
+        });
+        if (variationName === 'color') setSelectedColor(null);
+        else if (variationName === 'size') setSelectedSize(null);
+        // Drop any appended variation image and snap the gallery back to
+        // index 0. Safe to always do this — if the deselected option had
+        // no image, scrolling to 0 is a no-op when we're already there.
+        setExtraVariationImage(null);
+        setSelectedImageIndex(0);
+        galleryScrollRef.current?.scrollTo({ x: 0, y: 0, animated: true });
+        return;
+      }
+
       // Update selectedVariations state
       setSelectedVariations(prev => ({
         ...prev,
@@ -2314,7 +2393,7 @@ const ProductDetailScreen: React.FC = () => {
       // Render first variation type with images (if available) and text
       return (
         <View style={styles.selectorContainer}>
-          <Text style={styles.selectorTitle}>{variationType.name}{selectedValue ? ` : ${selectedValue}` : ''}</Text>
+          <Text style={styles.selectorTitle}>{displayName}{selectedValue ? ` : ${selectedValue}` : ''}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {variationType.options.map((option: any, optIndex: number) => {
               const isSelected = selectedValue === option.value;
@@ -2362,7 +2441,7 @@ const ProductDetailScreen: React.FC = () => {
       // Render other variation types (or first if no images) as text buttons
       return (
         <View style={styles.selectorContainer}>
-          <Text style={styles.selectorTitle}>{variationType.name}{selectedValue ? ` : ${selectedValue}` : ''}</Text>
+          <Text style={styles.selectorTitle}>{displayName}{selectedValue ? ` : ${selectedValue}` : ''}</Text>
           <View style={styles.sizeGrid}>
             {variationType.options.map((option: any, optIndex: number) => {
               const isSelected = selectedValue === option.value;
@@ -2809,21 +2888,51 @@ const ProductDetailScreen: React.FC = () => {
       <View style={styles.topActionRow}>
         {/* Quantity Selector */}
         <View style={styles.quantitySelector}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.quantityButton}
             onPress={() => handleQuantityChange(false)}
           >
             <MinusIcon width={18} height={18} color={COLORS.text.primary} />
           </TouchableOpacity>
           <Text style={styles.quantityText}>{quantity}</Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.quantityButton}
             onPress={() => handleQuantityChange(true)}
           >
             <PlusIcon width={18} height={18} color={COLORS.text.primary} />
           </TouchableOpacity>
         </View>
-        
+
+        {/* Stock + min-order column shown next to the quantity selector. The
+            stock value comes from the product detail API (stockCount /
+            inStock); minOrderQuantity is a separate API field, displayed
+            in a lighter weight as a secondary hint. */}
+        {(() => {
+          const stockCount: number = (product as any)?.stockCount ?? 0;
+          const inStock: boolean =
+            (product as any)?.inStock ?? stockCount > 0;
+          const minOrderQty: number = (product as any)?.minOrderQuantity ?? 1;
+          return (
+            <View style={styles.stockInfoColumn}>
+              <Animated.Text
+                style={[
+                  styles.stockStatusText,
+                  !inStock && styles.stockStatusOut,
+                  { transform: [{ scale: stockPulse }], alignSelf: 'flex-start' },
+                ]}
+                numberOfLines={1}
+              >
+                {inStock
+                  ? `${t('product.inStock')}: ${stockCount.toLocaleString()}`
+                  : t('product.outOfStock')}
+              </Animated.Text>
+              <Text style={styles.minOrderText} numberOfLines={1}>
+                {`${t('product.minOrder')}: ${minOrderQty.toLocaleString()}`}
+              </Text>
+            </View>
+          );
+        })()}
+
         {/* Camera Button */}
       </View>
       
@@ -2874,8 +2983,13 @@ const ProductDetailScreen: React.FC = () => {
         <View style={{ flexDirection: 'row'}}>
           <TouchableOpacity
             style={[styles.addToCartButton, (!canAddToCart || isAddingToCart) && styles.disabledButton]}
-            disabled={!canAddToCart || isAddingToCart}
             onPress={() => {
+              // Pulse the stock badge on every press — gives the user
+              // visual feedback even when the action is blocked (e.g. out
+              // of stock or options not selected). The real mutation only
+              // fires when canAddToCart is true and we're not already mid-add.
+              pulseStock();
+              if (!canAddToCart || isAddingToCart) return;
               handleAddToCart();
             }}
           >
@@ -2892,8 +3006,10 @@ const ProductDetailScreen: React.FC = () => {
           
           <TouchableOpacity
             style={[styles.buyNowButton, (!canAddToCart || isAddingToCartForBuyNow) && styles.disabledButton]}
-            disabled={!canAddToCart || isAddingToCartForBuyNow}
             onPress={() => {
+              // Pulse the stock badge on every press — same as Add to Cart.
+              pulseStock();
+              if (isAddingToCartForBuyNow) return;
               if (!isAuthenticated) {
                 // Navigate to login page with return navigation info (same as Add to Cart)
                 navigation.navigate('Auth', {
@@ -3030,7 +3146,7 @@ const ProductDetailScreen: React.FC = () => {
             top: 0,
             left: 0,
             right: 0,
-            height: insets.top,
+            height: insets.bottom + 60, // Covers header area plus some extra for safe area
             backgroundColor: headerBg,
             zIndex: 1,
           }}
@@ -3953,6 +4069,26 @@ const styles = StyleSheet.create({
     borderColor: COLORS.gray[200],
     paddingHorizontal: SPACING.xs,
     paddingVertical: 2,
+  },
+  // Stock + min-order column shown to the right of the quantity selector.
+  stockInfoColumn: {
+    flex: 1,
+    marginLeft: SPACING.md,
+    justifyContent: 'center',
+  },
+  stockStatusText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '600',
+    color: COLORS.text.primary,
+  },
+  stockStatusOut: {
+    color: COLORS.error,
+  },
+  minOrderText: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.text.secondary,
+    fontWeight: '400',
+    marginTop: 2,
   },
   quantityButton: {
     width: 36,

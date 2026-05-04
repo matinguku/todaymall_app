@@ -152,8 +152,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
           <ProductImage
             uri={imageUri}
             style={[styles.newInImage, { width: cardW, height: cardW }, imageStyle]}
-            badgeLabel={platformBadgeLabel}
-          />
+            badgeLabel={platformBadgeLabel}          />
           
           {/* Like button */}
           {showLikeButton && (
@@ -215,8 +214,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
           <ProductImage
             uri={imageUri}
             style={[styles.gridImage, { width: imageW, height: imageH }, isFullWidth && styles.fullWidthImage, imageStyle]}
-            badgeLabel={platformBadgeLabel}
-          />
+            badgeLabel={platformBadgeLabel}          />
           
           {/* Like button - bottom right */}
           {showLikeButton && (
@@ -265,8 +263,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
           <ProductImage
             uri={imageUri}
             style={[styles.horizontalImage, { width: cardW, height: imageH }, imageStyle]}
-            badgeLabel={platformBadgeLabel}
-          />
+            badgeLabel={platformBadgeLabel}          />
           
           {/* Like button - bottom right */}
           {showLikeButton && (
@@ -393,8 +390,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
           <ProductImage
             uri={imageUri}
             style={[styles.simpleImage, { width: GRID_CARD_WIDTH, height: GRID_CARD_WIDTH }, imageStyle]}
-            badgeLabel={platformBadgeLabel}
-          />
+            badgeLabel={platformBadgeLabel}          />
         </View>
         <View style={styles.simpleInfo}>
           <Text style={styles.simpleName} numberOfLines={2}>
