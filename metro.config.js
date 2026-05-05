@@ -21,12 +21,12 @@ const config = {
   resolver: {
     assetExts: defaultConfig.resolver.assetExts.filter(ext => ext !== 'svg'),
     sourceExts: [...defaultConfig.resolver.sourceExts, 'svg'],
+    blockList: [
+      /node_modules\/.*\/android\/build\/.*/,
+      /node_modules\/.*\/\.cxx\/.*/,
+    ],
   },
   watchFolders: [__dirname],
-  blockList: [
-    /node_modules\/.*\/android\/build\/.*/,
-    /node_modules\/.*\/\.cxx\/.*/,
-  ],
 };
 
 module.exports = mergeConfig(defaultConfig, config);

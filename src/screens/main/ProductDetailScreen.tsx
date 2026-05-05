@@ -529,6 +529,7 @@ const ProductDetailScreen: React.FC = () => {
   const [imageViewerVisible, setImageViewerVisible] = useState(false);
   const [viewerImageIndex, setViewerImageIndex] = useState(0);
   const [isCopied, setIsCopied] = useState(false);
+  const [isPartNumberCopied, setIsPartNumberCopied] = useState(false);
   const [photoCaptureVisible, setPhotoCaptureVisible] = useState(false);
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [relatedProductsPage, setRelatedProductsPage] = useState(1);
@@ -947,6 +948,10 @@ const ProductDetailScreen: React.FC = () => {
           sellerDataInfo: apiProduct.sellerDataInfo || {},
           minOrderQuantity: apiProduct.minOrderQuantity || 1,
           unitInfo: apiProduct.productSaleInfo?.unitInfo || {},
+          // Live-product part number (e.g. "611385"). Only present on
+          // live-commerce items; we surface it on the product object so
+          // the part-number row in renderProductInfo can render it.
+          productNo: apiProduct.productNo || '',
           // Additional fields for cart API
           categoryId: apiProduct.categoryId,
           subject: apiProduct.subject || '',
@@ -2121,9 +2126,9 @@ const ProductDetailScreen: React.FC = () => {
   };
 
   const handleCopyProductCode = async () => {
-    const productCode = (product as any).productCode || 
-                       (product as any).offerId || 
-                       product.id || 
+    const productCode = (product as any).productCode ||
+                       (product as any).offerId ||
+                       product.id ||
                        '';
     if (productCode) {
       await Clipboard.setString(productCode);
@@ -2131,6 +2136,20 @@ const ProductDetailScreen: React.FC = () => {
       // Reset icon after 2 seconds
       setTimeout(() => {
         setIsCopied(false);
+      }, 2000);
+    }
+  };
+
+  // Copy the part number (live-product `productNo`) to the clipboard.
+  // Mirrors handleCopyProductCode but targets a different field so the
+  // two copy buttons don't fight over the same `isCopied` state.
+  const handleCopyPartNumber = () => {
+    const partNumber = (product as any).productNo || '';
+    if (partNumber) {
+      Clipboard.setString(partNumber);
+      setIsPartNumberCopied(true);
+      setTimeout(() => {
+        setIsPartNumberCopied(false);
       }, 2000);
     }
   };
@@ -2219,6 +2238,36 @@ const ProductDetailScreen: React.FC = () => {
             </View>
           )}
         </View>
+
+        {/* Part-number row sits on its own line below `badgesRow`
+            because `badgesRow` is a flex row — putting this inside
+            would lay the part number to the right of the productCode
+            badge instead of underneath it. */}
+        {(() => {
+          // `productNo` is the live-product part number (e.g. "611385").
+          // Only present on live-commerce products — for regular catalog
+          // products this field is undefined and the row is skipped.
+          const partNumber: string = (product as any).productNo || '';
+          if (!partNumber) return null;
+          return (
+            <View style={styles.productPartNumberRow}>
+              <Text style={styles.productPartNumberText}>
+                {`${t('product.partNumber') || 'Part #'} ${partNumber}`}
+              </Text>
+              <TouchableOpacity
+                onPress={handleCopyPartNumber}
+                style={styles.copyIconButton}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                {isPartNumberCopied ? (
+                  <CheckIcon size={16} color={COLORS.red} isSelected={true} />
+                ) : (
+                  <ContentCopyIcon width={16} height={16} color={COLORS.red} />
+                )}
+              </TouchableOpacity>
+            </View>
+          );
+        })()}
       </View>
     );
   };
@@ -3138,7 +3187,8 @@ const ProductDetailScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       {/* Absolutely positioned header overlays the image */}
-      <SafeAreaView style={[styles.safeArea, { paddingTop: insets.top }]} pointerEvents="box-none">
+      <SafeAreaView style={styles.safeArea} pointerEvents="box-none">
+        {renderHeader()}
         <Animated.View
           pointerEvents="none"
           style={{
@@ -3146,12 +3196,12 @@ const ProductDetailScreen: React.FC = () => {
             top: 0,
             left: 0,
             right: 0,
-            height: insets.bottom + 60, // Covers header area plus some extra for safe area
+            height: insets.bottom + 30, // Covers header area plus some extra for safe area
             backgroundColor: headerBg,
             zIndex: 1,
           }}
         />
-        {renderHeader()}
+        
       </SafeAreaView>
 
       <Animated.ScrollView
@@ -3457,6 +3507,23 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.sm,
     color: COLORS.red,
     fontWeight: '600',
+    marginRight: SPACING.xs,
+  },
+  // Secondary part-number row shown directly under the productCode
+  // badge. Wraps the value text + copy button so the icon sits inline.
+  // marginLeft matches the badge's paddingHorizontal so the first
+  // characters of "상품코드" and "품번" align vertically.
+  productPartNumberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.xs,
+    marginLeft: SPACING.sm,
+  },
+  // Same red as the badge, 0.9× the badge font size.
+  productPartNumberText: {
+    fontSize: FONTS.sizes.sm * 0.9,
+    color: COLORS.red,
+    fontWeight: '500',
     marginRight: SPACING.xs,
   },
   copyIconButton: {

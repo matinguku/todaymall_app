@@ -188,20 +188,26 @@ const PaymentScreen: React.FC = () => {
   // Refresh address selection when returning from AddNewAddress screen
   useFocusEffect(
     React.useCallback(() => {
-      if (user?.addresses && user.addresses.length > 0) {
-        // If no address is selected, select default or first address
-        if (!selectedAddress) {
-          const defaultAddress = user.addresses.find(addr => addr.isDefault) || user.addresses[0];
-          setSelectedAddress(defaultAddress);
-        } else {
-          // Verify selected address still exists in the list
-          const addressExists = user.addresses.find(addr => addr.id === selectedAddress.id);
-          if (!addressExists) {
-            // If selected address no longer exists, select default or first
-            const defaultAddress = user.addresses.find(addr => addr.isDefault) || user.addresses[0];
-            setSelectedAddress(defaultAddress);
-          }
-        }
+      const addresses = user?.addresses || [];
+      // Empty list (user deleted every address): drop the stale
+      // selection so downstream handlers like onPress on the Edit
+      // button — which read `selectedAddress.id` directly — don't
+      // try to operate on a deleted address.
+      if (addresses.length === 0) {
+        if (selectedAddress) setSelectedAddress(null);
+        return;
+      }
+      if (!selectedAddress) {
+        const defaultAddress = addresses.find((addr) => addr.isDefault) || addresses[0];
+        setSelectedAddress(defaultAddress);
+        return;
+      }
+      // Verify the selected address still exists in the list. If the
+      // user deleted it on AddressBook, fall back to default/first.
+      const addressExists = addresses.find((addr) => addr.id === selectedAddress.id);
+      if (!addressExists) {
+        const defaultAddress = addresses.find((addr) => addr.isDefault) || addresses[0];
+        setSelectedAddress(defaultAddress);
       }
     }, [user, selectedAddress])
   );
@@ -729,9 +735,18 @@ const PaymentScreen: React.FC = () => {
 
   const renderAddress = () => {
     const addresses = user?.addresses || [];
-    
-    // Get default address or first address
-    const defaultAddress = selectedAddress || addresses.find(addr => addr.isDefault) || addresses[0];
+
+    // Render-time validation: a deleted address can linger in
+    // `selectedAddress` state if the user removed it on AddressBook
+    // and came back here before the focus-effect ran. Drop it if it
+    // is no longer present in the user's address list so the fallback
+    // chain (default → first) takes over and the UI never shows a
+    // ghost entry.
+    const validatedSelected =
+      selectedAddress && addresses.some((a) => a.id === selectedAddress.id)
+        ? selectedAddress
+        : null;
+    const defaultAddress = validatedSelected || addresses.find(addr => addr.isDefault) || addresses[0];
     
     // If no addresses, navigate to select address page
     if (!defaultAddress) {

@@ -701,15 +701,16 @@ const styles = StyleSheet.create({
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
+    gap: SPACING.lg,
   },
   headerIconButton: {
     padding: SPACING.xs,
   },
   managementText: {
-    fontSize: FONTS.sizes.sm,
+    fontSize: FONTS.sizes.md,
     color: COLORS.text.primary,
-    fontWeight: '400',
+    fontWeight: '700',
+    
   },
   scrollView: {
     flex: 1,
