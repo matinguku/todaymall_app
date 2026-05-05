@@ -283,13 +283,62 @@ const LiveSellerDetailScreen: React.FC = () => {
             category: item.product?.categoryName?.[locale] || item.product?.categoryName?.en || '',
             liveTitle: item.liveTitle || '',
             status: item.status || '',
+            // stockCount: total units across every SKU on the product.
+            // The live API mirrors the detail API's structure — each
+            // SKU under product.productSkuInfos[] carries an
+            // `amountOnSale` count. Sum them so a product with one
+            // sold-out color and one in-stock color isn't falsely
+            // dimmed. Direct fallback paths cover backends that
+            // pre-aggregate the value.
+            stockCount: (() => {
+              if (typeof item.stockCount === 'number') return item.stockCount;
+              const skus = item?.product?.productSkuInfos;
+              if (Array.isArray(skus) && skus.length > 0) {
+                return skus.reduce((sum: number, s: any) => {
+                  const v =
+                    typeof s?.amountOnSale === 'string'
+                      ? parseInt(s.amountOnSale, 10)
+                      : s?.amountOnSale;
+                  return sum + (typeof v === 'number' && !isNaN(v) ? v : 0);
+                }, 0);
+              }
+              if (typeof item.amountOnSale === 'number') return item.amountOnSale;
+              if (typeof item.product?.amountOnSale === 'number') return item.product.amountOnSale;
+              if (typeof item.product?.productSaleInfo?.amountOnSale === 'number') {
+                return item.product.productSaleInfo.amountOnSale;
+              }
+              return 0;
+            })(),
+            // inStock: derived from the same SKU sum so the two fields
+            // can't drift apart. `true` when at least one SKU has
+            // amountOnSale > 0; `false` when every SKU is 0.
+            // Defaults to `true` when no stock data is available so
+            // cards without stock info aren't falsely dimmed.
+            inStock: (() => {
+              if (typeof item.inStock === 'boolean') return item.inStock;
+              const skus = item?.product?.productSkuInfos;
+              if (Array.isArray(skus) && skus.length > 0) {
+                return skus.some((s: any) => {
+                  const v =
+                    typeof s?.amountOnSale === 'string'
+                      ? parseInt(s.amountOnSale, 10)
+                      : s?.amountOnSale;
+                  return typeof v === 'number' && !isNaN(v) && v > 0;
+                });
+              }
+              return true;
+            })(),
+           
             // Date classification: empty string when the API didn't ship
             // a date — those products end up in their own bucket.
             liveDate: liveDateKey,
             liveDateRaw: liveDateRaw ? String(liveDateRaw) : '',
             raw: item,
           };
+         
+            
         });
+        
 
         if (append) {
           // Dedup by id when appending — the live API can return the same
@@ -557,6 +606,11 @@ const LiveSellerDetailScreen: React.FC = () => {
     const title = item.title || item.name || '';
     const reviewCount = item.reviewCount || 0;
     const soldCount = item.soldCount || 0;
+    // Dim the card image at 50% opacity when the product is out of
+    // stock. `stockCount === 0` is the canonical signal — it's the
+    // sum of `amountOnSale` across every SKU (see the mapping above).
+    const dimImage = item.stockCount === 0;
+    
 
     return (
       <TouchableOpacity
@@ -577,7 +631,7 @@ const LiveSellerDetailScreen: React.FC = () => {
       >
         <Image
           source={{ uri: imageUri || `https://via.placeholder.com/${IMAGE_CONFIG.PRODUCT_DISPLAY_PIXEL}.png?text=Product` }}
-          style={styles.productImage}
+          style={[styles.productImage, dimImage && { opacity: 0.5 }]}
           resizeMode="cover"
         />
         <View style={styles.productInfoContainer}>

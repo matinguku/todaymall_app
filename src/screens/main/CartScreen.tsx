@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
+import LanguageButton from '../../components/LanguageButton';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG, PAGINATION, BACK_NAVIGATION_HIT_SLOP } from '../../constants';
@@ -607,18 +608,19 @@ const CartScreen: React.FC = () => {
       
       
       <View style={styles.headerActions}>
+        <LanguageButton />
         <TouchableOpacity style={styles.headerIcon} onPress={() => {navigation.navigate('Wishlist' as never)}}>
           <HeartIcon width={24} height={24} color={COLORS.black} />
         </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.headerIcon} 
+        <TouchableOpacity
+          style={styles.headerIcon}
           onPress={handleDeleteSelected}
           disabled={cart.items.length === 0}
         >
-          <DeleteIcon 
-            width={24} 
-            height={24} 
-            color={cart.items.length === 0 ? COLORS.gray[300] : COLORS.black} 
+          <DeleteIcon
+            width={24}
+            height={24}
+            color={cart.items.length === 0 ? COLORS.gray[300] : COLORS.black}
           />
         </TouchableOpacity>
       </View>

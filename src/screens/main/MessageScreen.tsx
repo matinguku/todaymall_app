@@ -14,6 +14,7 @@ import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/nativ
 import Text from '../../components/Text';
 import Icon from '../../components/Icon';
 import { BackNavTouchableOpacity } from '../../components/BackNavTouchable';
+import LanguageButton from '../../components/LanguageButton';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../../constants';
 import { useAuth } from '../../context/AuthContext';
 import { useGeneralInquiry } from '../../hooks/useGeneralInquiry';
@@ -418,6 +419,7 @@ const MessageScreen: React.FC<MessageScreenProps> = ({ initialTabOverride, onEmb
         <Text style={[styles.headerTitle, !!onEmbeddedBack && { marginLeft: SPACING.sm }]}>문의</Text>
       </View>
       <View style={styles.headerRight}>
+        <LanguageButton />
         <TouchableOpacity
           style={styles.headerIcon}
           onPress={() => navigation.navigate('Search')}

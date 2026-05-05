@@ -64,6 +64,7 @@ import HelpFAQQuestionsScreen from './settingScreen/helpScreen/HelpFAQQuestionsS
 import AboutUsScreen from './AboutUsScreen';
 import HeadsetMicIcon from '../../../assets/icons/HeadsetMicIcon';
 import LocationIcon from '../../../assets/icons/LocationIcon';
+import LanguageButton from '../../../components/LanguageButton';
 import SettingsIcon from '../../../assets/icons/SettingsIcon';
 import CoinIcon from '../../../assets/icons/CoinIcon';
 import CouponIcon from '../../../assets/icons/CouponIcon';
@@ -769,12 +770,7 @@ const ProfileScreen: React.FC = () => {
           </View>
         {/* )} */}
         <View style={styles.headerIcons}>
-          <TouchableOpacity 
-            style={styles.headerIcon}
-            onPress={() => navigation.navigate('LanguageSettings')}
-          >
-            <LocationIcon width={24} height={24} color={COLORS.text.primary} />
-          </TouchableOpacity>
+          <LanguageButton />
           <NotificationBadge
             customIcon={<HeadsetMicIcon width={24} height={24} color={COLORS.text.primary} />}
             count={notificationCount}

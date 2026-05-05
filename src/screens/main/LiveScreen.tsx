@@ -17,6 +17,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import WebView from 'react-native-webview';
 import { useNavigation } from '@react-navigation/native';
 import Text from '../../components/Text';
+import LanguageButton from '../../components/LanguageButton';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SCREEN_WIDTH } from '../../constants';
 import { useAppSelector } from '../../store/hooks';
 import { useLiveCommerceMutation } from '../../hooks/useLiveCommerceMutation';
@@ -165,9 +166,7 @@ const LiveHeader: React.FC<{ onSearchPress?: () => void; t: (key: string) => str
         <Text style={styles.headerSubtitle}>{t('live.channel')}</Text>
       </View>
     </View>
-    {/* <TouchableOpacity onPress={onSearchPress} style={styles.headerSearchBtn}>
-      <SearchIcon width={24} height={24} color={COLORS.white} />
-    </TouchableOpacity> */}
+    <LanguageButton />
   </View>
 );
 

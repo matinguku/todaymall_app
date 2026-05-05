@@ -37,6 +37,7 @@ import { useToast } from '../../context/ToastContext';
 import { RootStackParamList, Product, NewInProduct, Story, Carousel } from '../../types';
 
 import { ProductCard, SearchButton, NotificationBadge, ImagePickerModal } from '../../components';
+import LanguageButton from '../../components/LanguageButton';
 import { Banner } from '../../types';
 import { useBannersMutation } from '../../hooks/useBannersMutation';
 import { useCarouselsMutation } from '../../hooks/useCarouselsMutation';
@@ -1606,13 +1607,10 @@ const HomeScreen: React.FC = () => {
               <Text style={styles.logoTitle}>{t('home.logo')}</Text>
               <Text style={styles.logoText}>{t('home.logoText')}</Text>
             </View>
+            <View style={styles.headerIcons}>
+              <LanguageButton />
+            </View>
             {/* <View style={styles.headerIcons}>
-              <TouchableOpacity 
-                // style={styles.headerIcon}
-                onPress={() => navigation.navigate('LanguageSettings' as never)}
-              >
-                <Text style={styles.flagText}>{getLanguageFlag(locale)}</Text>
-              </TouchableOpacity>
               <NotificationBadge
                 customIcon={<HeadsetMicIcon width={24} height={24} color={COLORS.text.primary} />}
                 count={unreadCount}
@@ -2989,6 +2987,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
+    // Push the icons to the right edge of the header row. The row uses
+    // justifyContent: 'flex-start' and the logo container doesn't flex,
+    // so without this the button would sit next to the logo instead of
+    // in the right corner.
+    marginLeft: 'auto',
   },
   headerIcon: {
     padding: SPACING.xs,
