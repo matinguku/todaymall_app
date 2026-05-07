@@ -13,7 +13,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import Icon from '../../../../../components/Icon';
-import { BackNavTouchableOpacity } from '../../../../../components/BackNavTouchable';
 import type { SellerStackParamList } from '../../../../../types';
 import { useTranslation } from '../../../../../hooks/useTranslation';
 import { useSellerDashboardMutation } from '../../../../../hooks/useSellerDashboardMutation';
@@ -69,6 +68,18 @@ const SellerSalesRefundInfoScreen: React.FC<SellerSalesRefundInfoScreenProps> = 
 
   const formatDate = (date: Date) => date.toLocaleDateString('en-US');
   const formatApiDate = (date: Date) => date.toISOString().split('T')[0];
+  const localizeSellerError = useCallback(
+    (rawMessage: string | null | undefined) => {
+      const fallback = t('sellerInfo.orderData.failedToLoad') || 'Failed to load seller data.';
+      if (!rawMessage) return fallback;
+      const normalized = rawMessage.trim().toLowerCase();
+      if (normalized.includes('seller access required')) {
+        return t('sellerInfo.orderData.sellerAccessRequired') || fallback;
+      }
+      return rawMessage;
+    },
+    [t]
+  );
 
   const loadDashboard = useCallback(
     async (nextPage: number = 1) => {
@@ -131,12 +142,12 @@ const SellerSalesRefundInfoScreen: React.FC<SellerSalesRefundInfoScreenProps> = 
         `${filename}\nRows: ${rowCount}`
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : (t('sellerInfo.orderData.failedToLoad') || 'Export failed.');
+      const message = err instanceof Error ? localizeSellerError(err.message) : (t('sellerInfo.orderData.failedToLoad') || 'Export failed.');
       Alert.alert('Error', message);
     } finally {
       setIsExporting(false);
     }
-  }, [t]);
+  }, [localizeSellerError, t]);
 
   const renderHeader = () => (
     <View style={styles.header}>
@@ -213,23 +224,25 @@ const SellerSalesRefundInfoScreen: React.FC<SellerSalesRefundInfoScreenProps> = 
           </TouchableOpacity>
         </View>
       </View>
-      <TouchableOpacity
-        style={styles.dateSearchBtn}
-        onPress={() => {
-          loadDashboard(1);
-        }}
-      >
-        <Text style={styles.dateSearchBtnText}>{t('sellerInfo.orderData.dateSearchButton')}</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.exportBtn, isExporting && styles.exportBtnDisabled]}
-        onPress={handleExportExcel}
-        disabled={isExporting}
-      >
-        <Text style={styles.exportBtnText}>
-          {isExporting ? (t('sellerInfo.orderData.loading') || 'Loading...') : (t('common.download') || 'Download')}
-        </Text>
-      </TouchableOpacity>
+      <View style={styles.dateActionsRow}>
+        <TouchableOpacity
+          style={styles.dateSearchBtn}
+          onPress={() => {
+            loadDashboard(1);
+          }}
+        >
+          <Text style={styles.dateSearchBtnText}>{t('sellerInfo.orderData.dateSearchButton')}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.exportBtn, isExporting && styles.exportBtnDisabled]}
+          onPress={handleExportExcel}
+          disabled={isExporting}
+        >
+          <Text style={styles.exportBtnText}>
+            {isExporting ? (t('sellerInfo.orderData.loading') || 'Loading...') : (t('command.download') || t('common.download') || 'Download')}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
@@ -259,7 +272,7 @@ const SellerSalesRefundInfoScreen: React.FC<SellerSalesRefundInfoScreenProps> = 
         </View>
       ) : isError ? (
         <View style={styles.emptyBox}>
-          <Text style={styles.emptyText}>{error || t('sellerInfo.orderData.failedToLoad')}</Text>
+          <Text style={styles.emptyText}>{localizeSellerError(error)}</Text>
         </View>
       ) : items.length === 0 ? (
         <View style={styles.emptyBox}>
@@ -434,13 +447,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   dateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
+    alignItems: 'stretch',
     marginBottom: SPACING.md,
   },
   dateGroup: {
-    flex: 1,
+    width: '100%',
   },
   dateLabel: {
     color: COLORS.text.secondary,
@@ -470,8 +482,14 @@ const styles = StyleSheet.create({
     marginHorizontal: SPACING.sm,
     color: COLORS.text.secondary,
   },
+  dateActionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+    gap: SPACING.sm,
+  },
   dateSearchBtn: {
-    marginLeft: SPACING.sm,
     backgroundColor: COLORS.primary,
     borderRadius: BORDER_RADIUS.md,
     paddingVertical: SPACING.sm,
@@ -485,7 +503,6 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.sm,
   },
   exportBtn: {
-    marginLeft: SPACING.sm,
     backgroundColor: COLORS.secondary,
     borderRadius: BORDER_RADIUS.md,
     paddingVertical: SPACING.sm,

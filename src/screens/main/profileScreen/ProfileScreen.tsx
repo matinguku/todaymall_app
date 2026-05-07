@@ -29,6 +29,7 @@ import { useGeneralInquiry } from '../../../hooks/useGeneralInquiry';
 import { inquiryApi } from '../../../services/inquiryApi';
 import { wishlistApi } from '../../../services/wishlistApi';
 import { productsApi } from '../../../services/productsApi';
+import { depositApi } from '../../../services/depositApi';
 import { NotificationBadge, ProductCard } from '../../../components';
 import { useRecommendationsMutation } from '../../../hooks/useRecommendationsMutation';
 import { useWishlistStatus } from '../../../hooks/useWishlistStatus';
@@ -357,6 +358,7 @@ const ProfileScreen: React.FC = () => {
   const [wishlistFirstImage, setWishlistFirstImage] = useState<string>('');
   const [viewedCount, setViewedCount] = useState(0);
   const [viewedFirstImage, setViewedFirstImage] = useState<string>('');
+  const [calculatedDepositBalance, setCalculatedDepositBalance] = useState<number | null>(null);
 
   // Get orders hook for counts — aggregate client-side from `orders` because
   // server-side `viewFilterCounts` doesn't cover all the buckets shown in the
@@ -449,13 +451,14 @@ const ProfileScreen: React.FC = () => {
       const fetchCounts = async () => {
         if (!isAuthenticated || isGuest || !user) return;
         try {
-          const [wishlistRes, viewedRes] = await Promise.allSettled([
+          const [wishlistRes, viewedRes, depositRes] = await Promise.allSettled([
             wishlistApi.getWishlist({
               discounted: false,
               sort: 'recently_saved',
               timeFilter: '90d',
             }),
             productsApi.getRecentlyViewedProducts(100),
+            depositApi.getBalance(),
           ]);
           let wlCount = 0;
           let wlImage = '';
@@ -483,6 +486,19 @@ const ProfileScreen: React.FC = () => {
             const firstItem = data.items?.[0];
             setViewedFirstImage(firstItem?.photoUrl || firstItem?.imageUrl || firstItem?.image || '');
           }
+          if (depositRes.status === 'fulfilled' && depositRes.value?.success && depositRes.value?.data) {
+            const d = depositRes.value.data as any;
+            const balanceCandidate =
+              d.depositBalance ?? d.balance ?? d.totalDeposit ?? d.availableDeposit ?? d.withdrawableAmount;
+            if (typeof balanceCandidate === 'number') {
+              setCalculatedDepositBalance(balanceCandidate);
+            } else if (typeof balanceCandidate === 'string') {
+              const parsed = parseFloat(balanceCandidate);
+              setCalculatedDepositBalance(Number.isNaN(parsed) ? 0 : parsed);
+            } else {
+              setCalculatedDepositBalance(0);
+            }
+          }
         } catch {
           // silently fail
         }
@@ -490,6 +506,19 @@ const ProfileScreen: React.FC = () => {
       fetchCounts();
     }, [isAuthenticated, isGuest, user?.id, user?.wishlist?.length])
   );
+
+  const displayDepositBalance = (() => {
+    if (typeof calculatedDepositBalance === 'number') {
+      return calculatedDepositBalance;
+    }
+    const depositBalance = (user as any)?.depositBalance ?? (user as any)?.deposit;
+    if (typeof depositBalance === 'number') return depositBalance;
+    if (typeof depositBalance === 'string') {
+      const numValue = parseFloat(depositBalance);
+      return Number.isNaN(numValue) ? 0 : numValue;
+    }
+    return 0;
+  })();
   
   // Translation function
   const t = (key: string) => {
@@ -901,15 +930,7 @@ const ProfileScreen: React.FC = () => {
           <View style={{flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center'}}>
             <Text style={styles.statLabel}>{t('profile.deposit')}:</Text>
             <Text style={styles.statValue}>
-              {(() => {
-                const depositBalance = (user as any)?.depositBalance ?? (user as any)?.deposit;
-                if (typeof depositBalance === 'number') return formatDepositBalance(depositBalance);
-                if (typeof depositBalance === 'string') {
-                  const numValue = parseFloat(depositBalance);
-                  return isNaN(numValue) ? depositBalance : formatDepositBalance(numValue);
-                }
-                return formatDepositBalance(0);
-              })()}
+              {formatDepositBalance(displayDepositBalance)}
             </Text>
           </View>
         </TouchableOpacity>

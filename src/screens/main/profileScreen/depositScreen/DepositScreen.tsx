@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -71,6 +71,7 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
   const [withdrawalDeposit, setWithdrawalDeposit] = useState(0);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [chargeLoading, setChargeLoading] = useState(false);
+  const rechargeRefreshTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   // Fetch balance from API
   const fetchBalance = useCallback(async () => {
@@ -121,12 +122,19 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
     }
   }, []);
 
+  const refreshDepositData = useCallback(async () => {
+    await Promise.all([fetchBalance(), fetchTransactions()]);
+  }, [fetchBalance, fetchTransactions]);
+
   // Refresh data when screen is focused
   useFocusEffect(
     useCallback(() => {
-      fetchBalance();
-      fetchTransactions();
-    }, [fetchBalance, fetchTransactions])
+      void refreshDepositData();
+      return () => {
+        rechargeRefreshTimersRef.current.forEach(clearTimeout);
+        rechargeRefreshTimersRef.current = [];
+      };
+    }, [refreshDepositData])
   );
 
   // Filter transactions based on search, date range, and active tab
@@ -195,7 +203,8 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
   };
 
   const handleChargeConfirm = async () => {
-    const amount = parseInt(chargeAmount);
+    const normalizedAmount = chargeAmount.replace(/[^\d]/g, '');
+    const amount = parseInt(normalizedAmount, 10);
     if (!amount || amount <= 0) {
       Alert.alert(t('common.error'), t('deposit.invalidAmount'));
       return;
@@ -227,7 +236,7 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
         Alert.alert(t('inquiry.success'), t('deposit.rechargeSuccess'));
         // Add to local transactions list
         const newTransaction: Transaction = {
-          id: transactions.length + 1,
+          id: Date.now(),
           type: 'charge',
           amount: amount,
           date: new Date().toISOString().split('T')[0],
@@ -235,9 +244,22 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
           description: 'Recharge Request',
           status: 'pending',
         };
-        setTransactions([newTransaction, ...transactions]);
-        // Refresh balance
-        fetchBalance();
+        setTransactions((prev) => [newTransaction, ...prev]);
+        // Show amount immediately in deposit summary while backend finalizes.
+        setTotalDeposit((prev) => prev + amount);
+        setAvailableDeposit((prev) => prev + amount);
+        // Delay server refresh slightly to avoid immediately replacing
+        // optimistic UI with stale backend snapshots.
+        rechargeRefreshTimersRef.current.forEach(clearTimeout);
+        rechargeRefreshTimersRef.current = [];
+        rechargeRefreshTimersRef.current.push(
+          setTimeout(() => {
+            void refreshDepositData();
+          }, 2500),
+          setTimeout(() => {
+            void refreshDepositData();
+          }, 6000)
+        );
         setChargeAmount('');
         setChargeSenderName('');
         setShowChargeModal(false);
@@ -280,8 +302,7 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
 
       if (response.success) {
         Alert.alert(t('inquiry.success'), t('deposit.withdrawalSuccess'));
-        fetchBalance();
-        fetchTransactions();
+        await refreshDepositData();
         setWithdrawAmount('');
         setWithdrawReason('');
         setWithdrawAccountNumber('');
@@ -300,6 +321,13 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
   const handlePresetCharge = (amount: number) => {
     setChargeAmount(amount.toString());
   };
+
+  useEffect(() => {
+    return () => {
+      rechargeRefreshTimersRef.current.forEach(clearTimeout);
+      rechargeRefreshTimersRef.current = [];
+    };
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>

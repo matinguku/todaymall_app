@@ -1642,6 +1642,9 @@ Supports credit and check cards from various banks for recharging and payments.`
       linkCopied: 'Link Copied',
       linkCopiedToClipboard: 'The app link has been copied to your clipboard!',
     },
+    command: {
+      download: 'Download',
+    },
     sellerInfo: {
       dashboardTitle: 'Seller Dashboard',
       chartSubtitle: 'Regional Sales Share',
@@ -1707,6 +1710,7 @@ Supports credit and check cards from various banks for recharging and payments.`
         refundTab: 'Refund',
         loading: 'Loading...',
         failedToLoad: 'Failed to load seller data.',
+        sellerAccessRequired: 'Seller access is required.',
         liveCode: 'Live Code',
         totalLabel: 'Total',
         itemsLabel: 'items',
@@ -3404,6 +3408,9 @@ Supports credit and check cards from various banks for recharging and payments.`
       linkCopied: '链接已复制',
       linkCopiedToClipboard: '应用链接已复制到您的剪贴板！',
     },
+    command: {
+      download: '下载',
+    },
     sellerInfo: {
       dashboardTitle: '卖家看板',
       chartSubtitle: '地区销售占比',
@@ -3469,6 +3476,7 @@ Supports credit and check cards from various banks for recharging and payments.`
         refundTab: '退款',
         loading: '加载中...',
         failedToLoad: '加载卖家数据失败。',
+        sellerAccessRequired: '需要卖家权限。',
         liveCode: '直播代码',
         totalLabel: '共',
         itemsLabel: '条',
@@ -5262,7 +5270,11 @@ Supports credit and check cards from various banks for recharging and payments.`
       linkCopied: '링크 복사됨',
       linkCopiedToClipboard: '앱 링크가 클립보드에 복사되었습니다!',
     },
+    command: {
+      download: '다운로드',
+    },
     sellerInfo: {
+      sellerAccessRequired: '셀러 권한이 필요합니다.',
       dashboardTitle: '셀러 대시보드',
       chartSubtitle: '지역별 매출 비중',
       performanceTitle: '성과 분포',
@@ -5327,6 +5339,7 @@ Supports credit and check cards from various banks for recharging and payments.`
         refundTab: '환불',
         loading: '불러오는 중...',
         failedToLoad: '셀러 데이터를 불러오지 못했습니다.',
+        sellerAccessRequired: '셀러 권한이 필요합니다.',
         liveCode: '라이브 코드',
         totalLabel: '총',
         itemsLabel: '건',

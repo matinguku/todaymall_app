@@ -1,4 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
+import { API_BASE_URL } from '../constants';
+import { getStoredToken } from '../services/authApi';
+import { buildSignatureHeaders } from '../services/signature';
 
 export type SellerDashboardMode = 'profit' | 'refund';
 
@@ -36,28 +39,6 @@ type UseSellerDashboardMutationResult = {
   error: string | null;
 };
 
-const BASE_DATA: SellerDashboardItem[] = Array.from({ length: 42 }).map((_, index) => {
-  const seq = index + 1;
-  const quantity = (seq % 5) + 1;
-  const paidAmount = 12000 + seq * 860;
-  return {
-    firstTierPaidAt: new Date(2026, 0, (seq % 28) + 1).toISOString(),
-    orderNumber: `TM-ORD-${String(10000 + seq)}`,
-    orderId: `order-${seq}`,
-    productNumber: `PRD-${String(3000 + seq)}`,
-    quantity,
-    recipient: `Buyer ${seq}`,
-    paidAmountKrw: paidAmount,
-    rebateKrw: Math.floor(paidAmount * 0.03),
-    trackingNumber: seq % 3 === 0 ? null : `TRK${900000 + seq}`,
-    liveCodeSnapshot: seq % 2 === 0 ? 'LIVE-SEOUL' : 'LIVE-BUSAN',
-  };
-});
-
-/**
- * Local in-memory fallback for seller order/refund dashboard.
- * Keeps current screen functional until backend endpoints are wired.
- */
 export const useSellerDashboardMutation = (): UseSellerDashboardMutationResult => {
   const [items, setItems] = useState<SellerDashboardItem[]>([]);
   const [total, setTotal] = useState<number>(0);
@@ -68,10 +49,74 @@ export const useSellerDashboardMutation = (): UseSellerDashboardMutationResult =
   const [isError, setIsError] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  const normalizeItem = useCallback((raw: any, index: number): SellerDashboardItem => {
+    const num = (value: any): number => {
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      if (typeof value === 'string') {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+      }
+      return 0;
+    };
+    const str = (value: any): string => (typeof value === 'string' ? value : '');
+
+    return {
+      firstTierPaidAt:
+        str(raw?.firstTierPaidAt) ||
+        str(raw?.paidAt) ||
+        str(raw?.paymentDate) ||
+        str(raw?.createdAt) ||
+        new Date().toISOString(),
+      orderNumber: str(raw?.orderNumber) || str(raw?.orderNo) || str(raw?.order_id) || '-',
+      orderId: str(raw?.orderId) || str(raw?._id) || str(raw?.id) || `row-${Date.now()}-${index}`,
+      productNumber:
+        str(raw?.productNumber) ||
+        str(raw?.productName) ||
+        str(raw?.itemName) ||
+        str(raw?.subject) ||
+        '-',
+      quantity: num(raw?.quantity ?? raw?.salesQuantity ?? raw?.refundQuantity),
+      recipient: str(raw?.recipient) || str(raw?.receiverName) || str(raw?.userName) || '-',
+      paidAmountKrw: num(raw?.paidAmountKrw ?? raw?.salesAmountKrw ?? raw?.teamSalesAmountKrw ?? raw?.amount),
+      rebateKrw: num(raw?.rebateKrw ?? raw?.teamRebateNetKrw ?? raw?.rebateAmountKrw ?? raw?.rebate),
+      trackingNumber:
+        str(raw?.trackingNumber) ||
+        str(raw?.trackingNo) ||
+        str(raw?.waybillNo) ||
+        null,
+      liveCodeSnapshot:
+        str(raw?.liveCodeSnapshot) ||
+        str(raw?.liveCode) ||
+        str(raw?.live_code) ||
+        '-',
+    };
+  }, []);
+
+  const parsePayload = useCallback((payload: any) => {
+    const data = payload?.data ?? payload;
+    const rows =
+      data?.items ??
+      data?.orders ??
+      data?.list ??
+      data?.results ??
+      data?.liveOrders ??
+      [];
+    const arrayRows = Array.isArray(rows) ? rows : [];
+    const parsedTotal =
+      data?.pagination?.total ??
+      data?.total ??
+      data?.count ??
+      arrayRows.length;
+    return {
+      rows: arrayRows,
+      total: typeof parsedTotal === 'number' ? parsedTotal : Number(parsedTotal) || arrayRows.length,
+    };
+  }, []);
+
   const mutate = useCallback(async (request: SellerDashboardRequest): Promise<void> => {
     const nextPage = request.page ?? 1;
     const nextPageSize = request.pageSize ?? 20;
-    const keyword = request.search?.trim().toLowerCase() ?? '';
+    const mode = request.mode ?? 'profit';
 
     if (nextPage > 1) {
       setIsLoadingMore(true);
@@ -83,23 +128,68 @@ export const useSellerDashboardMutation = (): UseSellerDashboardMutationResult =
     setError(null);
 
     try {
-      const filtered = BASE_DATA.filter((row) => {
-        if (!keyword) return true;
-        return (
-          row.orderNumber.toLowerCase().includes(keyword) ||
-          row.productNumber.toLowerCase().includes(keyword) ||
-          row.recipient.toLowerCase().includes(keyword)
-        );
-      });
+      const token = await getStoredToken();
+      if (!token) {
+        throw new Error('Please sign in again.');
+      }
 
-      const start = (nextPage - 1) * nextPageSize;
-      const end = start + nextPageSize;
-      const paged = filtered.slice(start, end);
+      const endpointCandidates = [
+        `${API_BASE_URL}/users/seller/live-orders${mode === 'refund' ? '/refunds' : '/profits'}`,
+        `${API_BASE_URL}/users/seller/live-orders`,
+      ];
 
-      setTotal(filtered.length);
+      const params = new URLSearchParams();
+      if (request.search) params.set('search', request.search);
+      if (request.from) params.set('from', request.from);
+      if (request.to) params.set('to', request.to);
+      params.set('mode', mode);
+      params.set('page', String(nextPage));
+      params.set('pageSize', String(nextPageSize));
+
+      let parsedRows: any[] = [];
+      let parsedTotal = 0;
+      let lastErrorMessage = '';
+
+      for (const endpoint of endpointCandidates) {
+        const url = `${endpoint}?${params.toString()}`;
+        try {
+          const signatureHeaders = await buildSignatureHeaders('GET', url);
+          const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+              ...signatureHeaders,
+            },
+          });
+          const payload = await response.json().catch(() => null);
+          if (!response.ok || payload?.status === 'error') {
+            lastErrorMessage =
+              payload?.message ||
+              payload?.error ||
+              `Request failed with status ${response.status}`;
+            continue;
+          }
+          const parsed = parsePayload(payload);
+          parsedRows = parsed.rows;
+          parsedTotal = parsed.total;
+          lastErrorMessage = '';
+          break;
+        } catch (err) {
+          lastErrorMessage = err instanceof Error ? err.message : 'Failed to load seller dashboard data.';
+        }
+      }
+
+      if (lastErrorMessage && parsedRows.length === 0) {
+        throw new Error(lastErrorMessage);
+      }
+
+      const normalizedRows = parsedRows.map((row, index) => normalizeItem(row, index));
+
+      setTotal(parsedTotal);
       setPage(nextPage);
       setPageSize(nextPageSize);
-      setItems((prev) => (nextPage > 1 ? [...prev, ...paged] : paged));
+      setItems((prev) => (nextPage > 1 ? [...prev, ...normalizedRows] : normalizedRows));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load seller dashboard data.';
       setIsError(true);
@@ -112,7 +202,7 @@ export const useSellerDashboardMutation = (): UseSellerDashboardMutationResult =
       setIsLoading(false);
       setIsLoadingMore(false);
     }
-  }, []);
+  }, [normalizeItem, parsePayload]);
 
   return useMemo(
     () => ({

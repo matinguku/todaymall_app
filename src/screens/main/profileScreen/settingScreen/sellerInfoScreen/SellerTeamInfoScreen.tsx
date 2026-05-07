@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import Icon from '../../../../../components/Icon';
-import { BackNavTouchableOpacity } from '../../../../../components/BackNavTouchable';
 import type { SellerStackParamList } from '../../../../../types';
 import { COLORS } from '../../../../../constants';
 import { useTranslation } from '../../../../../hooks/useTranslation';
@@ -43,6 +42,18 @@ const SellerTeamInfo: React.FC<SellerTeamInfoProps> = ({ embedded = false, onEmb
   const [sellerData, setSellerData] = useState<Seller[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const localizeSellerError = useCallback(
+    (rawMessage: string | null | undefined) => {
+      const fallback = t('sellerInfo.orderData.failedToLoad') || 'Failed to load seller data.';
+      if (!rawMessage) return fallback;
+      const normalized = rawMessage.trim().toLowerCase();
+      if (normalized.includes('seller access required')) {
+        return t('sellerInfo.orderData.sellerAccessRequired') || fallback;
+      }
+      return rawMessage;
+    },
+    [t]
+  );
 
   useEffect(() => {
     const fetchDirectTeam = async () => {
@@ -81,7 +92,7 @@ const SellerTeamInfo: React.FC<SellerTeamInfoProps> = ({ embedded = false, onEmb
         }));
         setSellerData(normalizedMembers);
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to load direct team.';
+        const message = err instanceof Error ? localizeSellerError(err.message) : localizeSellerError('Failed to load direct team.');
         setError(message);
         setSellerData([]);
       } finally {
@@ -90,7 +101,7 @@ const SellerTeamInfo: React.FC<SellerTeamInfoProps> = ({ embedded = false, onEmb
     };
 
     fetchDirectTeam();
-  }, []);
+  }, [localizeSellerError]);
 
   const totals = useMemo(() => {
     return sellerData.reduce(
@@ -153,7 +164,7 @@ const SellerTeamInfo: React.FC<SellerTeamInfoProps> = ({ embedded = false, onEmb
         <View style={styles.listContainer}>
           <Text style={styles.sectionTitle}>{t('sellerInfo.team.sectionTitle')}</Text>
           {isLoading ? <Text style={styles.infoText}>{t('sellerInfo.loadingSummary') || 'Loading summary...'}</Text> : null}
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          {error ? <Text style={styles.errorText}>{localizeSellerError(error)}</Text> : null}
           {!isLoading && !error && sellerData.length === 0 ? (
             <Text style={styles.infoText}>{t('sellerInfo.noData') || 'No direct team data.'}</Text>
           ) : null}

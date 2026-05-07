@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   StatusBar,
   Alert,
+  InteractionManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
@@ -100,6 +101,7 @@ const CategoryTabScreen: React.FC = () => {
   // Bumped to invalidate in-flight batch fetches (company/locale switch, refresh).
   const fetchTokenRef = useRef(0);
   const sectionListRef = useRef<SectionList<any> | null>(null);
+  const leftCategoryListRef = useRef<FlatList<any> | null>(null);
   // True while we are programmatically scrolling the right column in response
   // to an L1 tap; prevents the resulting onViewableItemsChanged from echoing
   // the highlight back and fighting the user's tap.
@@ -318,6 +320,7 @@ const CategoryTabScreen: React.FC = () => {
         itemIndex,
         animated,
         viewOffset: 0,
+        viewPosition: 0,
       });
       return true;
     } catch {
@@ -364,28 +367,75 @@ const CategoryTabScreen: React.FC = () => {
     }
   }, [finishCategoryNavigation, performTargetScroll, sections]);
 
-  const handleCategoryPress = (categoryId: string) => {
-    setIsCategoryNavigating(true);
-    navigationStartMsRef.current = Date.now();
-    anchoredCategoryIdRef.current = categoryId;
-    pendingScrollTargetRef.current = { categoryId };
-    setSelectedCategory(categoryId);
+  const syncRightColumnToCategory = useCallback(
+    (categoryId: string) => {
+      const sectionIndex = sections.findIndex((s) => s.l1Id === categoryId);
+      if (sectionIndex < 0) {
+        retryPendingTargetScroll();
+        return;
+      }
+      const ok = performTargetScroll(sectionIndex, 0, false);
+      if (!ok) {
+        retryPendingTargetScroll();
+      } else {
+        pendingScrollTargetRef.current = null;
+        finishCategoryNavigation();
+      }
+    },
+    [sections, performTargetScroll, retryPendingTargetScroll, finishCategoryNavigation],
+  );
 
-    programmaticScrollRef.current = true;
-    const sectionIndex = sections.findIndex((s) => s.l1Id === categoryId);
-    const ok = sectionIndex >= 0 ? performTargetScroll(sectionIndex, 0, false) : false;
-    if (!ok) {
-      retryPendingTargetScroll();
-    } else {
-      pendingScrollTargetRef.current = null;
-      finishCategoryNavigation();
+  const scrollLeftRowIntoView = useCallback((categoryId: string) => {
+    const index = categoriesToDisplay.findIndex((c) => c.id === categoryId);
+    if (index < 0 || !leftCategoryListRef.current) return;
+    try {
+      leftCategoryListRef.current.scrollToIndex({
+        index,
+        animated: true,
+        viewPosition: 0.35,
+      });
+    } catch {
+      /* layout may not be ready */
     }
-    // Clear the guard slightly after the scroll animation completes so any
-    // viewability events fired during the animation don't re-trigger us.
-    setTimeout(() => {
-      programmaticScrollRef.current = false;
-    }, 600);
-  };
+  }, [categoriesToDisplay]);
+
+  const handleCategoryPress = useCallback(
+    (categoryId: string) => {
+      setIsCategoryNavigating(true);
+      navigationStartMsRef.current = Date.now();
+      anchoredCategoryIdRef.current = categoryId;
+      pendingScrollTargetRef.current = { categoryId };
+      setSelectedCategory(categoryId);
+
+      programmaticScrollRef.current = true;
+
+      // Immediate attempt — often succeeds when sections are already measured.
+      syncRightColumnToCategory(categoryId);
+      scrollLeftRowIntoView(categoryId);
+
+      // After layout / interactions: SectionList frequently needs a second tick
+      // so scrollToLocation lands on the correct L1 section.
+      const deferred = () => {
+        syncRightColumnToCategory(categoryId);
+        scrollLeftRowIntoView(categoryId);
+      };
+      InteractionManager.runAfterInteractions(() => {
+        deferred();
+        requestAnimationFrame(() => {
+          requestAnimationFrame(deferred);
+        });
+      });
+
+      setTimeout(() => {
+        programmaticScrollRef.current = false;
+      }, 600);
+    },
+    [
+      scrollLeftRowIntoView,
+      setSelectedCategory,
+      syncRightColumnToCategory,
+    ],
+  );
 
   // Map the topmost viewable section back to selectedCategory so the left
   // column highlight follows scrolling on the right.
@@ -443,6 +493,7 @@ const CategoryTabScreen: React.FC = () => {
         itemIndex: 0,
         animated: false,
         viewOffset: 0,
+        viewPosition: 0,
       });
     } catch {
       // Layout may still be settling; next sections update will retry.
@@ -723,27 +774,38 @@ const CategoryTabScreen: React.FC = () => {
       
       <View style={styles.mainContent}>
         <View style={styles.leftColumn}>
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-            }
-          >
-            {isLoadingTopCategories && categoriesToDisplay.length === 0 ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color={COLORS.primary} />
-              </View>
-            ) : (
-              <FlatList
-                data={categoriesToDisplay}
-                renderItem={renderLevel1CategoryItem}
-                keyExtractor={(item) => `category-${item.id || item.name}`}
-                scrollEnabled={false}
-                showsVerticalScrollIndicator={false}
-                style={{minHeight: '100%'}}
-              />
-            )}
-          </ScrollView>
+          {isLoadingTopCategories && categoriesToDisplay.length === 0 ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color={COLORS.primary} />
+            </View>
+          ) : (
+            <FlatList
+              ref={leftCategoryListRef}
+              data={categoriesToDisplay}
+              renderItem={renderLevel1CategoryItem}
+              keyExtractor={(item) => `category-${item.id || item.name}`}
+              extraData={selectedCategory}
+              scrollEnabled
+              showsVerticalScrollIndicator={false}
+              style={styles.leftCategoryList}
+              refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+              }
+              onScrollToIndexFailed={(info) => {
+                setTimeout(() => {
+                  try {
+                    leftCategoryListRef.current?.scrollToIndex({
+                      index: info.index,
+                      animated: true,
+                      viewPosition: 0.35,
+                    });
+                  } catch {
+                    /* retry once after measurement */
+                  }
+                }, 120);
+              }}
+            />
+          )}
         </View>
 
         <View style={styles.rightColumn}>
@@ -850,7 +912,11 @@ const styles = StyleSheet.create({
   },
   leftColumn: {
     width: 140,
+    minHeight: 0,
     backgroundColor: COLORS.gray[100],
+  },
+  leftCategoryList: {
+    flex: 1,
   },
   rightColumn: {
     flex: 1,

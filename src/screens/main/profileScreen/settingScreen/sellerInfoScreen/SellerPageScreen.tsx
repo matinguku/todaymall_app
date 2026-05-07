@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Svg, { Circle } from 'react-native-svg';
 import {
   View,
@@ -12,7 +12,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import Icon from '../../../../../components/Icon';
-import { BackNavTouchableOpacity } from '../../../../../components/BackNavTouchable';
 import type { SellerStackParamList } from '../../../../../types';
 import { COLORS } from '../../../../../constants';
 import { useTranslation } from '../../../../../hooks/useTranslation';
@@ -52,6 +51,18 @@ const SellerPage: React.FC<SellerPageProps> = ({ embedded = false, onEmbeddedBac
   const [sellerInfos, setSellerInfos] = useState<Seller[]>([]);
   const [teamLoading, setTeamLoading] = useState<boolean>(false);
   const [teamError, setTeamError] = useState<string | null>(null);
+  const localizeSellerError = useCallback(
+    (rawMessage: string | null | undefined) => {
+      const fallback = t('sellerInfo.orderData.failedToLoad') || 'Failed to load seller data.';
+      if (!rawMessage) return fallback;
+      const normalized = rawMessage.trim().toLowerCase();
+      if (normalized.includes('seller access required')) {
+        return t('sellerInfo.orderData.sellerAccessRequired') || fallback;
+      }
+      return rawMessage;
+    },
+    [t]
+  );
 
   const summaryData = summary || {
     range: { from: '', to: '' },
@@ -110,7 +121,7 @@ const SellerPage: React.FC<SellerPageProps> = ({ embedded = false, onEmbeddedBac
           }))
         );
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to load direct team.';
+        const message = err instanceof Error ? localizeSellerError(err.message) : localizeSellerError('Failed to load direct team.');
         setTeamError(message);
         setSellerInfos([]);
       } finally {
@@ -119,7 +130,7 @@ const SellerPage: React.FC<SellerPageProps> = ({ embedded = false, onEmbeddedBac
     };
 
     fetchDirectTeam();
-  }, []);
+  }, [localizeSellerError]);
 
   const donutData: ChartItem[] = useMemo(
     () => [
@@ -346,7 +357,7 @@ const SellerPage: React.FC<SellerPageProps> = ({ embedded = false, onEmbeddedBac
         )}
         {isError && error ? (
           <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>{error}</Text>
+            <Text style={styles.loadingText}>{localizeSellerError(error)}</Text>
           </View>
         ) : null}
         {teamLoading ? (
