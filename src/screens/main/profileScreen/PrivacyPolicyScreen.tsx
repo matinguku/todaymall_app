@@ -42,9 +42,9 @@ const PrivacyPolicyScreen: React.FC<PrivacyPolicyScreenProps> = ({
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         {!embedded || onBackToSecuritySettings ? (
-          <BackNavTouchableOpacity style={styles.backButton} onPress={goBackToSecurity}>
+          <TouchableOpacity style={styles.backButton} onPress={goBackToSecurity}>
             <Icon name="arrow-back" size={18} color={COLORS.text.primary} />
-          </BackNavTouchableOpacity>
+          </TouchableOpacity>
         ) : (
           <View style={styles.placeholder} />
         )}

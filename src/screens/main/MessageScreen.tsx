@@ -412,9 +412,9 @@ const MessageScreen: React.FC<MessageScreenProps> = ({ initialTabOverride, onEmb
     <View style={[styles.header, { paddingTop: insets.top + SPACING.xs }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
         {onEmbeddedBack ? (
-          <BackNavTouchableOpacity onPress={onEmbeddedBack} accessibilityRole="button" accessibilityLabel="Back">
+          <TouchableOpacity onPress={onEmbeddedBack} accessibilityRole="button" accessibilityLabel="Back">
             <Icon name="arrow-back" size={22} color={COLORS.black} />
-          </BackNavTouchableOpacity>
+          </TouchableOpacity>
         ) : null}
         <Text style={[styles.headerTitle, !!onEmbeddedBack && { marginLeft: SPACING.sm }]}>문의</Text>
       </View>

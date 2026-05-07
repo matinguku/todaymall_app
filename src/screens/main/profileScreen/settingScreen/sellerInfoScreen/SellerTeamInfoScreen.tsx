@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,9 @@ import { BackNavTouchableOpacity } from '../../../../../components/BackNavToucha
 import type { SellerStackParamList } from '../../../../../types';
 import { COLORS } from '../../../../../constants';
 import { useTranslation } from '../../../../../hooks/useTranslation';
+import { API_BASE_URL } from '../../../../../constants';
+import { getStoredToken } from '../../../../../services/authApi';
+import { buildSignatureHeaders } from '../../../../../services/signature';
 
 const { width } = Dimensions.get('window');
 
@@ -28,22 +31,6 @@ type Seller = {
   rebate: number;
 };
 
-const sellerData: Seller[] = [
-  { sellerId: 'S001', name: 'John Kim', amount: 120000, count: 12, rebate: 5000 },
-  { sellerId: 'S002', name: 'Alice Lee', amount: 80000, count: 8, rebate: 3000 },
-  { sellerId: 'S003', name: 'David Park', amount: 150000, count: 15, rebate: 37000 },
-  { sellerId: 'S004', name: 'Emma Choi', amount: 50000, count: 5, rebate: 22000 },
-  { sellerId: 'S005', name: 'ri song il', amount: 20000, count: 25, rebate: 12000 },
-  { sellerId: 'S006', name: 'gum hyok', amount: 30000, count: 35, rebate: 3000 },
-  { sellerId: 'S007', name: 'rim jong hyok', amount: 40000, count: 2, rebate: 4000 },
-  { sellerId: 'S008', name: 'kim jin song', amount: 70000, count: 4, rebate: 5000 },
-  { sellerId: 'S009', name: 'ri sin hyok', amount: 60000, count: 6, rebate: 6000 },
-  { sellerId: 'S010', name: 'jang sung hyok', amount: 90000, count: 7, rebate: 6000 },
-  { sellerId: 'S011', name: 'o ryong bom', amount: 10000, count: 8, rebate: 7000 },
-  { sellerId: 'S012', name: 'kim ju song', amount: 250000, count: 9, rebate: 8000 },
-  { sellerId: 'S013', name: 'hyon rim il', amount: 20000, count: 33, rebate: 9000 },
-];
-
 type SellerTeamInfoProps = {
   embedded?: boolean;
   onEmbeddedBack?: () => void;
@@ -53,6 +40,57 @@ const SellerTeamInfo: React.FC<SellerTeamInfoProps> = ({ embedded = false, onEmb
   const navigation = useNavigation<NavigationProp>();
   const { t } = useTranslation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [sellerData, setSellerData] = useState<Seller[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchDirectTeam = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const token = await getStoredToken();
+        if (!token) {
+          throw new Error('Please sign in again.');
+        }
+
+        const url = `${API_BASE_URL}/users/seller/direct-team`;
+        const signatureHeaders = await buildSignatureHeaders('GET', url);
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            ...signatureHeaders,
+          },
+        });
+
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          const message = payload?.message || payload?.error || `Request failed with status ${response.status}`;
+          throw new Error(message);
+        }
+
+        const members = Array.isArray(payload?.data?.directTeam) ? payload.data.directTeam : [];
+        const normalizedMembers: Seller[] = members.map((member: any, index: number) => ({
+          sellerId: String(member?.sellerId || member?.userUniqueId || member?.id || `TEAM-${index + 1}`),
+          name: String(member?.userName || member?.name || '-'),
+          amount: Number(member?.teamSalesAmountKrw || 0),
+          count: Number(member?.teamSalesQuantity || 0),
+          rebate: Number(member?.teamRebateNetKrw || 0),
+        }));
+        setSellerData(normalizedMembers);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to load direct team.';
+        setError(message);
+        setSellerData([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDirectTeam();
+  }, []);
 
   const totals = useMemo(() => {
     return sellerData.reduce(
@@ -64,7 +102,7 @@ const SellerTeamInfo: React.FC<SellerTeamInfoProps> = ({ embedded = false, onEmb
       },
       { amount: 0, count: 0, rebate: 0 }
     );
-  }, []);
+  }, [sellerData]);
 
   const cards = [
     { title: t('sellerInfo.cards.salesAmount'), value: `₩${totals.amount.toLocaleString()}`, text: t('sellerInfo.cards.salesAmountText') },
@@ -75,7 +113,7 @@ const SellerTeamInfo: React.FC<SellerTeamInfoProps> = ({ embedded = false, onEmb
   const renderHeader = () => (
     <View style={styles.header}>
       {!embedded || onEmbeddedBack ? (
-        <BackNavTouchableOpacity
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => {
             if (embedded && onEmbeddedBack) {
@@ -86,7 +124,7 @@ const SellerTeamInfo: React.FC<SellerTeamInfoProps> = ({ embedded = false, onEmb
           }}
         >
           <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-        </BackNavTouchableOpacity>
+        </TouchableOpacity>
       ) : (
         <View style={styles.headerPlaceholder} />
       )}
@@ -114,6 +152,11 @@ const SellerTeamInfo: React.FC<SellerTeamInfoProps> = ({ embedded = false, onEmb
         {/* Seller List */}
         <View style={styles.listContainer}>
           <Text style={styles.sectionTitle}>{t('sellerInfo.team.sectionTitle')}</Text>
+          {isLoading ? <Text style={styles.infoText}>{t('sellerInfo.loadingSummary') || 'Loading summary...'}</Text> : null}
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          {!isLoading && !error && sellerData.length === 0 ? (
+            <Text style={styles.infoText}>{t('sellerInfo.noData') || 'No direct team data.'}</Text>
+          ) : null}
 
           {sellerData.map((seller) => {
             const isOpen = selectedId === seller.sellerId;
@@ -300,6 +343,16 @@ const styles = StyleSheet.create({
 
   value: {
     fontWeight: 'bold',
+  },
+  infoText: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 10,
+  },
+  errorText: {
+    fontSize: 13,
+    color: '#DC2626',
+    marginBottom: 10,
   },
 });
 

@@ -607,7 +607,7 @@ export const productsApi = {
         // Server responded with error status
         return {
           success: false,
-          message: error.response.data.message || `Failed to search products. Status: ${error.response.status}`,
+          message: error.response?.data?.message || `Failed to search products. Status: ${error.response?.status ?? 'unknown'}`,
           data: null,
         };
       } else if (error.request) {

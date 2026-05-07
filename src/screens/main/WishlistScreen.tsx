@@ -135,6 +135,16 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false, onEmb
   const mapWishlistItem = useCallback((item: any) => {
     const nameStr = resolveText(item.subjectMultiLang ?? item.title) || '';
     const storeNameStr = resolveText(item.storeNameMultiLang ?? item.storeName) || '';
+    const primaryImage =
+      item.imageUrl ||
+      item.image ||
+      item.photoUrl ||
+      item.thumbnail ||
+      item.thumbnailUrl ||
+      item.mainImage ||
+      item.productImage ||
+      item.productImageUrl ||
+      '';
     return {
       id: item.externalId?.toString() || item._id?.toString() || '',
       _id: item._id ?? '',
@@ -142,8 +152,8 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false, onEmb
       offerId: item.externalId?.toString() || '',
       name: nameStr,
       title: nameStr,
-      image: item.imageUrl || '',
-      images: item.imageUrl ? [item.imageUrl] : [],
+      image: primaryImage,
+      images: primaryImage ? [primaryImage] : [],
       price: item.price ?? 0,
       originalPrice: item.price ?? 0,
       description: '',
@@ -165,6 +175,22 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false, onEmb
       originalData: item,
     };
   }, [resolveText]);
+
+  const getWishlistImageUri = useCallback((item: any): string => {
+    return (
+      item?.image ||
+      item?.imageUrl ||
+      item?.originalData?.imageUrl ||
+      item?.originalData?.image ||
+      item?.originalData?.photoUrl ||
+      item?.originalData?.thumbnail ||
+      item?.originalData?.thumbnailUrl ||
+      item?.originalData?.mainImage ||
+      item?.originalData?.productImage ||
+      item?.originalData?.productImageUrl ||
+      ''
+    );
+  }, []);
 
   const buildWishlistParams = (grouped = false) => ({
     discounted: false,
@@ -381,7 +407,7 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false, onEmb
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           {(!embedded || onEmbeddedBack) && (
-            <BackNavTouchableOpacity
+            <TouchableOpacity
               onPress={() => {
                 if (embedded && onEmbeddedBack) {
                   onEmbeddedBack();
@@ -392,7 +418,7 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false, onEmb
               style={styles.backButton}
             >
               <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-            </BackNavTouchableOpacity>
+            </TouchableOpacity>
           )}
           <Text style={styles.headerTitle}>{t('profile.wishlistTitle')}</Text>
           <View style={styles.placeholder} />
@@ -511,7 +537,7 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false, onEmb
     <View style={styles.header}>
       <View style={styles.headerLeft}>
         {(!embedded || onEmbeddedBack) && (
-          <BackNavTouchableOpacity
+          <TouchableOpacity
             style={styles.backButton}
             onPress={() => {
               if (embedded && onEmbeddedBack) {
@@ -522,7 +548,7 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false, onEmb
             }}
           >
             <Icon name="chevron-back" size={24} color={COLORS.black} />
-          </BackNavTouchableOpacity>
+          </TouchableOpacity>
         )}
           <Text style={styles.headerTitle}>
           {t('profile.wishlistTitleWithCount', { count: wishlistItems.length })}
@@ -720,10 +746,14 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false, onEmb
           
           <View style={styles.productImageContainer}>
             <TouchableOpacity onPress={() => !isManagementMode && handleProductPress(item)}>
-              <Image 
-                source={{ uri: item.image || item.imageUrl }} 
-                style={styles.productImage}
-              />
+              {getWishlistImageUri(item) ? (
+                <Image
+                  source={{ uri: getWishlistImageUri(item) }}
+                  style={styles.productImage}
+                />
+              ) : (
+                <View style={styles.productImage} />
+              )}
             </TouchableOpacity>
           </View>
           
@@ -733,14 +763,14 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false, onEmb
                 {item.name || item.title}
               </Text>
             </TouchableOpacity>
-            <Text style={styles.productPrice}>${item.price?.toFixed(2) || '0.00'}</Text>
+            <Text style={styles.productPrice}>₩{item.price?.toFixed(2) || '0.00'}</Text>
           </View>
         </View>
         
         <TouchableOpacity
           style={styles.similarItemsButton}
           onPress={async () => {
-            const imageUrl = item.image || item.imageUrl || '';
+            const imageUrl = getWishlistImageUri(item);
             if (!imageUrl) {
               showToast(t('product.noProductImageAvailable'), 'error');
               return;

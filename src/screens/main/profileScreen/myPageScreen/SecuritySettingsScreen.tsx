@@ -8,7 +8,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
-import { BackNavTouchableOpacity } from '../../../../components/BackNavTouchable';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
@@ -74,7 +73,7 @@ const SecuritySettingsScreen: React.FC<SecuritySettingsScreenProps> = ({
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         {!embedded || onEmbeddedBack ? (
-          <BackNavTouchableOpacity
+          <TouchableOpacity
             style={styles.backButton}
             onPress={() => {
               if (embedded && onEmbeddedBack) {
@@ -85,7 +84,7 @@ const SecuritySettingsScreen: React.FC<SecuritySettingsScreenProps> = ({
             }}
           >
             <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-          </BackNavTouchableOpacity>
+          </TouchableOpacity>
         ) : (
           <View style={styles.placeholder} />
         )}

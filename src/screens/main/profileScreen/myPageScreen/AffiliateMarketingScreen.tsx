@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
-import { BackNavTouchableOpacity } from '../../../../components/BackNavTouchable';
+// import { BackNavTouchableOpacity } from '../../../../components/BackNavTouchable';
 import { useNavigation } from '@react-navigation/native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import QRCode from 'react-native-qrcode-svg';
@@ -142,7 +142,7 @@ const AffiliateMarketingScreen: React.FC<AffiliateMarketingScreenProps> = ({ emb
       {/* Header */}
       <View style={styles.header}>
         {!embedded || onEmbeddedBack ? (
-          <BackNavTouchableOpacity
+          <TouchableOpacity
             style={styles.backButton}
             onPress={() => {
               if (embedded && onEmbeddedBack) {
@@ -153,7 +153,7 @@ const AffiliateMarketingScreen: React.FC<AffiliateMarketingScreenProps> = ({ emb
             }}
           >
             <Icon name="arrow-back" size={16} color={COLORS.text.primary} />
-          </BackNavTouchableOpacity>
+          </TouchableOpacity>
         ) : (
           <View style={styles.placeholder} />
         )}

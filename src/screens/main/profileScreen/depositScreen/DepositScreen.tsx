@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
 import { useNavigation } from '@react-navigation/native';
 import { useFocusEffect } from '@react-navigation/native';
-import { BackNavTouchableOpacity } from '../../../../components/BackNavTouchable';
+// import { BackNavTouchableOpacity } from '../../../../components/BackNavTouchable';
 import { COLORS, FONTS, SPACING } from '../../../../constants';
 import { DatePickerModal, Button } from '../../../../components';
 import { depositApi } from '../../../../services/depositApi';
@@ -57,7 +57,7 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
   
   // Charge Modal States
   const [chargeAmount, setChargeAmount] = useState('');
-  const [chargeNote, setChargeNote] = useState('');
+  const [chargeSenderName, setChargeSenderName] = useState('');
   
   // Withdraw Modal States
   const [withdrawAmount, setWithdrawAmount] = useState('');
@@ -200,12 +200,16 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
       Alert.alert(t('common.error'), t('deposit.invalidAmount'));
       return;
     }
+    if (!chargeSenderName.trim()) {
+      Alert.alert(t('common.error'), t('deposit.enterName'));
+      return;
+    }
 
     setChargeLoading(true);
     try {
       const response = await depositApi.createRechargeRequest({
         transferMethod: 'bank_transfer',
-        remitterName: chargeNote || '',
+        remitterName: chargeSenderName.trim(),
         rechargeCurrency: 'KRW',
         amount: amount,
         depositCurrencyAmount: amount,
@@ -215,7 +219,7 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
           accountNumber: '171301-04-359074',
           accountHolder: t('deposit.companyName'),
         },
-        description: chargeNote || `Deposit charge ₩${amount.toLocaleString()}`,
+        description: `Deposit charge ₩${amount.toLocaleString()}`,
         proofImageUrl: '',
       });
 
@@ -228,14 +232,14 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
           amount: amount,
           date: new Date().toISOString().split('T')[0],
           time: new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
-          description: chargeNote || 'Recharge Request',
+          description: 'Recharge Request',
           status: 'pending',
         };
         setTransactions([newTransaction, ...transactions]);
         // Refresh balance
         fetchBalance();
         setChargeAmount('');
-        setChargeNote('');
+        setChargeSenderName('');
         setShowChargeModal(false);
       } else {
         Alert.alert(t('common.error'), response.error || 'Failed to create recharge request.');
@@ -308,7 +312,7 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
       {/* Header */}
       <View style={styles.header}>
         {(!embedded || onEmbeddedBack) && (
-          <BackNavTouchableOpacity
+          <TouchableOpacity
             style={styles.backButton}
             onPress={() => {
               if (embedded && onEmbeddedBack) {
@@ -319,7 +323,7 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
             }}
           >
             <Icon name="arrow-back" size={16} color={COLORS.black} />
-          </BackNavTouchableOpacity>
+          </TouchableOpacity>
         )}
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>{t('deposit.title')}</Text>
@@ -538,16 +542,18 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
                 <Text style={styles.currencyLabel}>KRW</Text>
               </View>
 
-              {/* Note Input */}
-              <Text style={styles.modalInputLabel}>{t('deposit.note')}</Text>
-              <TextInput
-                style={[styles.noteInput, styles.noteBorder]}
-                placeholder={t('deposit.enterNote')}
-                placeholderTextColor={COLORS.gray[500]}
-                value={chargeNote}
-                onChangeText={setChargeNote}
-                multiline
-              />
+              {/* Sender Name Input */}
+              <Text style={styles.modalInputLabel}>{t('deposit.accountOwnerName')}</Text>
+              <View style={styles.senderNameInputWrap}>
+                <TextInput
+                  style={styles.senderNameInput}
+                  placeholder={t('deposit.enterName')}
+                  placeholderTextColor={COLORS.gray[500]}
+                  value={chargeSenderName}
+                  onChangeText={setChargeSenderName}
+                  autoCapitalize="words"
+                />
+              </View>
 
               {/* Submit Button */}
               <TouchableOpacity
@@ -1033,6 +1039,19 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     fontSize: FONTS.sizes.md,
     color: COLORS.text.primary,
+  },
+  senderNameInputWrap: {
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.gray[300],
+    paddingHorizontal: SPACING.smmd,
+    paddingVertical: 2,
+  },
+  senderNameInput: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.text.primary,
+    paddingVertical: 12,
   },
   currencyLabel: {
     fontSize: FONTS.sizes.md,

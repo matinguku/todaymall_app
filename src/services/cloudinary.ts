@@ -1,12 +1,24 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
 import { CloudinaryUploadResponse } from '../types';
+import { store } from '../store';
+import { translations } from '../i18n/translations';
 
 // Cloudinary configuration
 // TODO: Replace with your actual Cloudinary credentials
 const CLOUDINARY_UPLOAD_PRESET = 'glowmify'; // Replace with your actual unsigned upload preset
 const CLOUDINARY_CLOUD_NAME = 'dvxshqjev'; // Replace with your actual cloud name
 const CLOUDINARY_API_BASE = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}`;
+
+const t = (key: string, fallback: string): string => {
+  const locale = store.getState().i18n.locale as 'en' | 'ko' | 'zh';
+  const keys = key.split('.');
+  let value: any = translations[locale as keyof typeof translations];
+  for (const k of keys) {
+    value = value?.[k];
+  }
+  return typeof value === 'string' ? value : fallback;
+};
 
 /**
  * Upload an image to Cloudinary
@@ -67,8 +79,17 @@ export const uploadToCloudinary = async (uri: string, name?: string): Promise<Cl
         // console.error('Error name:', error.name);
         // console.error('Error message:', error.message);
         
-        if (error.message.includes('Network request failed')) {
-          throw new Error('Network error during Cloudinary upload. Please check your internet connection.');
+        const rawMessage = String(error?.message || '');
+        if (
+          rawMessage.includes('Network request failed') ||
+          rawMessage.includes('Network Error')
+        ) {
+          throw new Error(
+            t(
+              'common.cloudinaryUploadNetworkError',
+              'Network error during Cloudinary upload. Please check your internet connection.'
+            )
+          );
         }
         
         throw new Error(`Failed to upload file to Cloudinary: ${error.message || 'Unknown error'}`);
@@ -190,8 +211,17 @@ export const uploadVideoToCloudinary = async (uri: any, fileName: any): Promise<
           // console.error('Error stack:', error.stack);
         }
         
-        if (error.message.includes('Network request failed')) {
-          throw new Error('Network error during Cloudinary video upload. Please check your internet connection.');
+        const rawMessage = String(error?.message || '');
+        if (
+          rawMessage.includes('Network request failed') ||
+          rawMessage.includes('Network Error')
+        ) {
+          throw new Error(
+            t(
+              'common.cloudinaryVideoUploadNetworkError',
+              'Network error during Cloudinary video upload. Please check your internet connection.'
+            )
+          );
         }
         
         throw new Error(`Failed to upload video to Cloudinary: ${error.message || 'Unknown error'}`);

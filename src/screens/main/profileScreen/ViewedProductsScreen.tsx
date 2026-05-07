@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../components/Icon';
-import { BackNavTouchableOpacity } from '../../../components/BackNavTouchable';
+// import { BackNavTouchableOpacity } from '../../../components/BackNavTouchable';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
 import { useAppSelector } from '../../../store/hooks';
@@ -391,7 +391,7 @@ const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = 
     <View style={styles.header}>
       <View style={styles.headerLeft}>
         {(!embedded || onEmbeddedBack) && (
-          <BackNavTouchableOpacity
+          <TouchableOpacity
             style={styles.backButton}
             onPress={() => {
               if (embedded && onEmbeddedBack) {
@@ -402,7 +402,7 @@ const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = 
             }}
           >
             <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
-          </BackNavTouchableOpacity>
+          </TouchableOpacity>
         )}
         <Text style={styles.headerTitle}>{t('profile.viewedProducts')}</Text>
       </View>

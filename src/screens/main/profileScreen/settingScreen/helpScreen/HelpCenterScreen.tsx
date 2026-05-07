@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../../../components/Icon';
-import { BackNavTouchableOpacity } from '../../../../../components/BackNavTouchable';
+// import { BackNavTouchableOpacity } from '../../../../../components/BackNavTouchable';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
@@ -118,7 +118,7 @@ const HelpCenterScreen: React.FC<HelpCenterScreenProps> = ({ embedded = false, o
   const renderHeader = () => (
     <View style={styles.header}>
       {!embedded || onEmbeddedBack ? (
-        <BackNavTouchableOpacity
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => {
             if (embedded && onEmbeddedBack) {
@@ -129,7 +129,7 @@ const HelpCenterScreen: React.FC<HelpCenterScreenProps> = ({ embedded = false, o
           }}
         >
           <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-        </BackNavTouchableOpacity>
+        </TouchableOpacity>
       ) : (
         <View style={styles.placeholder} />
       )}

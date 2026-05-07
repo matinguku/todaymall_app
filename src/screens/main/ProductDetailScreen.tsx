@@ -212,7 +212,7 @@ const ProductDetailScreen: React.FC = () => {
   // Add to wishlist mutation (defined after t and showToast)
   const { mutate: addToWishlist } = useAddToWishlistMutation({
     onSuccess: async (data) => {
-      showToast(t('product.productAddedToWishlist'), 'success');
+      showToast(t('product.productAddedToWishlist') || 'Product added to wishlist', 'success');
       // Immediately refresh external IDs to update heart icon color
       await refreshExternalIds();
       // Refresh wishlist count
@@ -2055,8 +2055,14 @@ const ProductDetailScreen: React.FC = () => {
 
   const handleShare = async () => {
     try {
+      const shareTemplate = t('product.shareMessage');
+      const fallbackTemplate = 'Check out this amazing product: {productName}\nPrice: {price}\n\nShared from TodayMall';
+      const resolvedTemplate =
+        !shareTemplate || shareTemplate === 'product.shareMessage'
+          ? fallbackTemplate
+          : shareTemplate;
       const shareContent = {
-        message: t('product.shareMessage')
+        message: resolvedTemplate
           .replace('{productName}', product.name)
           .replace('{price}', formatPriceKRW(product.price)),
         url: `https://todaymall.com/product/${productId}`, // Replace with your actual app URL

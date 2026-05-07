@@ -9,7 +9,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Icon from '../../../components/Icon';
-import { BackNavTouchableOpacity } from '../../../components/BackNavTouchable';
+// import { BackNavTouchableOpacity } from '../../../components/BackNavTouchable';
 import { COLORS, FONTS, SHADOWS, SPACING } from '../../../constants';
 import { useAppSelector } from '../../../store/hooks';
 import { translations } from '../../../i18n/translations';
@@ -36,7 +36,7 @@ const AboutUsScreen: React.FC<AboutUsScreenProps> = ({ embedded = false, onEmbed
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         {!embedded || onEmbeddedBack ? (
-          <BackNavTouchableOpacity
+          <TouchableOpacity
             style={styles.backButton}
             onPress={() => {
               if (embedded && onEmbeddedBack) {
@@ -47,7 +47,7 @@ const AboutUsScreen: React.FC<AboutUsScreenProps> = ({ embedded = false, onEmbed
             }}
           >
             <Icon name="arrow-back" size={18} color={COLORS.text.primary} />
-          </BackNavTouchableOpacity>
+          </TouchableOpacity>
         ) : (
           <View style={styles.placeholder} />
         )}
@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: COLORS.white,
-    ...SHADOWS.small,
+    
   },
   headerTitle: {
     fontSize: FONTS.sizes.lg,

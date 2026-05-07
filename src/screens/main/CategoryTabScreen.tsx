@@ -88,6 +88,7 @@ const CategoryTabScreen: React.FC = () => {
   const [imagePickerModalVisible, setImagePickerModalVisible] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<string>('All');
   const [topCategories, setTopCategories] = useState<any[]>([]);
+  const [isCategoryNavigating, setIsCategoryNavigating] = useState(false);
   // L2 categories grouped by parent L1 id; the right column reads from this
   // to render every L1's L2 list as one continuous SectionList.
   const [allL2ByL1, setAllL2ByL1] = useState<Record<string, any[]>>({});
@@ -103,6 +104,13 @@ const CategoryTabScreen: React.FC = () => {
   // to an L1 tap; prevents the resulting onViewableItemsChanged from echoing
   // the highlight back and fighting the user's tap.
   const programmaticScrollRef = useRef(false);
+  // Keep a temporary anchor when user taps a left category so that
+  // incremental L2 loading above/below doesn't drift the intended section.
+  const anchoredCategoryIdRef = useRef<string | null>(null);
+  const pendingScrollTargetRef = useRef<{ categoryId: string } | null>(null);
+  const pendingScrollRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const navigationStartMsRef = useRef(0);
+  const scrollSyncTickRef = useRef(0);
 
   // Top categories mutation
   const { mutate: fetchTopCategories, isLoading: isLoadingTopCategories } = useTopCategoriesMutation({
@@ -211,6 +219,7 @@ const CategoryTabScreen: React.FC = () => {
         ? (l1.name[locale] || l1.name.en || l1.name.zh || 'Category')
         : (l1.name || 'Category');
       const tree = allL2ByL1[l1._id] || [];
+      const hasL2Loaded = Object.prototype.hasOwnProperty.call(allL2ByL1, l1._id);
       const data = tree.map((level2: any) => {
         const level3Children = Array.isArray(level2.children) ? level2.children : [];
         const level2Name = typeof level2.name === 'object'
@@ -231,9 +240,31 @@ const CategoryTabScreen: React.FC = () => {
           })),
         };
       }).filter((item: any) => item.name);
+
+      // Show structure-first placeholder rows while data is still loading.
+      if (!hasL2Loaded) {
+        return {
+          l1Id: l1._id,
+          title: l1Name,
+          data: [
+            { id: `${l1._id}-placeholder-1`, isPlaceholder: true, l1Id: l1._id, l1Name },
+            { id: `${l1._id}-placeholder-2`, isPlaceholder: true, l1Id: l1._id, l1Name },
+            { id: `${l1._id}-placeholder-3`, isPlaceholder: true, l1Id: l1._id, l1Name },
+          ],
+        };
+      }
+
+      if (data.length === 0 && isCategoryNavigating && selectedCategory === l1._id) {
+        return {
+          l1Id: l1._id,
+          title: l1Name,
+          data: [{ id: `${l1._id}-placeholder-nav`, isPlaceholder: true, l1Id: l1._id, l1Name }],
+        };
+      }
+
       return { l1Id: l1._id, title: l1Name, data };
     });
-  }, [topCategories, allL2ByL1, locale, getCategoryImage]);
+  }, [topCategories, allL2ByL1, isCategoryNavigating, selectedCategory, locale, getCategoryImage]);
 
   const openProductDiscoveryForL2 = useCallback(
     (l2Item: any, initialL3Id?: string) => {
@@ -279,20 +310,75 @@ const CategoryTabScreen: React.FC = () => {
     setRefreshing(false);
   };
 
-  const handleCategoryPress = (categoryId: string) => {
-    setSelectedCategory(categoryId);
-    const sectionIndex = sections.findIndex((s) => s.l1Id === categoryId);
-    if (sectionIndex < 0 || !sectionListRef.current) return;
-    programmaticScrollRef.current = true;
+  const performTargetScroll = useCallback((sectionIndex: number, itemIndex: number, animated: boolean) => {
+    if (!sectionListRef.current) return false;
     try {
       sectionListRef.current.scrollToLocation({
         sectionIndex,
-        itemIndex: 0,
-        animated: true,
+        itemIndex,
+        animated,
         viewOffset: 0,
       });
+      return true;
     } catch {
-      // ignore — scrollToLocation can throw if the target isn't laid out
+      return false;
+    }
+  }, []);
+
+  const finishCategoryNavigation = useCallback(() => {
+    const elapsed = Date.now() - navigationStartMsRef.current;
+    const minLoadingMs = 180;
+    const waitMs = elapsed >= minLoadingMs ? 0 : (minLoadingMs - elapsed);
+    setTimeout(() => {
+      setIsCategoryNavigating(false);
+    }, waitMs);
+  }, []);
+
+  const retryPendingTargetScroll = useCallback(() => {
+    const pending = pendingScrollTargetRef.current;
+    if (!pending) return;
+
+    const sectionIndex = sections.findIndex((s) => s.l1Id === pending.categoryId);
+    if (sectionIndex < 0) {
+      if (!pendingScrollRetryTimerRef.current) {
+        pendingScrollRetryTimerRef.current = setTimeout(() => {
+          pendingScrollRetryTimerRef.current = null;
+          retryPendingTargetScroll();
+        }, 64);
+      }
+      return;
+    }
+
+    const ok = performTargetScroll(sectionIndex, 0, false);
+    if (ok) {
+      pendingScrollTargetRef.current = null;
+      finishCategoryNavigation();
+      return;
+    }
+
+    if (!pendingScrollRetryTimerRef.current) {
+      pendingScrollRetryTimerRef.current = setTimeout(() => {
+        pendingScrollRetryTimerRef.current = null;
+        retryPendingTargetScroll();
+      }, 64);
+    }
+  }, [finishCategoryNavigation, performTargetScroll, sections]);
+
+  const handleCategoryPress = (categoryId: string) => {
+    setIsCategoryNavigating(true);
+    navigationStartMsRef.current = Date.now();
+    anchoredCategoryIdRef.current = categoryId;
+    pendingScrollTargetRef.current = { categoryId };
+    setSelectedCategory(categoryId);
+
+    programmaticScrollRef.current = true;
+    const sectionIndex = sections.findIndex((s) => s.l1Id === categoryId);
+    const ok = sectionIndex >= 0 ? performTargetScroll(sectionIndex, 0, false) : false;
+    if (!ok) {
+      retryPendingTargetScroll();
+    } else {
+      pendingScrollTargetRef.current = null;
+      finishCategoryNavigation();
     }
     // Clear the guard slightly after the scroll animation completes so any
     // viewability events fired during the animation don't re-trigger us.
@@ -317,6 +403,60 @@ const CategoryTabScreen: React.FC = () => {
       }
     }
   }).current;
+
+  const handleRightListScroll = useCallback((event: any) => {
+    const now = Date.now();
+    if (now - scrollSyncTickRef.current < 80) return;
+    scrollSyncTickRef.current = now;
+    const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent || {};
+    if (!contentOffset || !layoutMeasurement || !contentSize) return;
+    const reachedBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - 24;
+    if (!reachedBottom || sections.length === 0) return;
+    const lastL1Id = sections[sections.length - 1]?.l1Id;
+    if (!lastL1Id) return;
+    const currentSelected = usePlatformStore.getState().selectedCategory;
+    if (currentSelected !== lastL1Id) {
+      usePlatformStore.getState().setSelectedCategory(lastL1Id);
+    }
+  }, [sections]);
+  
+
+  // While batch L2 data is still loading, section heights keep changing.
+  // Re-align to the anchored L1 after each sections update so the selected
+  // category stays at the correct visual position.
+  useEffect(() => {
+    const anchoredId = anchoredCategoryIdRef.current;
+    if (!anchoredId || !sectionListRef.current || sections.length === 0) {
+      return;
+    }
+    const sectionIndex = sections.findIndex((s) => s.l1Id === anchoredId);
+    if (sectionIndex < 0) {
+      return;
+    }
+    const targetHasItems = (sections[sectionIndex]?.data?.length || 0) > 0;
+    if (!targetHasItems) {
+      return;
+    }
+    try {
+      sectionListRef.current.scrollToLocation({
+        sectionIndex,
+        itemIndex: 0,
+        animated: false,
+        viewOffset: 0,
+      });
+    } catch {
+      // Layout may still be settling; next sections update will retry.
+    }
+  }, [sections]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingScrollRetryTimerRef.current) {
+        clearTimeout(pendingScrollRetryTimerRef.current);
+        pendingScrollRetryTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Helper function to convert image URI to base64
   const convertUriToBase64 = async (uri: string): Promise<string | null> => {
@@ -543,20 +683,26 @@ const CategoryTabScreen: React.FC = () => {
   };
 
   const renderL2Row = ({ item }: { item: any }) => (
-    <TouchableOpacity
-      style={styles.browseSubcatRow}
-      activeOpacity={0.75}
-      onPress={() => openProductDiscoveryForL2(item)}
-    >
-      <Text
-        style={styles.browseSubcatName}
-        numberOfLines={1}
-        ellipsizeMode="tail"
+    item?.isPlaceholder ? (
+      <View style={styles.browseSubcatRow}>
+        <View style={styles.browseSubcatSkelText} />
+      </View>
+    ) : (
+      <TouchableOpacity
+        style={styles.browseSubcatRow}
+        activeOpacity={0.75}
+        onPress={() => openProductDiscoveryForL2(item)}
       >
-        {item.name}
-      </Text>
-      <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
-    </TouchableOpacity>
+        <Text
+          style={styles.browseSubcatName}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+        >
+          {item.name}
+        </Text>
+        <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
+      </TouchableOpacity>
+    )
   );
 
   const renderL1SectionHeader = ({ section }: { section: any }) => (
@@ -617,17 +763,26 @@ const CategoryTabScreen: React.FC = () => {
               onViewableItemsChanged={onViewableItemsChanged}
               viewabilityConfig={viewabilityConfig}
               onScrollToIndexFailed={(info) => {
-                // SectionList may not have laid out the target section yet
-                // when handleCategoryPress fires (e.g., right after L1
-                // changed). Retry once on the next frame.
-                setTimeout(() => {
-                  sectionListRef.current?.scrollToLocation({
-                    sectionIndex: info.index,
-                    itemIndex: 0,
-                    animated: false,
-                    viewOffset: 0,
-                  });
-                }, 100);
+                const pending = pendingScrollTargetRef.current;
+                if (!pending) return;
+                if (info?.highestMeasuredFrameIndex == null || info.highestMeasuredFrameIndex < 0) {
+                  return;
+                }
+                retryPendingTargetScroll();
+              }}
+              onScroll={handleRightListScroll}
+              scrollEventThrottle={16}
+              onLayout={retryPendingTargetScroll}
+              onContentSizeChange={retryPendingTargetScroll}
+              onScrollBeginDrag={() => {
+                // User took over manual scrolling; stop anchor corrections.
+                anchoredCategoryIdRef.current = null;
+                pendingScrollTargetRef.current = null;
+                if (pendingScrollRetryTimerRef.current) {
+                  clearTimeout(pendingScrollRetryTimerRef.current);
+                  pendingScrollRetryTimerRef.current = null;
+                }
+                setIsCategoryNavigating(false);
               }}
               refreshControl={
                 <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -712,7 +867,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
   },
   categoryName: {
-    fontSize: FONTS.sizes.sm * 1.2,
+    fontSize: FONTS.sizes.sm ,
     color: COLORS.text.primary,
     textAlign: 'left',
     fontWeight: '500',
@@ -742,7 +897,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   browseSubcatTitle: {
-    fontSize: FONTS.sizes.lg * 1.5,
+    fontSize: FONTS.sizes.lg ,
     fontWeight: '600',
     color: COLORS.text.primary,
   },
@@ -756,7 +911,7 @@ const styles = StyleSheet.create({
   },
   browseSubcatName: {
     flex: 1,
-    fontSize: FONTS.sizes.md * 1.2,
+    fontSize: FONTS.sizes.md ,
     color: COLORS.text.primary,
     fontWeight: '500',
   },
@@ -818,7 +973,7 @@ const styles = StyleSheet.create({
   },
   browseSectionHeaderText: {
     flex: 1,
-    fontSize: FONTS.sizes.md * 1.5,
+    fontSize: FONTS.sizes.md ,
     fontWeight: '600',
     color: COLORS.text.red,
   },

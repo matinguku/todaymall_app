@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import Icon from './Icon';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../constants';
+import { useAppSelector } from '../store/hooks';
+import { translations } from '../i18n/translations';
 
 const { width, height } = Dimensions.get('window');
 
@@ -31,6 +33,16 @@ const ImagePickerModal: React.FC<ImagePickerModalProps> = ({
   const slideAnim = useRef(new Animated.Value(height)).current;
   const panY = useRef(new Animated.Value(0)).current;
   const isDismissing = useRef(false);
+  const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
+
+  const t = (key: string, fallback: string) => {
+    const keys = key.split('.');
+    let value: any = translations[locale as keyof typeof translations];
+    for (const k of keys) {
+      value = value?.[k];
+    }
+    return typeof value === 'string' ? value : fallback;
+  };
 
   useEffect(() => {
     if (visible) {
@@ -134,8 +146,8 @@ const ImagePickerModal: React.FC<ImagePickerModalProps> = ({
               </View>
               
               <View style={styles.header}>
-                <Text style={styles.title}>Upload Image</Text>
-                <Text style={styles.subtitle}>Choose an option to upload your image</Text>
+                <Text style={styles.title}>{t('profile.addImage', 'Upload Image')}</Text>
+                <Text style={styles.subtitle}>{t('profile.chooseAnOption', 'Choose an option to upload your image')}</Text>
               </View>
 
               <View style={styles.optionsContainer}>
@@ -147,9 +159,9 @@ const ImagePickerModal: React.FC<ImagePickerModalProps> = ({
                   <View style={[styles.iconContainer, { backgroundColor: '#EF4444' }]}>
                     <Icon name="camera" size={32} color={COLORS.white} />
                   </View>
-                  <Text style={styles.optionTitle}>Take Photo</Text>
+                  <Text style={styles.optionTitle}>{t('profile.takePhoto', 'Take Photo')}</Text>
                   <Text style={styles.optionDescription}>
-                    Use your camera to take a new photo
+                    {t('profile.takePhotoDescription', 'Use your camera to take a new photo')}
                   </Text>
                 </TouchableOpacity>
 
@@ -161,9 +173,9 @@ const ImagePickerModal: React.FC<ImagePickerModalProps> = ({
                   <View style={[styles.iconContainer, { backgroundColor: '#8B5CF6' }]}>
                     <Icon name="images-outline" size={32} color={COLORS.white} />
                   </View>
-                  <Text style={styles.optionTitle}>Choose from Gallery</Text>
+                  <Text style={styles.optionTitle}>{t('profile.chooseFromLibrary', 'Choose from Gallery')}</Text>
                   <Text style={styles.optionDescription}>
-                    Select an existing photo from your gallery
+                    {t('profile.chooseFromLibraryDescription', 'Select an existing photo from your gallery')}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -173,7 +185,7 @@ const ImagePickerModal: React.FC<ImagePickerModalProps> = ({
                 onPress={handleClose}
                 activeOpacity={0.7}
               >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <Text style={styles.cancelButtonText}>{t('common.cancel', 'Cancel')}</Text>
               </TouchableOpacity>
             </Animated.View>
           </TouchableWithoutFeedback>

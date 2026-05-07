@@ -10,6 +10,7 @@ import {
   FlatList,
   Modal,
   Linking,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
@@ -66,6 +67,7 @@ const LiveSellerDetailScreen: React.FC = () => {
   const [isTogglingFollow, setIsTogglingFollow] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterTab>('bestMatch');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   // Date filter (YYYY-MM-DD). 'all' shows every product regardless of
   // broadcast date. The trigger in the list header opens a Modal that
   // lets the user pick a different date.
@@ -91,7 +93,7 @@ const LiveSellerDetailScreen: React.FC = () => {
   // ─── Wishlist mutations ───────────────────────────────────
   const { mutate: addToWishlist } = useAddToWishlistMutation({
     onSuccess: async () => {
-      showToast(t('product.productAddedToWishlist'), 'success');
+      showToast(t('product.productAddedToWishlist') || 'Product added to wishlist', 'success');
       await refreshExternalIds();
     },
     onError: (error) => {
@@ -468,6 +470,13 @@ const LiveSellerDetailScreen: React.FC = () => {
   const filteredProducts = useMemo(() => {
     let result = [...allProducts];
 
+    const keyword = searchQuery.trim().toLowerCase();
+    if (keyword) {
+      result = result.filter((p) =>
+        String(p.title || p.name || '').toLowerCase().includes(keyword)
+      );
+    }
+
     // Filter by category
     if (selectedCategory !== 'all') {
       result = result.filter((p) => p.category === selectedCategory);
@@ -490,7 +499,7 @@ const LiveSellerDetailScreen: React.FC = () => {
         break;
     }
     return result;
-  }, [allProducts, activeFilter, selectedCategory, selectedDate]);
+  }, [allProducts, activeFilter, selectedCategory, selectedDate, searchQuery]);
 
   const handleLoadMore = useCallback(() => {
     if (!loadingMore && hasMore) {
@@ -575,17 +584,57 @@ const LiveSellerDetailScreen: React.FC = () => {
         </View>
       </View>
 
-      {/* Category Dropdown */}
-      <View style={styles.categoryDropdownContainer}>
-        <TouchableOpacity
-          style={styles.categoryDropdown}
-          onPress={() => setShowCategoryDropdown(!showCategoryDropdown)}
-        >
-          <Text style={styles.categoryDropdownText}>
-            {selectedCategory === 'all' ? t('live.allItems') : selectedCategory}
-          </Text>
-          <ArrowDropDownIcon width={18} height={18} color={COLORS.text.primary} />
-        </TouchableOpacity>
+      {/* Category + Search Row */}
+      <View style={styles.searchRow}>
+        <View style={styles.categoryDropdownContainer}>
+          <TouchableOpacity
+            style={styles.categoryDropdown}
+            onPress={() => setShowCategoryDropdown(!showCategoryDropdown)}
+          >
+            <Text style={styles.categoryDropdownText} numberOfLines={1}>
+              {selectedCategory === 'all' ? t('live.allItems') : selectedCategory}
+            </Text>
+            <ArrowDropDownIcon width={16} height={16} color={COLORS.text.primary} />
+          </TouchableOpacity>
+          {showCategoryDropdown && (
+            <View style={styles.categoryDropdownMenuInline}>
+              {categories.map((cat) => (
+                <TouchableOpacity
+                  key={cat}
+                  style={[
+                    styles.categoryDropdownItem,
+                    selectedCategory === cat && styles.categoryDropdownItemActive,
+                  ]}
+                  onPress={() => {
+                    setSelectedCategory(cat);
+                    setShowCategoryDropdown(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.categoryDropdownItemText,
+                      selectedCategory === cat && styles.categoryDropdownItemTextActive,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {cat === 'all' ? t('live.allItems') : cat}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+        <View style={styles.searchInputWrap}>
+          <SearchIcon width={16} height={16} color={COLORS.text.secondary} />
+          <TextInput
+            style={styles.searchInput}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder={t('live.searchNow')}
+            placeholderTextColor={COLORS.text.secondary}
+            returnKeyType="search"
+          />
+        </View>
       </View>
 
       {/* Filter Tabs */}
@@ -813,45 +862,6 @@ const LiveSellerDetailScreen: React.FC = () => {
           </TouchableOpacity>
         </Animated.View>
       )}
-
-      {/* Category Dropdown Modal */}
-      <Modal
-        visible={showCategoryDropdown}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowCategoryDropdown(false)}
-      >
-        <TouchableOpacity
-          style={styles.dropdownModalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowCategoryDropdown(false)}
-        >
-          <View style={styles.dropdownModalContent}>
-            {categories.map((cat) => (
-              <TouchableOpacity
-                key={cat}
-                style={[
-                  styles.categoryDropdownItem,
-                  selectedCategory === cat && styles.categoryDropdownItemActive,
-                ]}
-                onPress={() => {
-                  setSelectedCategory(cat);
-                  setShowCategoryDropdown(false);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.categoryDropdownItemText,
-                    selectedCategory === cat && styles.categoryDropdownItemTextActive,
-                  ]}
-                >
-                  {cat === 'all' ? t('live.allItems') : cat}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </TouchableOpacity>
-      </Modal>
 
       {/* Date Dropdown Modal — same UX as the category dropdown. */}
       <Modal
@@ -1101,9 +1111,12 @@ const styles = StyleSheet.create({
 
   // ─── Category Dropdown ──────────────────────────────────
   categoryDropdownContainer: {
-    paddingHorizontal: SPACING.md,
-    marginBottom: SPACING.smmd,
     position: 'relative',
+    width: '25%',
+    minWidth: 60,
+    zIndex: 10,
+  },
+  categoryDropdownContainerExpanded: {
     zIndex: 10,
   },
   categoryDropdown: {
@@ -1114,8 +1127,9 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,
     borderColor: COLORS.gray[300],
-    paddingHorizontal: SPACING.smmd,
-    paddingVertical: SPACING.smmd,
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    minHeight: 40,
   },
   dropdownModalOverlay: {
     flex: 1,
@@ -1134,9 +1148,12 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   categoryDropdownText: {
-    fontSize: FONTS.sizes.sm,
+    textAlign: 'center',
+    fontSize: FONTS.sizes.xs,
     fontWeight: '500',
     color: COLORS.text.primary,
+    flex: 1,
+    marginRight: 2,
   },
   categoryDropdownMenu: {
     position: 'absolute',
@@ -1153,6 +1170,23 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
     zIndex: 20,
+  },
+  categoryDropdownMenuInline: {
+    position: 'absolute',
+    top: '110%',
+    left: 0,
+    minWidth: '100%',
+    maxHeight: '150%',
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    zIndex: 30,
   },
   categoryDropdownItem: {
     paddingHorizontal: SPACING.smmd,
@@ -1178,6 +1212,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     marginBottom: SPACING.smmd,
     gap: SPACING.md,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.smmd,
+    zIndex: 10,
+  },
+  searchInputWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.gray[300],
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.smmd,
+    paddingVertical: SPACING.sm,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.primary,
+    padding: 0,
   },
   filterTab: {
     paddingBottom: SPACING.sm,

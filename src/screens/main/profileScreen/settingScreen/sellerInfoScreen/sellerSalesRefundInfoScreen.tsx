@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
+  Alert,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -15,7 +17,9 @@ import { BackNavTouchableOpacity } from '../../../../../components/BackNavToucha
 import type { SellerStackParamList } from '../../../../../types';
 import { useTranslation } from '../../../../../hooks/useTranslation';
 import { useSellerDashboardMutation } from '../../../../../hooks/useSellerDashboardMutation';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, API_BASE_URL } from '../../../../../constants';
+import { getStoredToken } from '../../../../../services/authApi';
+import { buildSignatureHeaders } from '../../../../../services/signature';
 
 type NavigationProp = StackNavigationProp<SellerStackParamList, 'SellerSalesRefundInfo'>;
 
@@ -49,6 +53,7 @@ const SellerSalesRefundInfoScreen: React.FC<SellerSalesRefundInfoScreenProps> = 
   const [pageSize] = useState<number>(20);
   const [startDate] = useState<Date>(new Date(new Date().setDate(new Date().getDate() - 30)));
   const [endDate] = useState<Date>(new Date());
+  const [isExporting, setIsExporting] = useState<boolean>(false);
 
   const {
     mutate: fetchDashboard,
@@ -83,10 +88,60 @@ const SellerSalesRefundInfoScreen: React.FC<SellerSalesRefundInfoScreenProps> = 
     loadDashboard(1);
   }, [activeTab, loadDashboard]);
 
+  const handleExportExcel = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      const token = await getStoredToken();
+      if (!token) {
+        throw new Error('Please sign in again.');
+      }
+
+      const url = `${API_BASE_URL}/users/seller/live-orders/refunds/export/excel`;
+      const signatureHeaders = await buildSignatureHeaders('GET', url);
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          ...signatureHeaders,
+        },
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = payload?.message || payload?.error || `Request failed with status ${response.status}`;
+        throw new Error(message);
+      }
+
+      const link = payload?.data?.link;
+      const filename = payload?.data?.filename || 'export.xlsx';
+      const rowCount = Number(payload?.data?.rowCount || 0);
+
+      if (!link || typeof link !== 'string') {
+        throw new Error('Export link was not returned by server.');
+      }
+
+      const canOpen = await Linking.canOpenURL(link);
+      if (canOpen) {
+        await Linking.openURL(link);
+      }
+
+      Alert.alert(
+        t('common.download') || 'Download',
+        `${filename}\nRows: ${rowCount}`
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : (t('sellerInfo.orderData.failedToLoad') || 'Export failed.');
+      Alert.alert('Error', message);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [t]);
+
   const renderHeader = () => (
     <View style={styles.header}>
       {!embedded || onEmbeddedBack ? (
-        <BackNavTouchableOpacity
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => {
             if (embedded && onEmbeddedBack) {
@@ -97,7 +152,7 @@ const SellerSalesRefundInfoScreen: React.FC<SellerSalesRefundInfoScreenProps> = 
           }}
         >
           <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-        </BackNavTouchableOpacity>
+        </TouchableOpacity>
       ) : (
         <View style={styles.headerPlaceholder} />
       )}
@@ -165,6 +220,15 @@ const SellerSalesRefundInfoScreen: React.FC<SellerSalesRefundInfoScreenProps> = 
         }}
       >
         <Text style={styles.dateSearchBtnText}>{t('sellerInfo.orderData.dateSearchButton')}</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.exportBtn, isExporting && styles.exportBtnDisabled]}
+        onPress={handleExportExcel}
+        disabled={isExporting}
+      >
+        <Text style={styles.exportBtnText}>
+          {isExporting ? (t('sellerInfo.orderData.loading') || 'Loading...') : (t('common.download') || 'Download')}
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -416,6 +480,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dateSearchBtnText: {
+    color: COLORS.white,
+    fontWeight: '700',
+    fontSize: FONTS.sizes.sm,
+  },
+  exportBtn: {
+    marginLeft: SPACING.sm,
+    backgroundColor: COLORS.secondary,
+    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  exportBtnDisabled: {
+    opacity: 0.6,
+  },
+  exportBtnText: {
     color: COLORS.white,
     fontWeight: '700',
     fontSize: FONTS.sizes.sm,

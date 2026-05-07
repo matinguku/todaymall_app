@@ -258,8 +258,36 @@ try {
 const DEFAULT_API_BASE_URL = 'https://api.todaymall.co.kr/v1';
 const DEFAULT_SERVER_BASE_URL = 'https://api.todaymall.co.kr';
 
-export const API_BASE_URL = envConfig.API_BASE_URL || DEFAULT_API_BASE_URL;
-export const SERVER_BASE_URL = envConfig.SERVER_BASE_URL || DEFAULT_SERVER_BASE_URL;
+const trimTrailingSlashes = (value: string) => value.replace(/\/+$/, '');
+
+/**
+ * Android emulator cannot resolve host machine loopback (`localhost`/`127.0.0.1`)
+ * for API calls. In dev, map it to the special alias `10.0.2.2`.
+ */
+const normalizeAndroidEmulatorBaseUrl = (rawUrl: string) => {
+  const cleanUrl = trimTrailingSlashes(rawUrl);
+  if (Platform.OS !== 'android' || !__DEV__) {
+    return cleanUrl;
+  }
+
+  try {
+    const parsed = new URL(cleanUrl);
+    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+      parsed.hostname = '10.0.2.2';
+      return trimTrailingSlashes(parsed.toString());
+    }
+  } catch (error) {
+    // Keep original string when URL parsing fails (safer than crashing at startup).
+  }
+
+  return cleanUrl;
+};
+
+const configuredApiBaseUrl = envConfig.API_BASE_URL || DEFAULT_API_BASE_URL;
+const configuredServerBaseUrl = envConfig.SERVER_BASE_URL || DEFAULT_SERVER_BASE_URL;
+
+export const API_BASE_URL = normalizeAndroidEmulatorBaseUrl(configuredApiBaseUrl);
+export const SERVER_BASE_URL = normalizeAndroidEmulatorBaseUrl(configuredServerBaseUrl);
 
 export const API_CONFIG = {
   baseUrl: API_BASE_URL,

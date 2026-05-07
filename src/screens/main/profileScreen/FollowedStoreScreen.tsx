@@ -193,7 +193,7 @@ const FollowedStoreScreen: React.FC<FollowedStoreScreenProps> = ({ embedded = fa
     <View style={styles.header}>
       <View style={styles.headerLeft}>
         {(!embedded || onEmbeddedBack) && (
-          <BackNavTouchableOpacity
+          <TouchableOpacity
             style={styles.backButton}
             onPress={() => {
               if (embedded && onEmbeddedBack) {
@@ -204,7 +204,7 @@ const FollowedStoreScreen: React.FC<FollowedStoreScreenProps> = ({ embedded = fa
             }}
           >
             <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
-          </BackNavTouchableOpacity>
+          </TouchableOpacity>
         )}
         <Text style={styles.headerTitle}>{t('profile.followStore')}</Text>
       </View>

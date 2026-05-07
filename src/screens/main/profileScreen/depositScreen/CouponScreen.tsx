@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
-import { BackNavTouchableOpacity } from '../../../../components/BackNavTouchable';
+// import { BackNavTouchableOpacity } from '../../../../components/BackNavTouchable';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS, FONTS, SPACING } from '../../../../constants';
 import { useAppSelector } from '../../../../store/hooks';
@@ -130,7 +130,7 @@ const CouponScreen: React.FC<CouponScreenProps> = ({ embedded = false, onMainTab
           {/* Header */}
           <View style={styles.header}>
             <View style={{flexDirection: 'row', alignItems: 'center'}}>
-              <BackNavTouchableOpacity
+              <TouchableOpacity
                 style={styles.backButton}
                 onPress={() => {
                   if (embedded && onEmbeddedBack) {
@@ -141,7 +141,7 @@ const CouponScreen: React.FC<CouponScreenProps> = ({ embedded = false, onMainTab
                 }}
               >
                 <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
-              </BackNavTouchableOpacity>
+              </TouchableOpacity>
               <Text style={styles.headerTitle}>{t('home.voucherWallet')}</Text>
             </View>
             {/* <TouchableOpacity style={styles.menuButton}>

@@ -1,4 +1,7 @@
 import { useCallback, useState } from 'react';
+import { API_BASE_URL } from '../../../../../constants';
+import { getStoredToken } from '../../../../../services/authApi';
+import { buildSignatureHeaders } from '../../../../../services/signature';
 
 type SummaryRange = {
   from: string;
@@ -36,29 +39,36 @@ type UseSellerDashboardSummaryMutationResult = {
   error: string | null;
 };
 
-const FALLBACK_SUMMARY: SellerDashboardSummary = {
+const normalizeSummary = (summary: Partial<SellerDashboardSummary> | null | undefined): SellerDashboardSummary => ({
   range: {
-    from: '2026-01-01',
-    to: '2026-12-31',
+    from: summary?.range?.from || '',
+    to: summary?.range?.to || '',
   },
-  salesAmountKrw: 2170000,
-  salesQuantity: 326,
-  refundAmountKrw: 184000,
-  refundQuantity: 27,
-  rebatePersonalAccruedKrw: 162000,
-  rebatePersonalDeductedKrw: 23000,
-  rebateTeamAccruedKrw: 97000,
-  rebateTeamDeductedKrw: 12000,
-  averageOrderValueKrw: 6656,
-  refundRate: 8.2,
-};
+  salesAmountKrw: Number(summary?.salesAmountKrw || 0),
+  salesQuantity: Number(summary?.salesQuantity || 0),
+  refundAmountKrw: Number(summary?.refundAmountKrw || 0),
+  refundQuantity: Number(summary?.refundQuantity || 0),
+  rebatePersonalAccruedKrw: Number(summary?.rebatePersonalAccruedKrw || 0),
+  rebatePersonalDeductedKrw: Number(summary?.rebatePersonalDeductedKrw || 0),
+  rebateTeamAccruedKrw: Number(summary?.rebateTeamAccruedKrw || 0),
+  rebateTeamDeductedKrw: Number(summary?.rebateTeamDeductedKrw || 0),
+  averageOrderValueKrw: Number(summary?.averageOrderValueKrw || 0),
+  refundRate: Number(summary?.refundRate || 0),
+});
 
-const FALLBACK_DIRECT_TEAM: SellerDirectTeamMember[] = [
-  { sellerId: 'S001', name: 'John Kim', amount: 420000, count: 58, rebate: 19000 },
-  { sellerId: 'S002', name: 'Alice Lee', amount: 360000, count: 51, rebate: 16000 },
-  { sellerId: 'S003', name: 'David Park', amount: 520000, count: 74, rebate: 21000 },
-  { sellerId: 'S004', name: 'Emma Choi', amount: 290000, count: 43, rebate: 12000 },
-];
+const normalizeDirectTeam = (members: unknown): SellerDirectTeamMember[] => {
+  if (!Array.isArray(members)) {
+    return [];
+  }
+
+  return members.map((member: any, index: number) => ({
+    sellerId: String(member?.sellerId || member?.memberId || member?.id || `TEAM-${index + 1}`),
+    name: String(member?.name || member?.memberName || '-'),
+    amount: Number(member?.amount || member?.salesAmountKrw || 0),
+    count: Number(member?.count || member?.salesQuantity || 0),
+    rebate: Number(member?.rebate || member?.rebateAccruedKrw || 0),
+  }));
+};
 
 export const useSellerDashboardSummaryMutation = (): UseSellerDashboardSummaryMutationResult => {
   const [summary, setSummary] = useState<SellerDashboardSummary | null>(null);
@@ -73,8 +83,31 @@ export const useSellerDashboardSummaryMutation = (): UseSellerDashboardSummaryMu
     setIsError(false);
 
     try {
-      setSummary(FALLBACK_SUMMARY);
-      setDirectTeam(FALLBACK_DIRECT_TEAM);
+      const token = await getStoredToken();
+      if (!token) {
+        throw new Error('Please sign in again.');
+      }
+
+      const url = `${API_BASE_URL}/users/seller/dashboard`;
+      const signatureHeaders = await buildSignatureHeaders('GET', url);
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          ...signatureHeaders,
+        },
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = payload?.message || payload?.error || `Request failed with status ${response.status}`;
+        throw new Error(message);
+      }
+
+      const data = payload?.data || {};
+      setSummary(normalizeSummary(data.summary));
+      setDirectTeam(normalizeDirectTeam(data.directTeam));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load seller dashboard summary.';
       setError(message);

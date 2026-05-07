@@ -69,7 +69,7 @@ const SellerProfileScreen: React.FC = () => {
   // Add to wishlist mutation
   const { mutate: addToWishlist } = useAddToWishlistMutation({
     onSuccess: async () => {
-      showToast(t('product.productAddedToWishlist'), 'success');
+      showToast(t('product.productAddedToWishlist') || 'Product added to wishlist', 'success');
       await refreshExternalIds();
     },
     onError: (error) => {

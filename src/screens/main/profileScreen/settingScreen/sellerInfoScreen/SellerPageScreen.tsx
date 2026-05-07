@@ -17,6 +17,9 @@ import type { SellerStackParamList } from '../../../../../types';
 import { COLORS } from '../../../../../constants';
 import { useTranslation } from '../../../../../hooks/useTranslation';
 import { useSellerDashboardSummaryMutation } from './useSellerDashboardSummaryMutation';
+import { API_BASE_URL } from '../../../../../constants';
+import { getStoredToken } from '../../../../../services/authApi';
+import { buildSignatureHeaders } from '../../../../../services/signature';
 
 const { width } = Dimensions.get('window');
 
@@ -46,12 +49,9 @@ const SellerPage: React.FC<SellerPageProps> = ({ embedded = false, onEmbeddedBac
   const navigation = useNavigation<NavigationProp>();
   const { t } = useTranslation();
   const { mutate: fetchDashboardSummary, summary, directTeam, isLoading, isError, error } = useSellerDashboardSummaryMutation();
-  const [sellerInfos, setSellerInfos] = useState<Seller[]>([
-    { sellerId: 'S001', name: 'John Kim', amount: 120000, count: 12, rebate: 5000, isActive: false },
-    { sellerId: 'S002', name: 'Alice Lee', amount: 80000, count: 8, rebate: 3000, isActive: false },
-    { sellerId: 'S003', name: 'David Park', amount: 150000, count: 15, rebate: 7000, isActive: false },
-    { sellerId: 'S004', name: 'Emma Choi', amount: 50000, count: 5, rebate: 2000, isActive: false },
-  ]);
+  const [sellerInfos, setSellerInfos] = useState<Seller[]>([]);
+  const [teamLoading, setTeamLoading] = useState<boolean>(false);
+  const [teamError, setTeamError] = useState<string | null>(null);
 
   const summaryData = summary || {
     range: { from: '', to: '' },
@@ -70,6 +70,56 @@ const SellerPage: React.FC<SellerPageProps> = ({ embedded = false, onEmbeddedBac
   useEffect(() => {
     fetchDashboardSummary();
   }, [fetchDashboardSummary]);
+
+  useEffect(() => {
+    const fetchDirectTeam = async () => {
+      setTeamLoading(true);
+      setTeamError(null);
+      try {
+        const token = await getStoredToken();
+        if (!token) {
+          throw new Error('Please sign in again.');
+        }
+
+        const url = `${API_BASE_URL}/users/seller/direct-team`;
+        const signatureHeaders = await buildSignatureHeaders('GET', url);
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            ...signatureHeaders,
+          },
+        });
+
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          const message = payload?.message || payload?.error || `Request failed with status ${response.status}`;
+          throw new Error(message);
+        }
+
+        const members = Array.isArray(payload?.data?.directTeam) ? payload.data.directTeam : [];
+        setSellerInfos(
+          members.map((member: any, index: number) => ({
+            sellerId: String(member?.userUniqueId || member?.sellerId || member?.id || `TEAM-${index + 1}`),
+            name: String(member?.userName || member?.name || '-'),
+            amount: Number(member?.teamSalesAmountKrw || 0),
+            count: Number(member?.teamSalesQuantity || 0),
+            rebate: Number(member?.teamRebateNetKrw || 0),
+            isActive: false,
+          }))
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to load direct team.';
+        setTeamError(message);
+        setSellerInfos([]);
+      } finally {
+        setTeamLoading(false);
+      }
+    };
+
+    fetchDirectTeam();
+  }, []);
 
   const donutData: ChartItem[] = useMemo(
     () => [
@@ -99,15 +149,6 @@ const SellerPage: React.FC<SellerPageProps> = ({ embedded = false, onEmbeddedBac
     ],
     [t]
   );
-
-  useEffect(() => {
-    if (directTeam.length > 0) {
-      setSellerInfos(directTeam.map((member) => ({
-        ...member,
-        isActive: false,
-      })));
-    }
-  }, [directTeam]);
 
   const cards = [
     { title: t('sellerInfo.cards.salesAmountKrw'), value: `₩${summaryData.salesAmountKrw.toLocaleString()}`, text: t('sellerInfo.cards.totalCount') },
@@ -159,7 +200,7 @@ const SellerPage: React.FC<SellerPageProps> = ({ embedded = false, onEmbeddedBac
   const renderHeader = () => (
     <View style={styles.header}>
       {!embedded || onEmbeddedBack ? (
-        <BackNavTouchableOpacity
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => {
             if (embedded && onEmbeddedBack) {
@@ -170,7 +211,7 @@ const SellerPage: React.FC<SellerPageProps> = ({ embedded = false, onEmbeddedBac
           }}
         >
           <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-        </BackNavTouchableOpacity>
+        </TouchableOpacity>
       ) : (
         <View style={styles.headerPlaceholder} />
       )}
@@ -306,6 +347,16 @@ const SellerPage: React.FC<SellerPageProps> = ({ embedded = false, onEmbeddedBac
         {isError && error ? (
           <View style={styles.loadingContainer}>
             <Text style={styles.loadingText}>{error}</Text>
+          </View>
+        ) : null}
+        {teamLoading ? (
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>{t('sellerInfo.loadingSummary') || 'Loading summary...'}</Text>
+          </View>
+        ) : null}
+        {teamError ? (
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>{teamError}</Text>
           </View>
         ) : null}
         {renderSellerList()}

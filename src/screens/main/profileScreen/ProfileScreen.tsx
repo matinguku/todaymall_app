@@ -1067,7 +1067,7 @@ const ProfileScreen: React.FC = () => {
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.myOrderItem}
-              onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'error' })}
+              onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'refunds' })}
             >
               {/* <DeliveryIcon width={24} height={24} color={COLORS.black} /> */}
               {/* <NotificationBadge
@@ -1794,7 +1794,7 @@ const ProfileScreen: React.FC = () => {
                     style={styles.myOrderItem}
                     onPress={() => {
                       setTabletSection('orders');
-                      setEmbeddedOrdersInitialTab('error');
+                      setEmbeddedOrdersInitialTab('refunds');
                       setEmbeddedOrdersOpen(true);
                     }}
                   >
@@ -1884,7 +1884,7 @@ const ProfileScreen: React.FC = () => {
       }
 
       case 'returns':
-        return <BuyListScreen embedded initialTabOverride="error" onEmbeddedBack={exitTabletEmbeddedToOverview} />;
+        return <BuyListScreen embedded initialTabOverride="refunds" onEmbeddedBack={exitTabletEmbeddedToOverview} />;
 
       case 'settings':
         // Settings summary card intentionally removed from dashboard.

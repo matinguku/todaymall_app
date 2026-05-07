@@ -142,9 +142,9 @@ const PaymentPasswordScreen: React.FC<PaymentPasswordScreenProps> = ({
         style={styles.header}
       >
         {!embedded || onBackToSecuritySettings ? (
-          <BackNavTouchableOpacity style={styles.backButton} onPress={goBackToSecurity}>
+          <TouchableOpacity style={styles.backButton} onPress={goBackToSecurity}>
             <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-          </BackNavTouchableOpacity>
+          </TouchableOpacity>
         ) : (
           <View style={styles.placeholder} />
         )}

@@ -77,6 +77,9 @@ type CartScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Main'>;
 const CartScreen: React.FC = () => {
   const navigation = useNavigation<CartScreenNavigationProp>();
   const insets = useSafeAreaInsets();
+  const { showToast } = useToast();
+  const { t, locale: appLocale } = useTranslation();
+  const locale = appLocale as 'en' | 'ko' | 'zh';
   const { screenWidth: dynScreenWidth, moreToLoveColumns } = useResponsive();
 
   // Layout-first paint: defer the "More to Love" recommendations grid to the
@@ -107,7 +110,7 @@ const CartScreen: React.FC = () => {
   // Add to wishlist mutation
   const { mutate: addToWishlist } = useAddToWishlistMutation({
     onSuccess: async (data) => {
-      showToast(t('product.productAddedToWishlist'), 'success');
+      showToast(t('product.productAddedToWishlist') || 'Product added to wishlist', 'success', 1000);
       // Immediately refresh external IDs to update heart icon color
       await refreshExternalIds();
     },
@@ -179,9 +182,6 @@ const CartScreen: React.FC = () => {
     estimatedShippingCost?: number;
     estimatedShippingCostBySeller?: Record<string, number>;
   }>({ items: [], totalAmount: 0, totalItems: 0, currency: 'CNY' });
-  const { showToast } = useToast();
-  const { t, locale: appLocale } = useTranslation();
-  const locale = appLocale as 'en' | 'ko' | 'zh';
   
   // Resolve multilingual object or string to string for current locale
   const resolveText = useCallback((value: unknown): string => {
@@ -209,8 +209,12 @@ const CartScreen: React.FC = () => {
         const price = parseFloat(item.skuInfo?.price || item.skuInfo?.consignPrice || '0');
         const name = resolveText(item.subjectMultiLang ?? item.subjectTrans ?? item.subject) || '';
         const companyNameStr = resolveText(item.companyName) || '';
+        const stableSelectionId =
+          item._id ||
+          `${item.offerId?.toString?.() || ''}:${item.skuInfo?.specId || item.skuInfo?.skuId || ''}`;
         return {
           id: item._id || item.offerId?.toString() || '',
+          selectionId: stableSelectionId,
           _id: item._id,
           offerId: item.offerId,
           productId: item.offerId?.toString() || '',
@@ -894,21 +898,23 @@ const CartScreen: React.FC = () => {
   }
 
   // Calculate totals from cart items
-  const selectedCartItems = cart.items.filter(item => selectedItems.has(item.id));
+  const selectedCartItems = cart.items.filter(item =>
+    selectedItems.has((item as any).selectionId || item.id)
+  );
   const totalPrice = selectedCartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const selectedCount = selectedCartItems.length;
 
-  const handleSelectItem = (itemId: string) => {
+  const handleSelectItem = (selectionId: string) => {
     const newSelected = new Set(selectedItems);
-    if (newSelected.has(itemId)) {
-      newSelected.delete(itemId);
+    if (newSelected.has(selectionId)) {
+      newSelected.delete(selectionId);
     } else {
-      newSelected.add(itemId);
+      newSelected.add(selectionId);
     }
     setSelectedItems(newSelected);
     
     // Update all selected state
-    const allItemIds = cart.items.map(item => item.id);
+    const allItemIds = cart.items.map(item => (item as any).selectionId || item.id);
     setAllSelected(newSelected.size === allItemIds.length && allItemIds.length > 0);
   };
 
@@ -917,7 +923,7 @@ const CartScreen: React.FC = () => {
       setSelectedItems(new Set());
       setAllSelected(false);
     } else {
-      const allItemIds = cart.items.map(item => item.id);
+      const allItemIds = cart.items.map(item => (item as any).selectionId || item.id);
       setSelectedItems(new Set(allItemIds));
       setAllSelected(true);
     }
@@ -976,16 +982,23 @@ const CartScreen: React.FC = () => {
     setShowDeleteModal(false);
     
     if (selectedItems.size === 0) {
-      // If no items selected, clear entire cart
-      if (cart.items.length > 0) {
-        clearCart();
-      }
+      // Never delete unselected items. Require explicit selection.
+      showToast(t('cart.selectItems'), 'warning');
       return;
     }
 
     // Delete selected items in batch
-    const selectedCartItems = cart.items.filter(item => selectedItems.has(item.id));
-    const itemIds = selectedCartItems.map(item => (item as any)._id || item.id).filter(id => id);
+    const selectedCartItems = cart.items.filter(item =>
+      selectedItems.has((item as any).selectionId || item.id)
+    );
+    const itemsMissingBackendId = selectedCartItems.filter(item => !(item as any)._id);
+    if (itemsMissingBackendId.length > 0) {
+      showToast(t('cart.noValidItems'), 'warning');
+      return;
+    }
+    const itemIds = selectedCartItems
+      .map(item => (item as any)._id)
+      .filter((id): id is string => Boolean(id));
     
     if (itemIds.length > 0) {
       deleteCartBatch(itemIds);
@@ -1065,13 +1078,13 @@ const CartScreen: React.FC = () => {
         <View style={styles.itemContent}>
           <TouchableOpacity 
             style={styles.itemCheckbox}
-            onPress={() => handleSelectItem(item.id)}
+            onPress={() => handleSelectItem((item as any).selectionId || item.id)}
           >
             <View style={[
               styles.checkbox,
-              selectedItems.has(item.id) && styles.checkboxSelected
+              selectedItems.has((item as any).selectionId || item.id) && styles.checkboxSelected
             ]}>
-              {selectedItems.has(item.id) && (
+              {selectedItems.has((item as any).selectionId || item.id) && (
                 <ThickCheckIcon size={12} color={COLORS.white} />
               )}
             </View>
@@ -1162,7 +1175,7 @@ const CartScreen: React.FC = () => {
   // Check if all items in a group are selected
   const isGroupSelected = (groupItems: any[]) => {
     if (groupItems.length === 0) return false;
-    return groupItems.every(item => selectedItems.has(item.id));
+    return groupItems.every(item => selectedItems.has((item as any).selectionId || item.id));
   };
 
   // Handle group selection/deselection
@@ -1172,16 +1185,16 @@ const CartScreen: React.FC = () => {
     
     if (allSelected) {
       // Deselect all items in the group
-      groupItems.forEach(item => newSelected.delete(item.id));
+      groupItems.forEach(item => newSelected.delete((item as any).selectionId || item.id));
     } else {
       // Select all items in the group
-      groupItems.forEach(item => newSelected.add(item.id));
+      groupItems.forEach(item => newSelected.add((item as any).selectionId || item.id));
     }
     
     setSelectedItems(newSelected);
     
     // Update all selected state
-    const allItemIds = cart.items.map(item => item.id);
+    const allItemIds = cart.items.map(item => (item as any).selectionId || item.id);
     setAllSelected(newSelected.size === allItemIds.length && allItemIds.length > 0);
   };
 

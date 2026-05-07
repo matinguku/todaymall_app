@@ -5,7 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { launchCamera, launchImageLibrary, MediaType, ImagePickerResponse, CameraOptions, ImageLibraryOptions } from 'react-native-image-picker';
 import Icon from '../../../../components/Icon';
-import { BackNavTouchableOpacity } from '../../../../components/BackNavTouchable';
+// import { BackNavTouchableOpacity } from '../../../../components/BackNavTouchable';
 import ImagePickerModal from '../../../../components/ImagePickerModal';
 import DatePickerModal from '../../../../components/DatePickerModal';
 import { COLORS, FONTS, SPACING, IMAGE_CONFIG, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
@@ -299,7 +299,7 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ embedded = false,
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           {!embedded || onEmbeddedBack ? (
-            <BackNavTouchableOpacity
+            <TouchableOpacity
               style={styles.backButton}
               onPress={() => {
                 if (embedded && onEmbeddedBack) {
@@ -310,7 +310,7 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ embedded = false,
               }}
             >
               <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
-            </BackNavTouchableOpacity>
+            </TouchableOpacity>
           ) : (
             <View style={styles.placeholder} />
           )}
@@ -330,7 +330,7 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ embedded = false,
       {/* Header */}
       <View style={styles.header}>
         {!embedded || onEmbeddedBack ? (
-          <BackNavTouchableOpacity
+          <TouchableOpacity
             style={styles.backButton}
             onPress={() => {
               if (embedded && onEmbeddedBack) {
@@ -341,7 +341,7 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ embedded = false,
             }}
           >
             <Icon name="arrow-back" size={16} color={COLORS.text.primary} />
-          </BackNavTouchableOpacity>
+          </TouchableOpacity>
         ) : (
           <View style={styles.placeholder} />
         )}

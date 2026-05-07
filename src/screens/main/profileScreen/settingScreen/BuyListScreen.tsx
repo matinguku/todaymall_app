@@ -1821,7 +1821,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
       {/* Header */}
       <View style={styles.header} onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}>
         {(!embedded || onEmbeddedBack) && (
-          <BackNavTouchableOpacity
+          <TouchableOpacity
             style={styles.backButton}
             onPress={() => {
               if (embedded && onEmbeddedBack) {
@@ -1836,7 +1836,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
             }}
           >
             <Icon name="chevron-back" size={24} color={COLORS.text.primary} />
-          </BackNavTouchableOpacity>
+          </TouchableOpacity>
         )}
         
         {/* Order number search input */}
