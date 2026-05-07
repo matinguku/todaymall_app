@@ -871,6 +871,11 @@ const ProductDetailScreen: React.FC = () => {
       if (data && data.product) {
         // Map API response to product format
         const apiProduct = data.product;
+        const totalSkuStock = (apiProduct.productSkuInfos || []).reduce(
+          (sum: number, sku: any) =>
+            sum + (typeof sku?.amountOnSale === 'number' ? sku.amountOnSale : parseInt(String(sku?.amountOnSale || 0), 10) || 0),
+          0,
+        );
         
         // Extract images from productImage.images
         const images = apiProduct.productImage?.images || [];
@@ -928,8 +933,10 @@ const ProductDetailScreen: React.FC = () => {
           rating: parseFloat(apiProduct.tradeScore || 0),
           reviewCount: parseInt(apiProduct.soldOut || '0', 10),
           rating_count: parseInt(apiProduct.soldOut || '0', 10),
-          inStock: (apiProduct.productSaleInfo?.amountOnSale || 0) > 0,
-          stockCount: apiProduct.productSaleInfo?.amountOnSale || 0,
+          // Stock in ownmall/live detail is per SKU (`amountOnSale`), so
+          // total stock should be the sum across all SKUs, not productSaleInfo.
+          inStock: totalSkuStock > 0,
+          stockCount: totalSkuStock,
           tags: [],
           isNew: false,
           isFeatured: false,
@@ -1256,6 +1263,104 @@ const ProductDetailScreen: React.FC = () => {
     return variationTypes;
   }, [product, routeSource, selectedPlatform, selectedVariations]);
 
+  // Stock status for the currently selected option tab (SKU).
+  // - `stockCount`: sum of all amountOnSale when no complete selection yet.
+  // - once all variation tabs are selected, it resolves the matching SKU and
+  //   reports that SKU's amountOnSale so "Out of Stock" follows the tab.
+  const selectedStockInfo = useMemo(() => {
+    const parseStock = (value: any): number => {
+      if (typeof value === 'number' && !isNaN(value)) return value;
+      if (typeof value === 'string') {
+        const n = parseInt(value, 10);
+        return isNaN(n) ? 0 : n;
+      }
+      return 0;
+    };
+
+    const skuInfos = ((product as any)?.productSkuInfos || []) as any[];
+    const totalStockFromSkus = skuInfos.reduce(
+      (sum: number, sku: any) => sum + parseStock(sku?.amountOnSale),
+      0,
+    );
+    const fallbackStockCount = (product as any)?.stockCount ?? totalStockFromSkus;
+    const baseStockCount =
+      skuInfos.length > 0 ? totalStockFromSkus : parseStock(fallbackStockCount);
+    const baseInStock =
+      (product as any)?.inStock ?? baseStockCount > 0;
+
+    const variationTypes = getVariationTypes();
+    if (variationTypes.length === 0 || !product) {
+      return { stockCount: baseStockCount, inStock: baseInStock };
+    }
+
+    const hasAllSelections = variationTypes.every((variationType) => {
+      const variationName = variationType.name.toLowerCase();
+      const selectedValue =
+        selectedVariations[variationName] ||
+        (variationName === 'color' ? selectedColor : null) ||
+        (variationName === 'size' ? selectedSize : null);
+      return !!selectedValue;
+    });
+
+    if (!hasAllSelections) {
+      return { stockCount: baseStockCount, inStock: baseInStock };
+    }
+
+    const rawVariants = ((product as any)?.rawVariants || []) as any[];
+    let selectedVariant: any = null;
+    if (rawVariants.length > 0) {
+      selectedVariant = rawVariants.find((variant: any) => {
+        const variantName = variant.name || '';
+        return variationTypes.every((variationType) => {
+          const typeName = variationType.name.toLowerCase();
+          const selectedValue =
+            selectedVariations[typeName] ||
+            (typeName === 'color' ? selectedColor : null) ||
+            (typeName === 'size' ? selectedSize : null);
+          if (!selectedValue) return false;
+          return variantName.toLowerCase().includes(String(selectedValue).toLowerCase());
+        });
+      });
+    }
+
+    let selectedSku: any = null;
+    if (selectedVariant) {
+      selectedSku = skuInfos.find(
+        (sku: any) =>
+          sku.skuId?.toString() === selectedVariant.skuId?.toString() ||
+          sku.specId?.toString() === selectedVariant.specId?.toString(),
+      );
+    }
+
+    if (!selectedSku && Object.keys(selectedVariations).length > 0 && skuInfos.length > 0) {
+      selectedSku = skuInfos.find((sku: any) => {
+        const attrs = sku.skuAttributes || [];
+        return Object.entries(selectedVariations).every(([typeName, selectedValue]) => {
+          return attrs.some((attr: any) => {
+            const attrName = (attr.attributeNameTrans || attr.attributeName || '').toLowerCase();
+            const attrValue = (attr.valueTrans || attr.value || '').toLowerCase();
+            return (
+              attrName.includes(typeName.toLowerCase()) &&
+              attrValue === String(selectedValue).toLowerCase()
+            );
+          });
+        });
+      });
+    }
+
+    if (!selectedSku && selectedVariant) {
+      const variantStock = parseStock(selectedVariant.amountOnSale ?? selectedVariant.stock);
+      return { stockCount: variantStock, inStock: variantStock > 0 };
+    }
+
+    if (selectedSku) {
+      const skuStock = parseStock(selectedSku.amountOnSale);
+      return { stockCount: skuStock, inStock: skuStock > 0 };
+    }
+
+    return { stockCount: baseStockCount, inStock: baseInStock };
+  }, [product, getVariationTypes, selectedVariations, selectedColor, selectedSize]);
+
   // Check if all variation types are selected
   // IMPORTANT: This must be defined before early return to avoid hooks order issues
   const canAddToCart = useMemo(() => {
@@ -1272,8 +1377,8 @@ const ProductDetailScreen: React.FC = () => {
     // `inStock`/`stockCount`. Either signal being zero blocks Add to Cart
     // and Buy Now. Earlier than this point `detailFetched` keeps us false
     // anyway, so we don't accidentally disable on an uninitialized 0.
-    const stockCount: number = (product as any)?.stockCount ?? 0;
-    const inStockFlag: boolean = (product as any)?.inStock ?? stockCount > 0;
+    const stockCount: number = selectedStockInfo.stockCount;
+    const inStockFlag: boolean = selectedStockInfo.inStock;
     if (!inStockFlag || stockCount === 0) {
       return false;
     }
@@ -1298,7 +1403,7 @@ const ProductDetailScreen: React.FC = () => {
     }
 
     return true; // All variations are selected
-  }, [product, detailFetched, getVariationTypes, selectedVariations, selectedColor, selectedSize]);
+  }, [detailFetched, getVariationTypes, selectedColor, selectedSize, selectedStockInfo.stockCount, selectedStockInfo.inStock]);
 
   // Get selected variation price - MUST be before early return
   const getSelectedVariationPrice = useMemo(() => {
@@ -2957,9 +3062,8 @@ const ProductDetailScreen: React.FC = () => {
             inStock); minOrderQuantity is a separate API field, displayed
             in a lighter weight as a secondary hint. */}
         {(() => {
-          const stockCount: number = (product as any)?.stockCount ?? 0;
-          const inStock: boolean =
-            (product as any)?.inStock ?? stockCount > 0;
+          const stockCount: number = selectedStockInfo.stockCount;
+          const inStock: boolean = selectedStockInfo.inStock;
           const minOrderQty: number = (product as any)?.minOrderQuantity ?? 1;
           return (
             <View style={styles.stockInfoColumn}>

@@ -162,19 +162,26 @@ const ProfileSettingsScreen: React.FC = () => {
     <View style={styles.userSection}>
       <View style={styles.userCard}>
         <View style={styles.avatarContainer}>
-          <Image
-            source={
-              user?.avatar && typeof user.avatar === 'string' && user.avatar.trim() !== ''
-                ? { uri: user.avatar } 
-                : require('../../../../assets/images/avatar.png')
-            }
-            style={styles.avatar}
-          />
+          {user?.avatar && typeof user.avatar === 'string' && user.avatar.trim() !== '' ? (
+            <Image
+              source={{ uri: user.avatar }}
+              style={styles.avatar}
+            />
+          ) : (
+            <View style={styles.defaultAvatarPanel}>
+              <Text style={styles.defaultAvatarInitial}>
+                {String(user?.name || '?').trim().charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
           <View style={styles.avatarBorder} />
         </View>
-        {isAuthenticated && user?.name && (
-          <Text style={styles.userName}>{user.name}</Text>
-        )}
+        <Text style={styles.userName}>
+          {isAuthenticated && user?.name ? user.name : t('profile.guest')}
+        </Text>
+        <Text style={styles.userMeta}>
+          {`ID: ${String(user?.id || (user as any)?.userId || user?.email || '-').trim()}`}
+        </Text>
       </View>
     </View>
   );
@@ -421,7 +428,8 @@ const styles = StyleSheet.create({
   userCard: {
     backgroundColor: COLORS.white,
     borderRadius: SPACING.md,
-    padding: SPACING.xl,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.lg,
     alignItems: 'center',
     shadowColor: COLORS.shadow,
     shadowOffset: { width: 0, height: 2 },
@@ -441,6 +449,20 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     backgroundColor: COLORS.gray[200],
   },
+  defaultAvatarPanel: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: COLORS.red,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  defaultAvatarInitial: {
+    fontSize: 44,
+    fontWeight: '800',
+    color: COLORS.white,
+    lineHeight: 50,
+  },
   avatarBorder: {
     position: 'absolute',
     top: -3,
@@ -455,6 +477,11 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.lg,
     fontWeight: '700',
     color: COLORS.text.primary,
+  },
+  userMeta: {
+    marginTop: SPACING.xs,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
   },
   menuContainer: {
     // backgroundColor: COLORS.white,

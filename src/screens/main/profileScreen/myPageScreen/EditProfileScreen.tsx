@@ -76,6 +76,20 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ embedded = false,
   const [showNewPassword, setShowNewPassword] = useState(true);
   const [showConfirmPassword, setShowConfirmPassword] = useState(true);
   const [changingPassword, setChangingPassword] = useState(false);
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
+
+  const normalizedProfileImageUri = useMemo(() => {
+    const raw = (profileImageUri || '').trim();
+    if (!raw) return '';
+    const lower = raw.toLowerCase();
+    if (lower === 'null' || lower === 'undefined') return '';
+    if (raw.startsWith('//')) return `https:${raw}`;
+    return raw;
+  }, [profileImageUri]);
+
+  useEffect(() => {
+    setAvatarLoadFailed(false);
+  }, [normalizedProfileImageUri]);
 
   const genderOptions = useMemo(() => [
     { value: 'male', label: t('profile.male'), icon: 'male-outline' },
@@ -339,7 +353,19 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ embedded = false,
         {/* Avatar Section */}
         <View style={styles.avatarCard}>
           <View style={styles.avatarContainer}>
-            <Image source={profileImageUri ? { uri: profileImageUri } : require('../../../../assets/images/avatar.png')} style={styles.avatar} />
+            {normalizedProfileImageUri && !avatarLoadFailed ? (
+              <Image
+                source={{ uri: normalizedProfileImageUri }}
+                style={styles.avatar}
+                onError={() => setAvatarLoadFailed(true)}
+              />
+            ) : (
+              <View style={styles.defaultAvatarPanel}>
+                <Text style={styles.defaultAvatarInitial}>
+                  {String(formData.memberName || user?.name || '?').trim().charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
             <View style={styles.avatarRing} />
             <TouchableOpacity style={styles.cameraButton} onPress={() => setShowImagePicker(true)} disabled={savingProfile}>
               <Icon name="camera" size={14} color={COLORS.white} />
@@ -655,6 +681,20 @@ const styles = StyleSheet.create({
     height: 96,
     borderRadius: 48,
     backgroundColor: COLORS.gray[200],
+  },
+  defaultAvatarPanel: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: COLORS.red,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  defaultAvatarInitial: {
+    fontSize: 42,
+    fontWeight: '800',
+    color: COLORS.white,
+    lineHeight: 48,
   },
   avatarRing: {
     position: 'absolute',

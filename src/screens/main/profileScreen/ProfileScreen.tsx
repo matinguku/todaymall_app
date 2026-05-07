@@ -307,6 +307,7 @@ const ProfileScreen: React.FC = () => {
   const [sellerInfoExpanded, setSellerInfoExpanded] = useState(false);
   const [introductionExpanded, setIntroductionExpanded] = useState(false);
   const [embeddedSettingsPage, setEmbeddedSettingsPage] = useState<EmbeddedSettingsPage>(null);
+  const [headerAvatarLoadFailed, setHeaderAvatarLoadFailed] = useState(false);
   const [embeddedHelpSubPageData, setEmbeddedHelpSubPageData] = useState<any>(null);
   const [embeddedHelpArticleData, setEmbeddedHelpArticleData] = useState<any>(null);
 
@@ -376,6 +377,20 @@ const ProfileScreen: React.FC = () => {
       setOrderCounts(computeProfileOrderCounts(data.orders));
     },
   });
+
+  const rawHeaderAvatarUri = typeof user?.avatar === 'string' ? user.avatar.trim() : '';
+  const headerAvatarUri =
+    rawHeaderAvatarUri &&
+    rawHeaderAvatarUri.toLowerCase() !== 'null' &&
+    rawHeaderAvatarUri.toLowerCase() !== 'undefined'
+      ? rawHeaderAvatarUri.startsWith('//')
+        ? `https:${rawHeaderAvatarUri}`
+        : rawHeaderAvatarUri
+      : '';
+
+  useEffect(() => {
+    setHeaderAvatarLoadFailed(false);
+  }, [headerAvatarUri]);
   
   // Recommendations state for "More to Love"
   const [recommendationsProducts, setRecommendationsProducts] = useState<Product[]>([]);
@@ -851,14 +866,19 @@ const ProfileScreen: React.FC = () => {
         <Text style={styles.explanationText}>{t('profile.vipVoucherMessage')}</Text>
         <Text style={styles.explanationButtonText}>{t('profile.claimNow')}</Text> */}
       <View style={styles.headerUserInfo}>
-        <Image
-          source={
-            user?.avatar && typeof user.avatar === 'string' && user.avatar.trim() !== ''
-              ? { uri: user.avatar } 
-              : require('../../../assets/images/avatar.png')
-          }
-          style={styles.headerAvatar}
-        />
+        {headerAvatarUri && !headerAvatarLoadFailed ? (
+          <Image
+            source={{ uri: headerAvatarUri }}
+            style={styles.headerAvatar}
+            onError={() => setHeaderAvatarLoadFailed(true)}
+          />
+        ) : (
+          <View style={styles.headerDefaultAvatar}>
+            <Text style={styles.headerDefaultAvatarInitial}>
+              {String(user?.name || '?').trim().charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
         <View style={styles.headerUserText}>
           <View style={styles.headerUserTop}>
             <Text style={styles.headerFirstName}>{user?.name || ''}</Text>
@@ -2177,6 +2197,23 @@ const styles = StyleSheet.create({
     marginRight: SPACING.sm,
     borderWidth: 1,
     borderColor: COLORS.border,
+  },
+  headerDefaultAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.red,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerDefaultAvatarInitial: {
+    color: COLORS.white,
+    fontSize: 22,
+    fontWeight: '800',
+    lineHeight: 24,
   },
   headerUserText: {
     flex: 1,

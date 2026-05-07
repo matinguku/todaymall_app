@@ -226,6 +226,28 @@ const LiveSellerDetailScreen: React.FC = () => {
         }
 
         const mappedProducts = items.map((item: any) => {
+          const parseNumberish = (value: any): number | null => {
+            if (typeof value === 'number' && !isNaN(value)) return value;
+            if (typeof value === 'string') {
+              const parsed = parseInt(value, 10);
+              return isNaN(parsed) ? null : parsed;
+            }
+            return null;
+          };
+
+          const skuInfos =
+            (Array.isArray(item?.product?.productSkuInfos) ? item.product.productSkuInfos : null) ||
+            (Array.isArray(item?.product?.productData?.productSkuInfos) ? item.product.productData.productSkuInfos : null) ||
+            (Array.isArray(item?.productData?.productSkuInfos) ? item.productData.productSkuInfos : null) ||
+            [];
+
+          const stockFromSkus =
+            skuInfos.length > 0
+              ? skuInfos.reduce((sum: number, s: any) => {
+                  const v = parseNumberish(s?.amountOnSale);
+                  return sum + (v != null ? v : 0);
+                }, 0)
+              : null;
           // Try every reasonable field name the backend might use for
           // the live-broadcast code. Falls back to scanning the product
           // sub-object too. The order goes from most-specific to most-
@@ -292,20 +314,18 @@ const LiveSellerDetailScreen: React.FC = () => {
             // pre-aggregate the value.
             stockCount: (() => {
               if (typeof item.stockCount === 'number') return item.stockCount;
-              const skus = item?.product?.productSkuInfos;
-              if (Array.isArray(skus) && skus.length > 0) {
-                return skus.reduce((sum: number, s: any) => {
-                  const v =
-                    typeof s?.amountOnSale === 'string'
-                      ? parseInt(s.amountOnSale, 10)
-                      : s?.amountOnSale;
-                  return sum + (typeof v === 'number' && !isNaN(v) ? v : 0);
-                }, 0);
-              }
-              if (typeof item.amountOnSale === 'number') return item.amountOnSale;
-              if (typeof item.product?.amountOnSale === 'number') return item.product.amountOnSale;
-              if (typeof item.product?.productSaleInfo?.amountOnSale === 'number') {
-                return item.product.productSaleInfo.amountOnSale;
+              if (stockFromSkus != null) return stockFromSkus;
+              const amountOnSaleCandidates = [
+                item.amountOnSale,
+                item.product?.amountOnSale,
+                item.productData?.amountOnSale,
+                item.product?.productData?.amountOnSale,
+                item.product?.productSaleInfo?.amountOnSale,
+                item.productData?.productSaleInfo?.amountOnSale,
+              ];
+              for (const c of amountOnSaleCandidates) {
+                const parsed = parseNumberish(c);
+                if (parsed != null) return parsed;
               }
               return 0;
             })(),
@@ -316,16 +336,7 @@ const LiveSellerDetailScreen: React.FC = () => {
             // cards without stock info aren't falsely dimmed.
             inStock: (() => {
               if (typeof item.inStock === 'boolean') return item.inStock;
-              const skus = item?.product?.productSkuInfos;
-              if (Array.isArray(skus) && skus.length > 0) {
-                return skus.some((s: any) => {
-                  const v =
-                    typeof s?.amountOnSale === 'string'
-                      ? parseInt(s.amountOnSale, 10)
-                      : s?.amountOnSale;
-                  return typeof v === 'number' && !isNaN(v) && v > 0;
-                });
-              }
+              if (stockFromSkus != null) return stockFromSkus > 0;
               return true;
             })(),
            
@@ -609,7 +620,19 @@ const LiveSellerDetailScreen: React.FC = () => {
     // Dim the card image at 50% opacity when the product is out of
     // stock. `stockCount === 0` is the canonical signal — it's the
     // sum of `amountOnSale` across every SKU (see the mapping above).
-    const dimImage = item.stockCount === 0;
+    const dimImage = item.inStock === false;
+    // Diagnostic: print every SKU's amountOnSale alongside the final
+    // stockCount so you can verify the source values per product.
+    const skuAmountOnSale = Array.isArray(item.raw?.product?.productSkuInfos)
+      ? item.raw.product.productSkuInfos.map((s: any) => s?.amountOnSale)
+      : null;
+    console.log('[LiveSellerDetail] amountOnSale', {
+      title: title?.slice?.(0, 24),
+      skuAmountOnSale,        // e.g. [0] or [5, 0, 3]
+      stockCount: item.stockCount,
+      inStock: item.inStock,
+      dimImage,
+    });
     
 
     return (
