@@ -24,7 +24,7 @@ interface Store {
   platform: string;
   defaultItems: Product[];
   visitedCount: number;
-  followedAt: string;
+  followedAt: string | null;
   hasShoped: boolean;
 }
 
@@ -55,10 +55,28 @@ const FollowedStoreScreen: React.FC<FollowedStoreScreenProps> = ({ embedded = fa
   const [showUnfollowModal, setShowUnfollowModal] = useState(false);
   const [selectedStore, setSelectedStore] = useState<Store | null>(null);
   const [isTogglingFollow, setIsTogglingFollow] = useState(false);
+  const [tabCounts, setTabCounts] = useState<{ follow: number; visited: number; shopped: number }>({
+    follow: 0,
+    visited: 0,
+    shopped: 0,
+  });
+
+  const toSafeCount = (value: unknown): number => {
+    if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.floor(value));
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
+    }
+    return 0;
+  };
 
   useEffect(() => {
     fetchStores();
   }, [selectedTab]);
+
+  useEffect(() => {
+    fetchTabCounts();
+  }, []);
 
   const fetchStores = async () => {
     try {
@@ -66,7 +84,7 @@ const FollowedStoreScreen: React.FC<FollowedStoreScreenProps> = ({ embedded = fa
       let filter: 'followed' | 'frequently_visited' | 'shoped_store' | undefined;
       
       if (selectedTab === 'follow') {
-        filter = undefined; // or 'followed'
+        filter = 'followed';
       } else if (selectedTab === 'visited') {
         filter = 'frequently_visited';
       } else if (selectedTab === 'shopped') {
@@ -78,7 +96,14 @@ const FollowedStoreScreen: React.FC<FollowedStoreScreenProps> = ({ embedded = fa
       const response = await productsApi.getFollowedStores(filter);
       
       if (response.success && response.data) {
-        setStores(response.data.items);
+        const normalizedStores = (response.data.items || []).map((item: any) => ({
+          ...item,
+          visitedCount: toSafeCount(item?.visitedCount ?? item?.visitCount ?? item?.visit_count),
+          followedAt: item?.followedAt ?? item?.followed_at ?? null,
+          hasShoped: Boolean(item?.hasShoped ?? item?.hasShopped ?? item?.has_shopped),
+          defaultItems: Array.isArray(item?.defaultItems) ? item.defaultItems : [],
+        }));
+        setStores(normalizedStores);
       } else {
         showToast(response.message || t('profile.failedToLoadStores'), 'error');
       }
@@ -89,9 +114,28 @@ const FollowedStoreScreen: React.FC<FollowedStoreScreenProps> = ({ embedded = fa
     }
   };
 
+  const fetchTabCounts = async () => {
+    try {
+      const [followRes, visitedRes, shoppedRes] = await Promise.all([
+        productsApi.getFollowedStores('followed'),
+        productsApi.getFollowedStores('frequently_visited'),
+        productsApi.getFollowedStores('shoped_store'),
+      ]);
+
+      setTabCounts({
+        follow: followRes.success && followRes.data ? (followRes.data.items || []).length : 0,
+        visited: visitedRes.success && visitedRes.data ? (visitedRes.data.items || []).length : 0,
+        shopped: shoppedRes.success && shoppedRes.data ? (shoppedRes.data.items || []).length : 0,
+      });
+    } catch {
+      setTabCounts({ follow: 0, visited: 0, shopped: 0 });
+    }
+  };
+
   const handleRefresh = async () => {
     setRefreshing(true);
     await fetchStores();
+    await fetchTabCounts();
     setRefreshing(false);
   };
 
@@ -114,6 +158,7 @@ const FollowedStoreScreen: React.FC<FollowedStoreScreenProps> = ({ embedded = fa
       if (response.success) {
       showToast(t('profile.storeFollowedSuccessfully'), 'success');
         await fetchStores();
+        await fetchTabCounts();
       } else {
         showToast(t('profile.failedToFollowStore'), 'error');
       }
@@ -136,8 +181,8 @@ const FollowedStoreScreen: React.FC<FollowedStoreScreenProps> = ({ embedded = fa
   };
 
   const sortedStores = [...stores].sort((a, b) => {
-    const dateA = new Date(a.followedAt).getTime();
-    const dateB = new Date(b.followedAt).getTime();
+    const dateA = a.followedAt ? new Date(a.followedAt).getTime() : 0;
+    const dateB = b.followedAt ? new Date(b.followedAt).getTime() : 0;
     return selectedSort === t('profile.newestFirst') ? dateB - dateA : dateA - dateB;
   });
 
@@ -182,7 +227,7 @@ const FollowedStoreScreen: React.FC<FollowedStoreScreenProps> = ({ embedded = fa
         onPress={() => setSelectedTab('follow')}
       >
         <Text style={[styles.tabText, selectedTab === 'follow' && styles.tabTextActive]}>
-          {t('profile.followTab')} (73)
+          {t('profile.followTab')} ({tabCounts.follow})
         </Text>
       </TouchableOpacity>
       <TouchableOpacity
@@ -190,7 +235,7 @@ const FollowedStoreScreen: React.FC<FollowedStoreScreenProps> = ({ embedded = fa
         onPress={() => setSelectedTab('visited')}
       >
         <Text style={[styles.tabText, selectedTab === 'visited' && styles.tabTextActive]}>
-          {t('profile.frequentlyVisited')}
+          {t('profile.frequentlyVisited')} ({tabCounts.visited})
         </Text>
       </TouchableOpacity>
       <TouchableOpacity
@@ -198,7 +243,7 @@ const FollowedStoreScreen: React.FC<FollowedStoreScreenProps> = ({ embedded = fa
         onPress={() => setSelectedTab('shopped')}
       >
         <Text style={[styles.tabText, selectedTab === 'shopped' && styles.tabTextActive]}>
-          {t('profile.shoppedStores')}
+          {t('profile.shoppedStores')} ({tabCounts.shopped})
         </Text>
       </TouchableOpacity>
     </View>
@@ -244,7 +289,7 @@ const FollowedStoreScreen: React.FC<FollowedStoreScreenProps> = ({ embedded = fa
           <View style={styles.storeDetails}>
             <Text style={styles.storeName} numberOfLines={1}>{item.storeName}</Text>
             <Text style={styles.storeVisitTime}>
-              {new Date(item.followedAt).toLocaleDateString()}
+              {item.followedAt ? new Date(item.followedAt).toLocaleDateString() : '-'}
             </Text>
           </View>
         </View>
@@ -287,7 +332,7 @@ const FollowedStoreScreen: React.FC<FollowedStoreScreenProps> = ({ embedded = fa
           <View style={styles.storeDetails}>
             <Text style={styles.storeName} numberOfLines={1}>{item.storeName}</Text>
             <Text style={styles.storeVisitTime}>
-              {t('profile.visitedTimes').replace('{count}', item.visitedCount.toString())}
+              {t('profile.visitedTimes').replace('{count}', toSafeCount(item.visitedCount).toString())}
             </Text>
           </View>
         </TouchableOpacity>

@@ -480,23 +480,48 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
               
               {/* Preset Amount Buttons */}
               <View style={styles.presetAmountsContainer}>
-                {[10000, 50000, 100000, 500000, 1000000].map((amount) => (
-                  <TouchableOpacity
-                    key={amount}
-                    style={[
-                      styles.presetAmountButton,
-                      chargeAmount === amount.toString() && styles.presetAmountButtonActive
-                    ]}
-                    onPress={() => handlePresetCharge(amount)}
-                  >
-                    <Text style={[
-                      styles.presetAmountText,
-                      chargeAmount === amount.toString() && styles.presetAmountTextActive
-                    ]}>
-                      ₩{amount.toLocaleString()}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                <View style={styles.presetAmountsRow1}>
+                  {[10000, 50000, 100000].map((amount) => (
+                    <TouchableOpacity
+                      key={amount}
+                      style={[
+                        styles.presetAmountButton,
+                        chargeAmount === amount.toString() && styles.presetAmountButtonActive,
+                      ]}
+                      onPress={() => handlePresetCharge(amount)}
+                    >
+                      <Text
+                        style={[
+                          styles.presetAmountText,
+                          chargeAmount === amount.toString() && styles.presetAmountTextActive,
+                        ]}
+                      >
+                        ₩{amount.toLocaleString()}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={styles.presetAmountsRow2}>
+                  {[500000, 1000000].map((amount) => (
+                    <TouchableOpacity
+                      key={amount}
+                      style={[
+                        styles.presetAmountButton,
+                        chargeAmount === amount.toString() && styles.presetAmountButtonActive,
+                      ]}
+                      onPress={() => handlePresetCharge(amount)}
+                    >
+                      <Text
+                        style={[
+                          styles.presetAmountText,
+                          chargeAmount === amount.toString() && styles.presetAmountTextActive,
+                        ]}
+                      >
+                        ₩{amount.toLocaleString()}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
 
               {/* Custom Amount Input */}
@@ -949,13 +974,24 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   presetAmountsContainer: {
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginBottom: SPACING.xs,
+  },
+  presetAmountsRow1: {
+    width: '100%',    
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-    marginBottom: SPACING.lg,
+    justifyContent: 'center',
+    gap: SPACING.xs,
+  },
+  presetAmountsRow2: {
+    width: '150%',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: SPACING.xs,
   },
   presetAmountButton: {
-    flex: 0.32,
+    width: '31%',
     paddingVertical: 16,
     borderRadius: 12,
     borderWidth: 1,

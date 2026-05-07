@@ -2080,9 +2080,10 @@ Supports credit and check cards from various banks for recharging and payments.`
       guestRegisterFailed: '注册访客失败，请重试',
     },
     product: {
+      productRemovedFromWishlist: '商品已从收藏夹移除',
       addToCart: '加入购物车',
       addingToCart: '添加中...',
-      buyNow: '查看',
+      buyNow: '立即购买',
       quantity: '数量',
       color: '颜色',
       size: '尺寸',
@@ -2111,7 +2112,6 @@ Supports credit and check cards from various banks for recharging and payments.`
       relatedProducts: '相关产品',
       failedToLoadRelatedProducts: '加载相关产品失败',
       productAddedToWishlist: '产品已添加到收藏夹',
-      productRemovedFromWishlist: '产品已从收藏夹移除',
       failedToAddToWishlist: '添加到收藏夹失败',
       failedToRemoveFromWishlist: '从收藏夹移除失败',
       invalidProductId: '无效的产品ID',
@@ -3837,6 +3837,7 @@ Supports credit and check cards from various banks for recharging and payments.`
       guestRegisterFailed: '게스트 등록에 실패했습니다. 다시 시도해 주세요',
     },
     product: {
+      productRemovedFromWishlist: '상품이 위시리스트에서 제거되었습니다',
       addToCart: '장바구니 담기',
       addingToCart: '추가 중...',
       buyNow: '바로구매',

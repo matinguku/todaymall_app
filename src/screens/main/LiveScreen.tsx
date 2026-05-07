@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import WebView from 'react-native-webview';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import Text from '../../components/Text';
 import LanguageButton from '../../components/LanguageButton';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SCREEN_WIDTH } from '../../constants';
@@ -294,10 +294,11 @@ const FeaturedLiveCarousel: React.FC<{
   items: any[];
   locale: 'en' | 'ko' | 'zh';
   t: (key: string) => string;
+  isScreenFocused: boolean;
   containerWidth?: number;
   containerStyle?: any;
   onWatchLivePress?: (url: string) => void;
-}> = ({ items, locale, t, containerWidth, containerStyle, onWatchLivePress }) => {
+}> = ({ items, locale, t, isScreenFocused, containerWidth, containerStyle, onWatchLivePress }) => {
   const itemWidth = containerWidth ?? CAROUSEL_WIDTH;
   const [activeIndex, setActiveIndex] = useState(0);
   const scrollRef = useRef<FlatList>(null);
@@ -343,8 +344,8 @@ const FeaturedLiveCarousel: React.FC<{
           </View>
         </View>
 
-        {/* Active card with `videoUrl`: inline reel video; others show poster image. */}
-        {item?.videoUrl && index === activeIndex ? (
+        {/* Active card with `videoUrl`: play only while this screen is focused. */}
+        {item?.videoUrl && index === activeIndex && isScreenFocused ? (
           <ReelVideoPlayer
             videoUrl={item.videoUrl}
             posterUrl={imageUrl || undefined}
@@ -640,6 +641,7 @@ const TabletTopSellerRow: React.FC<{ seller: any; rank: number; onPress?: () => 
 // ─── Main Screen ──────────────────────────────────────────
 const LiveScreen: React.FC = () => {
   const navigation = useNavigation<any>();
+  const isScreenFocused = useIsFocused();
   const locale = useAppSelector((s) => s.i18n.locale) as 'en' | 'ko' | 'zh';
   const { t } = useTranslation();
   const [searchText, setSearchText] = useState('');
@@ -907,6 +909,7 @@ const LiveScreen: React.FC = () => {
           items={featuredItems.slice(0, 5)}
           locale={locale}
           t={t}
+          isScreenFocused={isScreenFocused}
           containerWidth={isTabletPortrait ? tabletCarouselWidthPortrait : tabletCarouselWidth}
           containerStyle={{ marginTop: 0, marginHorizontal: 0 }}
           onWatchLivePress={openSellerLiveWeb}
@@ -999,6 +1002,7 @@ const LiveScreen: React.FC = () => {
                 items={featuredItems.slice(0, 5)}
                 locale={locale}
                 t={t}
+                isScreenFocused={isScreenFocused}
                 onWatchLivePress={openSellerLiveWeb}
               />
             )

@@ -86,6 +86,7 @@ const LiveSellerDetailScreen: React.FC = () => {
   const [showScrollToTop, setShowScrollToTop] = useState(false);
   const scrollToTopOpacity = useRef(new Animated.Value(0)).current;
   const flatListRef = useRef<FlatList>(null);
+  const isFetchingProductsRef = useRef(false);
 
   // ─── Wishlist mutations ───────────────────────────────────
   const { mutate: addToWishlist } = useAddToWishlistMutation({
@@ -201,6 +202,8 @@ const LiveSellerDetailScreen: React.FC = () => {
 
   // ─── Fetch products ───────────────────────────────────────
   const fetchProducts = async (page: number = 1, append: boolean = false) => {
+    if (isFetchingProductsRef.current) return;
+    isFetchingProductsRef.current = true;
     try {
       if (page === 1) {
         setLoading(true);
@@ -367,8 +370,10 @@ const LiveSellerDetailScreen: React.FC = () => {
             });
             return [...prev, ...fresh];
           });
+          setCurrentPage(page);
         } else {
           setAllProducts(mappedProducts);
+          setCurrentPage(1);
         }
 
         const totalOnlineViewers = items.reduce(
@@ -392,11 +397,32 @@ const LiveSellerDetailScreen: React.FC = () => {
         });
 
         const pagination = response.data.pagination;
-        setHasMore((pagination.page * pagination.pageSize) < pagination.total);
+        if (
+          pagination &&
+          typeof pagination.page === 'number' &&
+          typeof pagination.pageSize === 'number' &&
+          typeof pagination.total === 'number'
+        ) {
+          setHasMore((pagination.page * pagination.pageSize) < pagination.total);
+        } else {
+          // Some live endpoints return items without pagination metadata.
+          // Fallback: if we received a full page, assume more may exist.
+          const requestedPageSize = 20;
+          setHasMore(items.length >= requestedPageSize);
+        }
+      } else if (append) {
+        // Avoid infinite onEndReached retries when load-more fails.
+        setHasMore(false);
       }
     } catch (error) {
+      if (append) {
+        // Avoid infinite onEndReached retries when load-more throws.
+        setHasMore(false);
+      }
       showToast(t('live.failedToLoadProducts'), 'error');
+      console.error('[LiveSellerDetail] Failed to load products:', error);
     } finally {
+      isFetchingProductsRef.current = false;
       setLoading(false);
       setLoadingMore(false);
     }
@@ -469,7 +495,6 @@ const LiveSellerDetailScreen: React.FC = () => {
   const handleLoadMore = useCallback(() => {
     if (!loadingMore && hasMore) {
       const nextPage = currentPage + 1;
-      setCurrentPage(nextPage);
       fetchProducts(nextPage, true);
     }
   }, [currentPage, hasMore, loadingMore]);
