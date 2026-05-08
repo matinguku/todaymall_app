@@ -10,7 +10,9 @@
       "PowerShell($env:ANDROID_HOME = \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\"; $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME; $env:Path = \"$env:Path;$env:ANDROID_HOME\\\\platform-tools\"; & adb version)",
       "Bash(adb devices *)",
       "Bash(netstat -ano)",
-      "Bash(findstr :8081)"
+      "Bash(findstr :8081)",
+      "Bash(cmd /c gradlew.bat clean)",
+      "Bash(curl -s -o NUL -w \"metro status: %{http_code}\\\\n\" http://localhost:8081/status)"
     ]
   }
 }

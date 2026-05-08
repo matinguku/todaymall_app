@@ -59,16 +59,6 @@ const SignupScreen: React.FC = () => {
   
   const { mutate: register, isLoading, isError, error, isSuccess, data } = useRegisterMutation({
     onSuccess: (data) => {
-      if (data?.requiresVerification) {
-        showToast(data.message || t('auth.verificationCodeSent') || 'Verification code sent to your email', 'success');
-        (navigation as any).navigate('EmailVerification', {
-          email: data.email || formData.email,
-          verified: false,
-          source: 'signup',
-        });
-        return;
-      }
-
       showToast(data?.message || t('auth.signupSuccess') || 'Signup successful', 'success');
       handleLogin();
     },
@@ -197,10 +187,6 @@ const SignupScreen: React.FC = () => {
 
     if (!formData.password) {
       newErrors.password = ERROR_MESSAGES.REQUIRED_FIELD;
-    } else if (formData.password.length < VALIDATION_RULES.PASSWORD_MIN_LENGTH) {
-      newErrors.password = t('auth.passwordTooShort');
-    } else if (!/(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?])/.test(formData.password)) {
-      newErrors.password = t('auth.passwordTooShort');
     }
 
     if (!formData.confirmPassword) {

@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   useWindowDimensions,
   Linking,
+  PanResponder,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
@@ -29,6 +30,7 @@ import BrandIcon from '../../assets/icons/BrandIcon';
 import LiveIcon from '../../assets/icons/LiveIcon';
 import SensorsIcon from '../../assets/icons/SensorsIcon';
 import SellerMarkIcon from '../../assets/icons/SellerMarkIcon';
+import PartnerShareIcon from '../../assets/icons/PartnerShareIcon';
 import { formatPriceKRW } from '../../utils/i18nHelpers';
 
 const CAROUSEL_WIDTH = SCREEN_WIDTH - SPACING.sm * 2;
@@ -568,54 +570,268 @@ const PopularItemCard: React.FC<{ item: any; locale: 'en' | 'ko' | 'zh'; rank?: 
 };
 
 // ─── Point Partner Seller Card ────────────────────────────
-const PointPartnerSellerCard: React.FC<{ seller: any; locale: 'en' | 'ko' | 'zh'; onPress?: () => void; t: (key: string) => string; cardStyle?: any }> = ({ seller, locale, onPress, t, cardStyle }) => {
+const PARTNER_PRODUCTS_PER_PAGE = 2;
+
+const PointPartnerSellerCard: React.FC<{ seller: any; locale: 'en' | 'ko' | 'zh'; onPress?: () => void; onProductPress?: (product: any) => void; t: (key: string) => string; cardStyle?: any }> = ({ seller, locale, onPress, onProductPress, t, cardStyle }) => {
   const name = seller.userName || seller.nickname || 'Seller';
   const avatar = seller.picUrl || 'https://via.placeholder.com/80.png?text=S';
-  const viewers = seller.totalViews ?? 0;
+  const followers = seller.followerCount ?? seller.followers ?? seller.totalFollowers ?? 0;
+  const totalSales = seller.totalItemsSold ?? seller.totalSales ?? seller.salesCount ?? 0;
   const isLive = seller.currentLiveStatus === 'live';
-  const liveStatuses = seller.currentLiveStatuses || [];
+  const liveStatuses: any[] = Array.isArray(seller.currentLiveStatuses) ? seller.currentLiveStatuses : [];
+  const ownMallProducts: any[] = Array.isArray(seller.liveOwnMallProducts) ? seller.liveOwnMallProducts : [];
+  const externalLink = seller.sellerLiveLink || seller.liveSellerLink || seller.externalLiveUrl || null;
+  const liveChannelLink = seller.liveChannelLink || null;
+
+  const localizedTitle = (prod: any): string => {
+    const tt = prod?.productTitle;
+    if (tt && typeof tt === 'object') {
+      if (locale === 'ko') return tt.ko || tt.en || tt.zh || '';
+      if (locale === 'zh') return tt.zh || tt.en || tt.ko || '';
+      return tt.en || tt.ko || tt.zh || '';
+    }
+    return prod?.liveTitle || prod?.title || '';
+  };
+  const productPrice = (prod: any): number => prod?.price ?? prod?.productPrice ?? 0;
+  const productImage = (prod: any): string =>
+    prod?.productImageUrl || prod?.imageUrl || prod?.image || '';
+
+  const pages: any[][] = [];
+  for (let i = 0; i < liveStatuses.length; i += PARTNER_PRODUCTS_PER_PAGE) {
+    pages.push(liveStatuses.slice(i, i + PARTNER_PRODUCTS_PER_PAGE));
+  }
+  // Always render at least one page so empty state still occupies the same vertical space.
+  if (pages.length === 0) pages.push([]);
+
+  const [activePage, setActivePage] = useState(0);
+  const [pageWidth, setPageWidth] = useState(0);
+  const onProductsLayout = (e: any) => {
+    const w = e?.nativeEvent?.layout?.width ?? 0;
+    if (w && w !== pageWidth) setPageWidth(w);
+  };
+  const onProductsScroll = (e: any) => {
+    if (!pageWidth) return;
+    const x = e?.nativeEvent?.contentOffset?.x ?? 0;
+    const next = Math.round(x / pageWidth);
+    if (next !== activePage) setActivePage(next);
+  };
+
+  const openExternal = () => {
+    if (!externalLink) return;
+    const url = /^https?:\/\//i.test(externalLink) ? externalLink : `https://${externalLink}`;
+    Linking.openURL(url).catch(() => undefined);
+  };
+
+  const openLiveChannel = () => {
+    if (!liveChannelLink) return;
+    const url = /^https?:\/\//i.test(liveChannelLink) ? liveChannelLink : `https://${liveChannelLink}`;
+    Linking.openURL(url).catch(() => undefined);
+  };
+
+  // ─── Own-mall products row: 2-up horizontal with manual draggable bar ───
+  const ownMallScrollRef = useRef<ScrollView | null>(null);
+  const [ownMallRowWidth, setOwnMallRowWidth] = useState(0);
+  const [ownMallScrollX, setOwnMallScrollX] = useState(0);
+  const ownMallContentWidth = useMemo(() => {
+    if (!ownMallRowWidth || ownMallProducts.length === 0) return 0;
+    const cellWidth = (ownMallRowWidth - SPACING.sm) / 2;
+    return cellWidth * ownMallProducts.length + SPACING.sm * (ownMallProducts.length - 1);
+  }, [ownMallRowWidth, ownMallProducts.length]);
+  const ownMallMaxScroll = Math.max(0, ownMallContentWidth - ownMallRowWidth);
+  const ownMallTrackWidth = ownMallRowWidth;
+  const ownMallThumbWidth = useMemo(() => {
+    if (!ownMallContentWidth || !ownMallTrackWidth) return 0;
+    const ratio = Math.min(1, ownMallTrackWidth / ownMallContentWidth);
+    return Math.max(24, ownMallTrackWidth * ratio);
+  }, [ownMallContentWidth, ownMallTrackWidth]);
+  const ownMallThumbMax = Math.max(0, ownMallTrackWidth - ownMallThumbWidth);
+  const ownMallThumbX = ownMallMaxScroll > 0
+    ? (ownMallScrollX / ownMallMaxScroll) * ownMallThumbMax
+    : 0;
+  const dragStartThumbX = useRef(0);
+  const ownMallPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        dragStartThumbX.current = ownMallThumbX;
+      },
+      onPanResponderMove: (_evt, gesture) => {
+        if (!ownMallThumbMax || !ownMallMaxScroll) return;
+        const nextThumb = Math.max(
+          0,
+          Math.min(ownMallThumbMax, dragStartThumbX.current + gesture.dx),
+        );
+        const nextScroll = (nextThumb / ownMallThumbMax) * ownMallMaxScroll;
+        ownMallScrollRef.current?.scrollTo({ x: nextScroll, animated: false });
+      },
+    }),
+  ).current;
 
   return (
-    <TouchableOpacity style={[styles.partnerCard, cardStyle]} activeOpacity={0.8} onPress={onPress}>
-      {/* Avatar with LIVE ring */}
-      <View style={styles.partnerAvatarWrapper}>
-        <View style={[styles.partnerAvatarRing, isLive && styles.partnerAvatarRingLive]}>
-          <Image source={{ uri: avatar }} style={styles.partnerAvatar} />
-        </View>
-        {isLive && (
-          <View style={styles.partnerLiveBadge}>
-            <Text style={styles.partnerLiveBadgeText}>LIVE</Text>
+    <TouchableOpacity style={[styles.partnerCard, cardStyle]} activeOpacity={0.85} onPress={onPress}>
+      {/* Top: avatar + identity + social link */}
+      <View style={styles.partnerTopRow}>
+        <View style={styles.partnerAvatarWrapper}>
+          <View style={[styles.partnerAvatarRing, isLive && styles.partnerAvatarRingLive]}>
+            <Image source={{ uri: avatar }} style={styles.partnerAvatar} />
           </View>
+          {isLive && (
+            <>
+              <View style={styles.partnerLiveBadge}>
+                <Text style={styles.partnerLiveBadgeText}>LIVE</Text>
+              </View>
+              <View style={styles.partnerLiveCaption}>
+                <Text style={styles.partnerLiveCaptionText} numberOfLines={1}>
+                  {t('live.liveNow')}
+                </Text>
+              </View>
+            </>
+          )}
+        </View>
+        <View style={styles.partnerIdentity}>
+          <Text style={styles.partnerName} numberOfLines={1}>{name}</Text>
+          <Text style={styles.partnerStats} numberOfLines={1}>
+            {t('live.followers')} {followers}  |  {t('live.totalSales')} {totalSales}
+          </Text>
+        </View>
+        {externalLink && (
+          <TouchableOpacity
+            onPress={openExternal}
+            activeOpacity={0.8}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={styles.partnerSocialBtn}
+          >
+            <Text style={styles.partnerSocialGlyph}>♪</Text>
+          </TouchableOpacity>
+        )}
+        {liveChannelLink && (
+          <TouchableOpacity
+            onPress={openLiveChannel}
+            activeOpacity={0.8}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <PartnerShareIcon width={40} height={40} />
+          </TouchableOpacity>
         )}
       </View>
 
-      {/* Name and viewers */}
-      <Text style={styles.partnerName} numberOfLines={1}>{name}</Text>
-      <Text style={styles.partnerViewers}>{t('live.onlineViewers')} {viewers}</Text>
+      {/* Products carousel */}
+      <View style={styles.partnerProductsWrap} onLayout={onProductsLayout}>
+        {pageWidth > 0 && (
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={onProductsScroll}
+            scrollEventThrottle={16}
+            decelerationRate="fast"
+          >
+            {pages.map((page, pageIdx) => (
+              <View key={`page-${pageIdx}`} style={[styles.partnerProductsPage, { width: pageWidth }]}>
+                {page.map((prod: any, idx: number) => {
+                  const title = localizedTitle(prod);
+                  const img = productImage(prod);
+                  return (
+                    <View key={prod?.id || prod?._id || `${pageIdx}-${idx}`} style={styles.partnerProductCell}>
+                      <Image
+                        source={{ uri: img || 'https://via.placeholder.com/80x80.png?text=P' }}
+                        style={styles.partnerProductImageLg}
+                      />
+                      <View style={styles.partnerProductCellInfo}>
+                        <Text style={styles.partnerProductCellTitle} numberOfLines={1}>
+                          {title || t('live.products')}
+                        </Text>
+                        <Text style={styles.partnerProductCellPrice}>
+                          {formatPriceKRW(productPrice(prod))}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+                {/* Pad short last page so dots stay aligned and layout is uniform */}
+                {Array.from({ length: PARTNER_PRODUCTS_PER_PAGE - page.length }).map((_, i) => (
+                  <View key={`pad-${pageIdx}-${i}`} style={styles.partnerProductCell} />
+                ))}
+              </View>
+            ))}
+          </ScrollView>
+        )}
+      </View>
 
-      {/* Products list — only show if currentLiveStatuses has items */}
-      {liveStatuses.length > 0 && liveStatuses.slice(0, 2).map((prod: any, idx: number) => {
-        const prodTitle = prod.productTitle
-          ? (locale === 'ko' ? (prod.productTitle.ko || prod.productTitle.en || prod.productTitle.zh)
-            : locale === 'zh' ? (prod.productTitle.zh || prod.productTitle.en || prod.productTitle.ko)
-            : (prod.productTitle.en || prod.productTitle.ko || prod.productTitle.zh)) || ''
-          : prod.liveTitle || prod.title || '';
-        const prodImage = prod.productImageUrl || prod.imageUrl || prod.image || '';
-        return (
-          <View key={prod.id || prod._id || idx} style={styles.partnerProductRow}>
-            <Image
-              source={{ uri: prodImage || 'https://via.placeholder.com/30x30.png?text=P' }}
-              style={styles.partnerProductImage}
+      {/* Pagination dots */}
+      {pages.length > 1 && (
+        <View style={styles.partnerDotsRow}>
+          {pages.map((_, i) => (
+            <View
+              key={`dot-${i}`}
+              style={[styles.partnerDot, i === activePage && styles.partnerDotActive]}
             />
-            <View style={styles.partnerProductInfo}>
-              <Text style={styles.partnerProductTitle} numberOfLines={1}>
-                {prodTitle || `Product ${idx + 1}`}
-              </Text>
-              <Text style={styles.partnerProductShopNow}>{t('live.shopNow').replace('{arrow}', '>')}</Text>
+          ))}
+        </View>
+      )}
+
+      {/* Own-mall product images: 2-up horizontal row with manual draggable bar */}
+      {ownMallProducts.length > 0 && (
+        <View
+          style={styles.ownMallRowWrap}
+          onLayout={(e) => {
+            const w = e?.nativeEvent?.layout?.width ?? 0;
+            if (w && w !== ownMallRowWidth) setOwnMallRowWidth(w);
+          }}
+        >
+          {ownMallRowWidth > 0 && (
+            <ScrollView
+              ref={ownMallScrollRef}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              scrollEventThrottle={16}
+              onScroll={(e) => setOwnMallScrollX(e.nativeEvent.contentOffset.x)}
+              contentContainerStyle={styles.ownMallContent}
+            >
+              {ownMallProducts.map((prod: any, idx: number) => {
+                const img = productImage(prod);
+                const cellWidth = (ownMallRowWidth - SPACING.sm) / 2;
+                const imageSize = cellWidth * 0.7;
+                return (
+                  <TouchableOpacity
+                    key={prod?.id || prod?._id || `om-${idx}`}
+                    activeOpacity={0.85}
+                    onPress={() => onProductPress?.(prod)}
+                    style={{
+                      width: cellWidth,
+                      alignItems: 'center',
+                      marginRight: idx === ownMallProducts.length - 1 ? 0 : SPACING.sm,
+                    }}
+                  >
+                    <Image
+                      source={{ uri: img || 'https://via.placeholder.com/80x80.png?text=P' }}
+                      style={[
+                        styles.ownMallProductImage,
+                        { width: imageSize, height: imageSize },
+                      ]}
+                    />
+                    <Text style={styles.ownMallProductPrice} numberOfLines={1}>
+                      {formatPriceKRW(prod?.price ?? 0)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
+          {ownMallMaxScroll > 0 && (
+            <View style={styles.ownMallBarTrack}>
+              <View
+                {...ownMallPan.panHandlers}
+                style={[
+                  styles.ownMallBarThumb,
+                  { width: ownMallThumbWidth, transform: [{ translateX: ownMallThumbX }] },
+                ]}
+              />
             </View>
-          </View>
-        );
-      })}
+          )}
+        </View>
+      )}
     </TouchableOpacity>
   );
 };
@@ -662,8 +878,8 @@ const LiveScreen: React.FC = () => {
   const tabletCarouselWidth = Math.floor(availWidth * 7 / 11);
   const tabletCarouselWidthPortrait = Math.floor(tabletTotalWidth);
 
-  // Point Partner Seller grid: 4 columns on tablet, 2 on phone
-  const PARTNER_COLS = isTablet ? 4 : 2;
+  // Point Partner Seller grid: 2 columns on tablet, 1 on phone (wide horizontal card layout).
+  const PARTNER_COLS = isTablet ? 2 : 1;
   const partnerCardWidth = Math.floor(
     (dynWidth - SPACING.md * 2 - SPACING.smmd * (PARTNER_COLS - 1)) / PARTNER_COLS,
   );
@@ -1164,6 +1380,10 @@ const LiveScreen: React.FC = () => {
                         sellerName: seller.userName || seller.nickname || '',
                         source: 'ownmall',
                       })}
+                      onProductPress={(prod) => {
+                        const productId = prod?.offerId || prod?.productNo || prod?.productId || prod?.id || '';
+                        if (productId) navigation.navigate('ProductDetail', { productId, source: 'live-commerce' });
+                      }}
                       t={t}
                       cardStyle={{ width: partnerCardWidth }}
                     />
@@ -1939,26 +2159,31 @@ const styles = StyleSheet.create({
     gap: SPACING.smmd,
   },
   partnerCard: {
-    width: (SCREEN_WIDTH - SPACING.md * 2 - SPACING.smmd) / 2,
+    width: '100%',
     backgroundColor: COLORS.white,
     borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.smmd,
-    alignItems: 'center',
+    paddingVertical: SPACING.smmd,
+    paddingHorizontal: SPACING.md,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 1,
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  partnerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.smmd,
   },
   partnerAvatarWrapper: {
+    width: 64,
     alignItems: 'center',
-    marginBottom: SPACING.sm,
   },
   partnerAvatarRing: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    borderWidth: 3,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 2,
     borderColor: COLORS.gray[300],
     alignItems: 'center',
     justifyContent: 'center',
@@ -1968,14 +2193,14 @@ const styles = StyleSheet.create({
     borderColor: '#FF0000',
   },
   partnerAvatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
   },
   partnerLiveBadge: {
     position: 'absolute',
-    top: 0,
-    right: -2,
+    top: -4,
+    left: -4,
     backgroundColor: '#FF0000',
     borderRadius: BORDER_RADIUS.sm,
     paddingHorizontal: 6,
@@ -1986,42 +2211,125 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: COLORS.white,
   },
-  partnerName: {
-    fontSize: FONTS.sizes.sm,
-    fontWeight: '700',
-    color: COLORS.text.primary,
-    textAlign: 'center',
+  partnerLiveCaption: {
+    position: 'absolute',
+    bottom: -4,
+    backgroundColor: '#FF0000',
+    borderRadius: BORDER_RADIUS.sm,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
   },
-  partnerViewers: {
+  partnerLiveCaptionText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
+  partnerIdentity: {
+    flex: 1,
+    minWidth: 0,
+  },
+  partnerName: {
+    fontSize: FONTS.sizes.md,
+    fontWeight: '800',
+    color: COLORS.text.primary,
+  },
+  partnerStats: {
     fontSize: FONTS.sizes.xs,
     color: COLORS.text.secondary,
-    textAlign: 'center',
-    marginBottom: SPACING.sm,
+    marginTop: 2,
   },
-  partnerProductRow: {
+  partnerSocialBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  partnerSocialGlyph: {
+    color: COLORS.white,
+    fontSize: 18,
+    fontWeight: '800',
+    lineHeight: 20,
+  },
+  partnerProductsWrap: {
+    marginTop: SPACING.smmd,
+  },
+  partnerProductsPage: {
+    flexDirection: 'row',
+    gap: SPACING.smmd,
+  },
+  partnerProductCell: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    width: '100%',
-    marginTop: SPACING.xssm,
+    gap: SPACING.sm,
+    minWidth: 0,
   },
-  partnerProductImage: {
-    width: 30,
-    height: 30,
-    borderRadius: BORDER_RADIUS.sm,
-    marginRight: SPACING.sm,
+  partnerProductImageLg: {
+    width: 56,
+    height: 56,
+    borderRadius: BORDER_RADIUS.md,
     backgroundColor: COLORS.gray[200],
   },
-  partnerProductInfo: {
+  partnerProductCellInfo: {
     flex: 1,
+    minWidth: 0,
   },
-  partnerProductTitle: {
-    fontSize: 11,
+  partnerProductCellTitle: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
+  },
+  partnerProductCellPrice: {
+    fontSize: FONTS.sizes.md,
+    fontWeight: '800',
     color: COLORS.text.primary,
+    marginTop: 2,
   },
-  partnerProductShopNow: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#FF0000',
+  partnerDotsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: SPACING.sm,
+  },
+  partnerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.gray[300],
+  },
+  partnerDotActive: {
+    backgroundColor: COLORS.text.primary,
+  },
+  ownMallRowWrap: {
+    marginTop: SPACING.smmd,
+  },
+  ownMallContent: {
+    flexDirection: 'row',
+  },
+  ownMallProductImage: {
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.gray[200],
+  },
+  ownMallProductPrice: {
+    marginTop: SPACING.xs,
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '800',
+    color: COLORS.text.primary,
+    textAlign: 'center',
+  },
+  ownMallBarTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.gray[200],
+    marginTop: SPACING.sm,
+    overflow: 'hidden',
+  },
+  ownMallBarThumb: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.text.primary,
   },
 
   // Tablet 3-panel horizontal layout
