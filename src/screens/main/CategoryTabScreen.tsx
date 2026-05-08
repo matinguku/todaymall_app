@@ -12,7 +12,6 @@ import {
   StatusBar,
   Alert,
   Platform,
-  Modal,
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -52,6 +51,11 @@ const COMPANY_TABS = ['All', '1688', 'Taobao'] as const;
 const ROW_HEIGHT = 44;
 const SECTION_HEADER_HEIGHT = 40;
 
+type CategoryTabScreenProps = {
+  hideHeader?: boolean;
+  onModalClose?: () => void;
+};
+
 /**
  * scrollToIndex + viewPosition fights RN's max scroll at the list end; bottom rows
  * should align toward the bottom of the viewport to avoid overscroll/bounce glitches.
@@ -65,8 +69,11 @@ function getLeftListViewPosition(index: number, length: number): number {
   return 0.5;
 }
 
-const CategoryTabScreen: React.FC = () => {
+const CategoryTabScreen: React.FC<CategoryTabScreenProps> = ({ hideHeader = false, onModalClose }) => {
   const navigation = useNavigation<CategoryTabScreenNavigationProp>();
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
+  const isTabletLandscape = Math.min(winWidth, winHeight) >= 600 && winWidth > winHeight;
+  const isEmbeddedLandscapeHeader = hideHeader && isTabletLandscape;
   // Zustand store
   const { 
     selectedCategory,
@@ -112,13 +119,9 @@ const CategoryTabScreen: React.FC = () => {
     return company.toLowerCase();
   };
   
-  const { width: winWidth, height: winHeight } = useWindowDimensions();
-  const isTabletLayout = Math.min(winWidth, winHeight) >= 600;
-
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCount, setUnreadCount] = useState(25);
   const [imagePickerModalVisible, setImagePickerModalVisible] = useState(false);
-  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<string>('All');
   const [topCategories, setTopCategories] = useState<any[]>([]);
   // L2 categories grouped by parent L1 id; the right column reads from this
@@ -728,15 +731,16 @@ const CategoryTabScreen: React.FC = () => {
   };
 
   // Render company filter tabs
-  const renderCompanyTabs = () => {
+  const renderCompanyTabs = (options?: { hideAllTab?: boolean; compactSpacing?: boolean }) => {
+    const tabs = options?.hideAllTab ? COMPANY_TABS.filter((tab) => tab !== 'All') : COMPANY_TABS;
     return (
-      <View style={styles.companyTabsContainer}>
+      <View style={[styles.companyTabsContainer, options?.compactSpacing && styles.companyTabsContainerCompact]}>
         <ScrollView 
           horizontal 
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.companyTabs}
         >
-          {COMPANY_TABS.map((company, index) => {
+          {tabs.map((company, index) => {
             const isSelected = selectedCompany === company;
             
             return (
@@ -744,7 +748,7 @@ const CategoryTabScreen: React.FC = () => {
                 key={`company-${company}-${index}`}
                 style={[
                   styles.companyTab,
-                  index === COMPANY_TABS.length - 1 && { marginRight: SPACING.md },
+                  index === tabs.length - 1 && { marginRight: SPACING.md },
                   index === 0 && { marginLeft: SPACING.md }
                 ]}
                 onPress={() => {
@@ -813,17 +817,8 @@ const CategoryTabScreen: React.FC = () => {
           }}
         />
       </View>
+      {/* {renderCompanyTabs()} */}
       {renderCompanyTabs()}
-      {isTabletLayout && (
-        <TouchableOpacity
-          style={styles.categoryBaton}
-          onPress={() => setCategoryModalVisible(true)}
-          activeOpacity={0.8}
-        >
-          <Icon name="grid-outline" size={18} color={COLORS.text.primary} />
-          <Text style={styles.categoryBatonText}>{t('navigation.category')}</Text>
-        </TouchableOpacity>
-      )}
     </View>
   );
 
@@ -979,34 +974,23 @@ const CategoryTabScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {renderHeader()}
-
-      {isTabletLayout ? (
-        <Modal
-          visible={categoryModalVisible}
-          animationType="slide"
-          transparent
-          onRequestClose={() => setCategoryModalVisible(false)}
-        >
-          <View style={styles.categoryModalBackdrop}>
-            <View style={styles.categoryModalCard}>
-              <View style={styles.categoryModalHeader}>
-                <Text style={styles.categoryModalTitle}>{t('navigation.category')}</Text>
-                <TouchableOpacity
-                  hitSlop={BACK_NAVIGATION_HIT_SLOP}
-                  onPress={() => setCategoryModalVisible(false)}
-                  style={styles.categoryModalClose}
-                >
-                  <Icon name="close" size={22} color={COLORS.text.primary} />
-                </TouchableOpacity>
-              </View>
-              {renderCategoryBody()}
-            </View>
+      {!hideHeader && renderHeader()}
+      {isEmbeddedLandscapeHeader && (
+        <View style={styles.embeddedModalHeaderWrap}>
+          <View style={styles.embeddedModalHeader}>
+            <Text style={styles.embeddedModalTitle}>{t('navigation.category')}</Text>
+            <TouchableOpacity
+              hitSlop={BACK_NAVIGATION_HIT_SLOP}
+              onPress={onModalClose}
+              style={styles.embeddedModalClose}
+            >
+              <Icon name="close" size={22} color={COLORS.white} />
+            </TouchableOpacity>
           </View>
-        </Modal>
-      ) : (
-        renderCategoryBody()
+          {renderCompanyTabs({ hideAllTab: true, compactSpacing: true })}
+        </View>
       )}
+      {renderCategoryBody()}
 
       <ImagePickerModal
         visible={imagePickerModalVisible}
@@ -1235,63 +1219,37 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     paddingVertical: SPACING.md,
   },
-  categoryBaton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'flex-start',
-    marginHorizontal: SPACING.md,
-    marginBottom: SPACING.md,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    backgroundColor: COLORS.gray[100],
-    borderRadius: BORDER_RADIUS.full,
-    borderWidth: 1,
-    borderColor: COLORS.gray[200],
-    gap: SPACING.sm,
+  companyTabsContainerCompact: {
+    // 10% of default spacing for tighter title-to-tabs gap in modal header.
+    paddingVertical: Math.max(1, Math.round(SPACING.md * 0.1)),
   },
-  categoryBatonText: {
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.text.primary,
-    fontWeight: '600',
-  },
-  categoryModalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: SPACING.lg,
-  },
-  categoryModalCard: {
-    width: '90%',
-    maxWidth: 720,
-    height: '85%',
+  embeddedModalHeaderWrap: {
     backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.lg,
-    overflow: 'hidden',
-    ...SHADOWS.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.gray[200],
   },
-  categoryModalHeader: {
+  embeddedModalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: COLORS.gray[200],
+    borderBottomColor: COLORS.red,
+    backgroundColor: 'rgb(255, 88, 3)',
   },
-  categoryModalTitle: {
+  embeddedModalTitle: {
     fontSize: FONTS.sizes.lg,
     fontWeight: '700',
-    color: COLORS.text.primary,
+    color: COLORS.white,
   },
-  categoryModalClose: {
+  embeddedModalClose: {
     width: 34,
     height: 34,
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.gray[100],
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
   companyTabs: {
     alignItems: 'center',

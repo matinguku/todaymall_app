@@ -1,6 +1,7 @@
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet, View, ViewStyle, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import Icon from './Icon';
 import { BORDER_RADIUS, COLORS, FONTS, SPACING } from '../constants';
 import CameraIcon from '../assets/icons/CameraIcon';
@@ -8,11 +9,13 @@ import { useAppSelector } from '../store/hooks';
 import { translations } from '../i18n/translations';
 import { requestCameraAndPhotoLibraryPermissions } from '../utils/permissions';
 import MenuIcon from '../assets/icons/MenuIcon';
+import { RootStackParamList } from '../types';
 
 interface SearchButtonProps {
   placeholder: string;
   onPress: () => void;
   onCameraPress?: () => void;
+  onCategoryPress?: () => void;
   style?: ViewStyle;
   isHomepage: boolean;
 }
@@ -21,10 +24,11 @@ const SearchButton: React.FC<SearchButtonProps> = ({
   placeholder,
   onPress,
   onCameraPress,
+  onCategoryPress,
   style,
   isHomepage,
 }) => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const locale = useAppSelector((s) => s.i18n.locale) as 'en' | 'ko' | 'zh';
 
   // Translation function
@@ -76,7 +80,11 @@ const SearchButton: React.FC<SearchButtonProps> = ({
     //   return;
     // }
 
-    navigation.navigate('Category' as never);
+    if (onCategoryPress) {
+      onCategoryPress();
+      return;
+    }
+    navigation.navigate('Category');
   };
 
   return (

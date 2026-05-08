@@ -12,6 +12,7 @@ import {
   Animated,
   Alert,
   Platform,
+  Modal,
   FlatList,
   PermissionsAndroid,
   useWindowDimensions,
@@ -62,6 +63,7 @@ import { formatPriceKRW } from '../../utils/i18nHelpers';
 import { getAlibabaThumbnailImageUri, buildCdnThumbnailUri } from '../../utils/productImage';
 import { useResponsive } from '../../hooks/useResponsive';
 import { invalidateHomeCache, prefetchRecommendations } from '../../utils/homePrefetch';
+import CategoryTabScreen from './CategoryTabScreen';
 const LogoImage = require('../../assets/images/logo.png');
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -910,6 +912,39 @@ const HomeScreen: React.FC = () => {
   // const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [useMockData, setUseMockData] = useState(false); // Use API data instead of mock data
   const [imagePickerModalVisible, setImagePickerModalVisible] = useState(false);
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+  const searchButtonContainerRef = useRef<View | null>(null);
+  const [categoryModalAnchor, setCategoryModalAnchor] = useState({
+    x: SPACING.sm,
+    y: 0,
+    width: 0,
+    height: 0,
+  });
+
+  const openHomeCategoryModal = useCallback(() => {
+    if (!isTablet) {
+      navigation.navigate('Category' as never);
+      return;
+    }
+
+    searchButtonContainerRef.current?.measureInWindow((x, y, width, height) => {
+      setCategoryModalAnchor({
+        x: Math.max(SPACING.sm, Math.round(x)),
+        y: Math.max(0, Math.round(y)),
+        width: Math.round(width),
+        height: Math.round(height),
+      });
+      setCategoryModalVisible(true);
+    });
+  }, [isTablet, navigation]);
+
+  const categoryModalLeft = 0;
+  const categoryModalTop = 0;
+  const categoryModalBaseWidth = Math.min(
+    Math.max(categoryModalAnchor.width || 520, 520),
+    dynScreenWidth - SPACING.md * 2,
+  );
+  const categoryModalWidth = Math.max(340, Math.round(categoryModalBaseWidth * 0.3));
 
   // Recommendations state for "More to Love"
   const [recommendationsProducts, setRecommendationsProducts] = useState<Product[]>([]);
@@ -1622,11 +1657,12 @@ const HomeScreen: React.FC = () => {
             </View> */}
           </View>
           {/* Search Button Row */}
-          <View style={styles.searchButtonContainer}>
+          <View ref={searchButtonContainerRef} style={styles.searchButtonContainer}>
             <SearchButton
               placeholder={t('category.searchPlaceholder') || 'Search products...'}
               onPress={() => navigation.navigate('Search' as never)}
               onCameraPress={handleImageSearch}
+              onCategoryPress={openHomeCategoryModal}
               style={styles.searchButtonStyle}
               isHomepage={true}
             />
@@ -2881,6 +2917,35 @@ const HomeScreen: React.FC = () => {
         onTakePhoto={handleTakePhoto}
         onChooseFromGallery={handleChooseFromGallery}
       />
+      {isTablet && (
+        <Modal
+          visible={categoryModalVisible}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setCategoryModalVisible(false)}
+        >
+          <View style={styles.categoryModalBackdrop}>
+            <TouchableOpacity
+              style={styles.categoryModalOverlayTouchable}
+              activeOpacity={1}
+              onPress={() => setCategoryModalVisible(false)}
+            />
+            <View
+              style={[
+                styles.categoryModalCard,
+                {
+                  left: categoryModalLeft,
+                  top: categoryModalTop,
+                  bottom: 0,
+                  width: categoryModalWidth,
+                },
+              ]}
+            >
+              <CategoryTabScreen hideHeader onModalClose={() => setCategoryModalVisible(false)} />
+            </View>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 };
@@ -3479,6 +3544,43 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...SHADOWS.lg,
     elevation: 8,
+  },
+  categoryModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  categoryModalOverlayTouchable: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  categoryModalCard: {
+    position: 'absolute',
+    maxWidth: 720,
+    backgroundColor: COLORS.white,
+    borderRadius: 0,
+    overflow: 'hidden',
+    ...SHADOWS.sm,
+  },
+  categoryModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.gray[200],
+  },
+  categoryModalTitle: {
+    fontSize: FONTS.sizes.lg,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+  },
+  categoryModalClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.gray[100],
   },
   categoriesContainer: {
     paddingVertical: SPACING.xs,
