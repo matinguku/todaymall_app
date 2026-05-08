@@ -3306,7 +3306,13 @@ const ProductDetailScreen: React.FC = () => {
             top: 0,
             left: 0,
             right: 0,
-            height: insets.bottom + 30, // Covers header area plus some extra for safe area
+            // Phones/portrait need the extra 29pt to cover the header area on top of the
+            // safe-area inset; tablets in landscape have no notch and the inset alone
+            // already overshoots — drop the padding so the header strip stays tight.
+            height:
+              Math.min(dynWidth, dynHeight) >= 600 && dynWidth > dynHeight
+                ? insets.bottom - 8
+                : insets.bottom + 29,
             backgroundColor: headerBg,
             zIndex: 1,
           }}

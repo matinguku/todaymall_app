@@ -12,14 +12,22 @@ import AppNavigator from './src/navigation/AppNavigator';
 import { Provider } from 'react-redux';
 import { store } from './src/store';
 import { prefetchHome } from './src/utils/homePrefetch';
+import { prefetchCategoryBrowse } from './src/utils/categoryPrefetch';
 import { usePlatformStore } from './src/store/platformStore';
 
 // Kick off home-screen API calls before React mounts so HomeScreen can render
 // with cached data on its first paint. Locale comes from the redux store
 // (defaults to 'ko'); platform comes from zustand (defaults to '1688').
 const initialPlatform = usePlatformStore.getState().selectedPlatform;
-const initialLocale = store.getState().i18n.locale;
+const initialLocale = store.getState().i18n.locale || 'en';
 prefetchHome({ platform: initialPlatform, country: initialLocale });
+// Category tab: warm L1 + L2 trees for every platform tab the user can switch to so
+// CategoryTabScreen can hydrate from cache without round-trips. `All` maps to `1688`,
+// so the two platforms below cover all three tabs (All / 1688 / Taobao).
+const CATEGORY_PREFETCH_PLATFORMS = ['1688', 'taobao'] as const;
+for (const p of CATEGORY_PREFETCH_PLATFORMS) {
+  prefetchCategoryBrowse(p, initialLocale).catch(() => undefined);
+}
 
 // Using system fonts - no custom font loading needed
 // LogBox / console.error filtering: see setupLogBox.ts (imported first from index.ts)

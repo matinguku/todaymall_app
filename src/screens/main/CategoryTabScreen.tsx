@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
   StatusBar,
   Alert,
-  InteractionManager,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
@@ -32,10 +32,36 @@ import { useAppSelector } from '../../store/hooks';
 import { translations } from '../../i18n/translations';
 import { useTopCategoriesMutation } from '../../hooks/useTopCategoriesMutation';
 import { productsApi } from '../../services/productsApi';
+import {
+  peekCategoryBrowsePayload,
+  prefetchCategoryBrowse,
+  invalidateCategoryBrowseCache,
+  seedCategoryBrowseCategories,
+  upsertL2ForL1,
+  type CategoryBrowsePayload,
+} from '../../utils/categoryPrefetch';
 
 type CategoryTabScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Category'>;
 
 const COMPANY_TABS = ['All', '1688', 'Taobao'] as const;
+
+// Fixed heights make `getItemLayout` exact, which is the only way `scrollToLocation`
+// reliably lands on a section that hasn't been rendered yet (taps to far-away L1s).
+const ROW_HEIGHT = 44;
+const SECTION_HEADER_HEIGHT = 40;
+
+/**
+ * scrollToIndex + viewPosition fights RN's max scroll at the list end; bottom rows
+ * should align toward the bottom of the viewport to avoid overscroll/bounce glitches.
+ */
+function getLeftListViewPosition(index: number, length: number): number {
+  if (length <= 1) return 0;
+  // Short lists fit on screen — don't bother snapping to top/bottom; let RN keep them in place.
+  if (length <= 4) return 0;
+  if (index <= 1) return 0;
+  if (index >= length - 2) return 1;
+  return 0.5;
+}
 
 const CategoryTabScreen: React.FC = () => {
   const navigation = useNavigation<CategoryTabScreenNavigationProp>();
@@ -89,71 +115,117 @@ const CategoryTabScreen: React.FC = () => {
   const [imagePickerModalVisible, setImagePickerModalVisible] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<string>('All');
   const [topCategories, setTopCategories] = useState<any[]>([]);
-  const [isCategoryNavigating, setIsCategoryNavigating] = useState(false);
   // L2 categories grouped by parent L1 id; the right column reads from this
   // to render every L1's L2 list as one continuous SectionList.
   const [allL2ByL1, setAllL2ByL1] = useState<Record<string, any[]>>({});
   const [isLoadingAllL2, setIsLoadingAllL2] = useState(false);
 
   const hasFetchedRef = useRef<string | null>(null);
-  // Cache keyed by `${platform}-${locale}` → { l1Id → l2 tree }.
-  const allL2CacheRef = useRef<Record<string, Record<string, any[]>>>({});
   // Bumped to invalidate in-flight batch fetches (company/locale switch, refresh).
   const fetchTokenRef = useRef(0);
   const sectionListRef = useRef<SectionList<any> | null>(null);
   const leftCategoryListRef = useRef<FlatList<any> | null>(null);
-  // True while we are programmatically scrolling the right column in response
-  // to an L1 tap; prevents the resulting onViewableItemsChanged from echoing
-  // the highlight back and fighting the user's tap.
-  const programmaticScrollRef = useRef(false);
-  // Keep a temporary anchor when user taps a left category so that
-  // incremental L2 loading above/below doesn't drift the intended section.
-  const anchoredCategoryIdRef = useRef<string | null>(null);
-  const pendingScrollTargetRef = useRef<{ categoryId: string } | null>(null);
-  const pendingScrollRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const navigationStartMsRef = useRef(0);
-  const scrollSyncTickRef = useRef(0);
+  const isProgrammaticRightScrollRef = useRef(false);
+  /** After an L1 tap, re-run scrollToLocation when `sections` grows (L2 streaming) so the right list stays aligned. */
+  const tapAlignCategoryIdRef = useRef<string | null>(null);
+  /** After the user drags the right SectionList, do not auto scrollToLocation on L2 batch updates (preserves manual position). */
+  const skipRightAutoAlignRef = useRef(false);
+  const topCategoriesLenRef = useRef(0);
+  topCategoriesLenRef.current = topCategories.length;
+  const programmaticScrollUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Top categories mutation
-  const { mutate: fetchTopCategories, isLoading: isLoadingTopCategories } = useTopCategoriesMutation({
+  useEffect(() => {
+    return () => {
+      if (programmaticScrollUnlockTimerRef.current) {
+        clearTimeout(programmaticScrollUnlockTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Pull from prefetch cache or wait for the in-flight prefetch to finish. The startup
+  // prefetch in App.tsx warms every category tab's platform, so this is normally a
+  // synchronous hydrate; on cold start (or pull-to-refresh invalidation) we await the
+  // shared promise inside categoryPrefetch — no separate L1 mutation race.
+  const applyBrowseCache = useCallback(
+    (platform: string, payload: CategoryBrowsePayload) => {
+      hasFetchedRef.current = platform;
+      setTopCategories(payload.categories);
+      setAllL2ByL1(payload.l2ByL1);
+      setIsLoadingAllL2(false);
+      if (!usePlatformStore.getState().selectedCategory && payload.categories[0]) {
+        setSelectedCategory(payload.categories[0]._id);
+      }
+    },
+    [setSelectedCategory],
+  );
+
+  const [isLoadingTopCategories, setIsLoadingTopCategories] = useState(false);
+
+  // Synchronously hydrate before paint when the prefetch is already done.
+  useLayoutEffect(() => {
+    if (!selectedCompany) return;
+    const platform = getPlatformFromCompany(selectedCompany);
+    const loc = locale || 'en';
+    if (hasFetchedRef.current === platform) return;
+    const cached = peekCategoryBrowsePayload(platform, loc);
+    if (!cached?.categories?.length) return;
+    applyBrowseCache(platform, cached);
+  }, [selectedCompany, locale, applyBrowseCache]);
+
+  // If the prefetch is still in flight (or never started), wait for it and hydrate.
+  // Spinner shows until this resolves.
+  useEffect(() => {
+    if (!selectedCompany) return;
+    const platform = getPlatformFromCompany(selectedCompany);
+    const loc = locale || 'en';
+    if (hasFetchedRef.current === platform) return;
+    if (peekCategoryBrowsePayload(platform, loc)?.categories?.length) return;
+
+    let cancelled = false;
+    setIsLoadingTopCategories(true);
+    prefetchCategoryBrowse(platform, loc)
+      .then(() => {
+        if (cancelled) return;
+        const cached = peekCategoryBrowsePayload(platform, loc);
+        if (cached?.categories?.length) {
+          applyBrowseCache(platform, cached);
+        } else {
+          showToast(t('category.failedToLoadCategories'), 'error');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingTopCategories(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCompany, locale, applyBrowseCache]);
+
+  // L1 mutation — kept for pull-to-refresh which intentionally bypasses the cache.
+  const { mutate: refetchTopCategories } = useTopCategoriesMutation({
     onSuccess: (data) => {
-      // console.log('Top categories fetched successfully:', data);
       const categories = data.categories || [];
       setTopCategories(categories);
-      // Auto-select first category
-      if (categories.length > 0 && !selectedCategory) {
+      hasFetchedRef.current = data.platform;
+      seedCategoryBrowseCategories(data.platform, locale || 'en', categories);
+      if (categories.length > 0 && !usePlatformStore.getState().selectedCategory) {
         setSelectedCategory(categories[0]._id);
       }
-      // Mark this platform as fetched
-      hasFetchedRef.current = data.platform;
     },
     onError: (error) => {
-      // console.error('Failed to fetch top categories:', error);
       setTopCategories([]);
-      // Reset ref on error so we can retry
       hasFetchedRef.current = null;
       showToast(error || t('category.failedToLoadCategories'), 'error');
     },
   });
 
-  // Fetch top categories when selected company changes.
-  // Platform parameter is determined by selected company (All = 1688).
-  useEffect(() => {
-    if (selectedCompany) {
-      const platformForCompany = getPlatformFromCompany(selectedCompany);
-      const alreadyFetched = hasFetchedRef.current === platformForCompany;
-      if (!alreadyFetched && !isLoadingTopCategories) {
-        hasFetchedRef.current = platformForCompany;
-        fetchTopCategories(platformForCompany);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCompany]);
-
   // Batch-fetch L2 for every L1 once topCategories are known. The right
   // column shows a single continuous SectionList grouped by L1, so we need
-  // every L1's L2 data — fetched sequentially so the list paints
-  // progressively as each L1 resolves, and to be gentle on the API.
+  // every L1's L2 data; processes the selected L1 first then fans out with
+  // bounded concurrency. All writes go through categoryPrefetch so the
+  // module cache is the single source of truth.
   useEffect(() => {
     if (topCategories.length === 0 || !selectedCompany) {
       setAllL2ByL1({});
@@ -161,9 +233,10 @@ const CategoryTabScreen: React.FC = () => {
       return;
     }
     const platform = getPlatformFromCompany(selectedCompany);
-    const cacheKey = `${platform}-${locale || 'en'}`;
+    const loc = locale || 'en';
 
-    const cached = allL2CacheRef.current[cacheKey];
+    const cachedPayload = peekCategoryBrowsePayload(platform, loc);
+    const cached = cachedPayload?.l2ByL1;
     const fullyCached =
       cached &&
       topCategories.every((l1: any) => Array.isArray(cached[l1._id]));
@@ -178,24 +251,45 @@ const CategoryTabScreen: React.FC = () => {
     setAllL2ByL1(cached || {});
 
     (async () => {
-      const results: Record<string, any[]> = { ...(cached || {}) };
-      for (const l1 of topCategories) {
+      let queue: typeof topCategories = [...topCategories];
+      const selId = usePlatformStore.getState().selectedCategory;
+      const selPos = queue.findIndex((l1: any) => l1._id === selId);
+      if (selPos > 0) {
+        const picked = queue.splice(selPos, 1)[0];
+        queue = [picked, ...queue];
+      }
+      const pending = queue.filter((l1: any) => !Array.isArray(cached?.[l1._id]));
+      const CONCURRENCY = 4;
+      const fetchOne = async (l1: any) => {
         if (token !== fetchTokenRef.current) return;
-        if (Array.isArray(results[l1._id])) continue;
+        let tree: any[] = [];
         try {
           const resp = await productsApi.getChildCategories(platform, l1._id);
           if (token !== fetchTokenRef.current) return;
-          const tree = (resp?.success && resp?.data?.tree) || [];
-          results[l1._id] = tree;
-          setAllL2ByL1((prev) => ({ ...prev, [l1._id]: tree }));
+          tree = (resp?.success && resp?.data?.tree) || [];
         } catch {
           if (token !== fetchTokenRef.current) return;
-          results[l1._id] = [];
-          setAllL2ByL1((prev) => ({ ...prev, [l1._id]: [] }));
         }
+        upsertL2ForL1(platform, loc, l1._id, tree);
+        setAllL2ByL1((prev) => ({ ...prev, [l1._id]: tree }));
+      };
+
+      if (pending.length > 0 && pending[0]._id === selId) {
+        await fetchOne(pending.shift());
+        if (token !== fetchTokenRef.current) return;
       }
+
+      let cursor = 0;
+      const workers = Array.from({ length: Math.min(CONCURRENCY, pending.length) }, async () => {
+        while (true) {
+          if (token !== fetchTokenRef.current) return;
+          const i = cursor++;
+          if (i >= pending.length) return;
+          await fetchOne(pending[i]);
+        }
+      });
+      await Promise.all(workers);
       if (token !== fetchTokenRef.current) return;
-      allL2CacheRef.current[cacheKey] = results;
       setIsLoadingAllL2(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -211,9 +305,8 @@ const CategoryTabScreen: React.FC = () => {
   })), [topCategories, locale]);
 
   /**
-   * Sectioned right-column data: one section per L1, each containing its L2
-   * rows. Empty sections are kept so scrollToLocation indices stay aligned
-   * with the L1 list on the left even before all batches resolve.
+   * Right column: one SectionList section per L1, in the same order as `topCategories`.
+   * Each section shows that L1’s title (header) and its L2 rows; the next L1 follows below.
    */
   const sections = useMemo(() => {
     return topCategories.map((l1: any) => {
@@ -243,7 +336,6 @@ const CategoryTabScreen: React.FC = () => {
         };
       }).filter((item: any) => item.name);
 
-      // Show structure-first placeholder rows while data is still loading.
       if (!hasL2Loaded) {
         return {
           l1Id: l1._id,
@@ -256,17 +348,71 @@ const CategoryTabScreen: React.FC = () => {
         };
       }
 
-      if (data.length === 0 && isCategoryNavigating && selectedCategory === l1._id) {
+      if (data.length === 0 && hasL2Loaded) {
         return {
           l1Id: l1._id,
           title: l1Name,
-          data: [{ id: `${l1._id}-placeholder-nav`, isPlaceholder: true, l1Id: l1._id, l1Name }],
+          data: [{ id: `${l1._id}-empty`, isEmpty: true, l1Id: l1._id, l1Name }],
         };
       }
 
       return { l1Id: l1._id, title: l1Name, data };
     });
-  }, [topCategories, allL2ByL1, isCategoryNavigating, selectedCategory, locale, getCategoryImage]);
+  }, [topCategories, allL2ByL1, selectedCategory, locale, getCategoryImage]);
+
+  /**
+   * Map each section's flat-index entry to a precise pixel offset/length so
+   * `scrollToLocation` works for sections that haven't been rendered yet.
+   * SectionList visits each section as: [header, ...items, footer]; index 0 is
+   * section 0's header, then its items, then its (zero-height) footer, then
+   * section 1's header, and so on.
+   */
+  const getItemLayout = useMemo(() => {
+    const sectionOffsets: number[] = [];
+    let runningOffset = 0;
+    for (const sec of sections) {
+      sectionOffsets.push(runningOffset);
+      // header + items + footer (footer is 0 here)
+      runningOffset += SECTION_HEADER_HEIGHT + sec.data.length * ROW_HEIGHT;
+    }
+
+    return (
+      _data: any,
+      index: number,
+    ): { length: number; offset: number; index: number } => {
+      // Walk the flat index across [header, items, footer] groups.
+      let cursor = 0;
+      for (let s = 0; s < sections.length; s++) {
+        const itemCount = sections[s].data.length;
+        // header
+        if (index === cursor) {
+          return { length: SECTION_HEADER_HEIGHT, offset: sectionOffsets[s], index };
+        }
+        cursor += 1;
+        // items
+        if (index < cursor + itemCount) {
+          const itemPos = index - cursor;
+          return {
+            length: ROW_HEIGHT,
+            offset: sectionOffsets[s] + SECTION_HEADER_HEIGHT + itemPos * ROW_HEIGHT,
+            index,
+          };
+        }
+        cursor += itemCount;
+        // footer (zero height, but counted in flat indexing)
+        if (index === cursor) {
+          return {
+            length: 0,
+            offset: sectionOffsets[s] + SECTION_HEADER_HEIGHT + itemCount * ROW_HEIGHT,
+            index,
+          };
+        }
+        cursor += 1;
+      }
+      // Trailing list-end entry.
+      return { length: 0, offset: runningOffset, index };
+    };
+  }, [sections]);
 
   const openProductDiscoveryForL2 = useCallback(
     (l2Item: any, initialL3Id?: string) => {
@@ -298,101 +444,62 @@ const CategoryTabScreen: React.FC = () => {
   );
 
   const onRefresh = async () => {
+    if (!selectedCompany) return;
+    skipRightAutoAlignRef.current = false;
     setRefreshing(true);
-    if (selectedCompany) {
-      const platform = getPlatformFromCompany(selectedCompany);
-      const cacheKey = `${platform}-${locale || 'en'}`;
-      delete allL2CacheRef.current[cacheKey];
-      setAllL2ByL1({});
-      // Re-trigger the top-categories fetch which in turn re-runs the
-      // batch L2 effect (its dependency on `topCategories` reference fires).
-      hasFetchedRef.current = null;
-      fetchTopCategories(platform);
+    const platform = getPlatformFromCompany(selectedCompany);
+    invalidateCategoryBrowseCache(platform, locale || 'en');
+    setAllL2ByL1({});
+    // Re-trigger the top-categories fetch which in turn re-runs the
+    // batch L2 effect (its dependency on `topCategories` reference fires).
+    hasFetchedRef.current = null;
+    try {
+      await refetchTopCategories(platform);
+    } finally {
+      setRefreshing(false);
     }
-    setRefreshing(false);
   };
 
-  const performTargetScroll = useCallback((sectionIndex: number, itemIndex: number, animated: boolean) => {
+  const performTargetScroll = useCallback((sectionIndex: number) => {
     if (!sectionListRef.current) return false;
     try {
+      isProgrammaticRightScrollRef.current = true;
       sectionListRef.current.scrollToLocation({
         sectionIndex,
-        itemIndex,
-        animated,
+        itemIndex: 0,
+        animated: false,
         viewOffset: 0,
         viewPosition: 0,
       });
+      // Hold the lockout long enough that any viewability callbacks emitted *because of*
+      // this scroll don't fight the user's tap intent. ~1 RAF wasn't enough — visibility
+      // events can land a few frames later, especially when sections have variable height.
+      if (programmaticScrollUnlockTimerRef.current) {
+        clearTimeout(programmaticScrollUnlockTimerRef.current);
+      }
+      programmaticScrollUnlockTimerRef.current = setTimeout(() => {
+        isProgrammaticRightScrollRef.current = false;
+        programmaticScrollUnlockTimerRef.current = null;
+      }, 220);
       return true;
     } catch {
+      isProgrammaticRightScrollRef.current = false;
       return false;
     }
   }, []);
 
-  const finishCategoryNavigation = useCallback(() => {
-    const elapsed = Date.now() - navigationStartMsRef.current;
-    const minLoadingMs = 180;
-    const waitMs = elapsed >= minLoadingMs ? 0 : (minLoadingMs - elapsed);
-    setTimeout(() => {
-      setIsCategoryNavigating(false);
-    }, waitMs);
-  }, []);
-
-  const retryPendingTargetScroll = useCallback(() => {
-    const pending = pendingScrollTargetRef.current;
-    if (!pending) return;
-
-    const sectionIndex = sections.findIndex((s) => s.l1Id === pending.categoryId);
-    if (sectionIndex < 0) {
-      if (!pendingScrollRetryTimerRef.current) {
-        pendingScrollRetryTimerRef.current = setTimeout(() => {
-          pendingScrollRetryTimerRef.current = null;
-          retryPendingTargetScroll();
-        }, 64);
-      }
-      return;
-    }
-
-    const ok = performTargetScroll(sectionIndex, 0, false);
-    if (ok) {
-      pendingScrollTargetRef.current = null;
-      finishCategoryNavigation();
-      return;
-    }
-
-    if (!pendingScrollRetryTimerRef.current) {
-      pendingScrollRetryTimerRef.current = setTimeout(() => {
-        pendingScrollRetryTimerRef.current = null;
-        retryPendingTargetScroll();
-      }, 64);
-    }
-  }, [finishCategoryNavigation, performTargetScroll, sections]);
-
-  const syncRightColumnToCategory = useCallback(
-    (categoryId: string) => {
-      const sectionIndex = sections.findIndex((s) => s.l1Id === categoryId);
-      if (sectionIndex < 0) {
-        retryPendingTargetScroll();
-        return;
-      }
-      const ok = performTargetScroll(sectionIndex, 0, false);
-      if (!ok) {
-        retryPendingTargetScroll();
-      } else {
-        pendingScrollTargetRef.current = null;
-        finishCategoryNavigation();
-      }
-    },
-    [sections, performTargetScroll, retryPendingTargetScroll, finishCategoryNavigation],
-  );
-
   const scrollLeftRowIntoView = useCallback((categoryId: string) => {
     const index = categoriesToDisplay.findIndex((c) => c.id === categoryId);
     if (index < 0 || !leftCategoryListRef.current) return;
+    const n = categoriesToDisplay.length;
+    const viewPosition = getLeftListViewPosition(index, n);
     try {
+      // Non-animated avoids stacked scroll animations clashing with RefreshControl /
+      // end-of-list clamping when several deferred scrollLeftRowIntoView ran back-to-back.
       leftCategoryListRef.current.scrollToIndex({
         index,
-        animated: true,
-        viewPosition: 0.35,
+        animated: false,
+        viewPosition,
       });
     } catch {
       /* layout may not be ready */
@@ -401,113 +508,94 @@ const CategoryTabScreen: React.FC = () => {
 
   const handleCategoryPress = useCallback(
     (categoryId: string) => {
-      setIsCategoryNavigating(true);
-      navigationStartMsRef.current = Date.now();
-      anchoredCategoryIdRef.current = categoryId;
-      pendingScrollTargetRef.current = { categoryId };
-      setSelectedCategory(categoryId);
-
-      programmaticScrollRef.current = true;
-
-      // Immediate attempt — often succeeds when sections are already measured.
-      syncRightColumnToCategory(categoryId);
-      scrollLeftRowIntoView(categoryId);
-
-      // After layout / interactions: SectionList frequently needs a second tick
-      // so scrollToLocation lands on the correct L1 section.
-      const deferred = () => {
-        syncRightColumnToCategory(categoryId);
+      const idx = topCategories.findIndex((t: any) => t._id === categoryId);
+      if (idx < 0) return;
+      const isResnap = categoryId === usePlatformStore.getState().selectedCategory;
+      // Always re-arm: a tap is an explicit user intent to align both columns,
+      // so override any prior skip-flag set by an incidental drag.
+      skipRightAutoAlignRef.current = false;
+      tapAlignCategoryIdRef.current = categoryId;
+      // Scroll right column. SectionList without `getItemLayout` measures lazily;
+      // run once now (often hits) and once after a frame so the second call sees
+      // the freshly-committed layout when the first miscalculated.
+      performTargetScroll(idx);
+      requestAnimationFrame(() => performTargetScroll(idx));
+      if (!isResnap) {
         scrollLeftRowIntoView(categoryId);
-      };
-      InteractionManager.runAfterInteractions(() => {
-        deferred();
-        requestAnimationFrame(() => {
-          requestAnimationFrame(deferred);
-        });
-      });
-
-      setTimeout(() => {
-        programmaticScrollRef.current = false;
-      }, 600);
+        setSelectedCategory(categoryId);
+      }
     },
-    [
-      scrollLeftRowIntoView,
-      setSelectedCategory,
-      syncRightColumnToCategory,
-    ],
+    [topCategories, performTargetScroll, scrollLeftRowIntoView, setSelectedCategory],
   );
 
-  // Map the topmost viewable section back to selectedCategory so the left
-  // column highlight follows scrolling on the right.
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 30 }).current;
-  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
-    if (programmaticScrollRef.current) return;
-    if (!viewableItems || viewableItems.length === 0) return;
-    const top = viewableItems[0];
-    const l1Id = top?.section?.l1Id;
-    if (l1Id) {
-      // Avoid loop: only update if it's actually different.
-      const currentSelected = usePlatformStore.getState().selectedCategory;
-      if (currentSelected !== l1Id) {
-        usePlatformStore.getState().setSelectedCategory(l1Id);
-      }
-    }
-  }).current;
+  const rightViewabilityConfigRef = useRef({
+    itemVisiblePercentThreshold: 15,
+    minimumViewTime: 40,
+  });
 
-  const handleRightListScroll = useCallback((event: any) => {
-    const now = Date.now();
-    if (now - scrollSyncTickRef.current < 80) return;
-    scrollSyncTickRef.current = now;
-    const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent || {};
-    if (!contentOffset || !layoutMeasurement || !contentSize) return;
-    const reachedBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - 24;
-    if (!reachedBottom || sections.length === 0) return;
-    const lastL1Id = sections[sections.length - 1]?.l1Id;
-    if (!lastL1Id) return;
-    const currentSelected = usePlatformStore.getState().selectedCategory;
-    if (currentSelected !== lastL1Id) {
-      usePlatformStore.getState().setSelectedCategory(lastL1Id);
-    }
-  }, [sections]);
-  
+  const onRightViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: any[] }) => {
+    if (isProgrammaticRightScrollRef.current) return;
+    if (!Array.isArray(viewableItems) || viewableItems.length === 0) return;
 
-  // While batch L2 data is still loading, section heights keep changing.
-  // Re-align to the anchored L1 after each sections update so the selected
-  // category stays at the correct visual position.
+    const firstVisible = viewableItems.find((v: any) => v?.isViewable && v?.section?.l1Id);
+    const visibleL1Id = firstVisible?.section?.l1Id;
+    if (!visibleL1Id) return;
+    if (visibleL1Id === usePlatformStore.getState().selectedCategory) return;
+
+    setSelectedCategory(visibleL1Id);
+    scrollLeftRowIntoView(visibleL1Id);
+  });
+
+  /** If the global selection is not in the current company’s top list (stale id), snap to the first L1. */
   useEffect(() => {
-    const anchoredId = anchoredCategoryIdRef.current;
-    if (!anchoredId || !sectionListRef.current || sections.length === 0) {
-      return;
+    if (topCategories.length === 0 || !selectedCategory) return;
+    const exists = topCategories.some((t: any) => t._id === selectedCategory);
+    if (!exists) {
+      const firstId = topCategories[0]._id;
+      tapAlignCategoryIdRef.current = null;
+      skipRightAutoAlignRef.current = false;
+      setSelectedCategory(firstId);
     }
-    const sectionIndex = sections.findIndex((s) => s.l1Id === anchoredId);
-    if (sectionIndex < 0) {
-      return;
-    }
-    const targetHasItems = (sections[sectionIndex]?.data?.length || 0) > 0;
-    if (!targetHasItems) {
-      return;
-    }
-    try {
-      sectionListRef.current.scrollToLocation({
-        sectionIndex,
-        itemIndex: 0,
-        animated: false,
-        viewOffset: 0,
-        viewPosition: 0,
-      });
-    } catch {
-      // Layout may still be settling; next sections update will retry.
-    }
-  }, [sections]);
+  }, [topCategories, selectedCategory, setSelectedCategory]);
 
+  /** Re-allow auto-align when switching company tab so the right column follows the new tree. */
   useEffect(() => {
-    return () => {
-      if (pendingScrollRetryTimerRef.current) {
-        clearTimeout(pendingScrollRetryTimerRef.current);
-        pendingScrollRetryTimerRef.current = null;
-      }
-    };
-  }, []);
+    skipRightAutoAlignRef.current = false;
+  }, [selectedCompany]);
+
+  /**
+   * Snap the right column to the selected L1 **before paint** for non-tap selection changes
+   * (initial hydration, stale-id recovery, company-tab switch). Tap-driven changes are
+   * handled imperatively in handleCategoryPress and would double-fire here, so skip them.
+   * Section indices match `topCategories` even while L2 is still placeholders — do **not**
+   * re-subscribe to `allL2ByL1` here or each batch fetch will fire scroll again.
+   */
+  useLayoutEffect(() => {
+    if (!selectedCategory || topCategories.length === 0) return;
+    if (skipRightAutoAlignRef.current) return;
+    if (tapAlignCategoryIdRef.current === selectedCategory) return;
+    const idx = topCategories.findIndex((t: any) => t._id === selectedCategory);
+    if (idx < 0) return;
+    performTargetScroll(idx);
+    scrollLeftRowIntoView(selectedCategory);
+  }, [selectedCategory, topCategories, performTargetScroll, scrollLeftRowIntoView]);
+
+  /**
+   * Re-snap the right column once the tapped L1's L2 rows arrive. After a tap we record
+   * the target id; when its data lands the section grows from 3 placeholder rows to N
+   * real rows, drifting the snapped position. Re-run scroll exactly once for that id,
+   * then clear the ref to avoid cascading on later batch updates.
+   */
+  useLayoutEffect(() => {
+    const targetId = tapAlignCategoryIdRef.current;
+    if (!targetId) return;
+    if (skipRightAutoAlignRef.current) return;
+    if (!Object.prototype.hasOwnProperty.call(allL2ByL1, targetId)) return;
+    const idx = topCategories.findIndex((t: any) => t._id === targetId);
+    if (idx < 0) return;
+    performTargetScroll(idx);
+    tapAlignCategoryIdRef.current = null;
+  }, [allL2ByL1, topCategories, performTargetScroll]);
 
   // Helper function to convert image URI to base64
   const convertUriToBase64 = async (uri: string): Promise<string | null> => {
@@ -654,16 +742,27 @@ const CategoryTabScreen: React.FC = () => {
                   index === 0 && { marginLeft: SPACING.md }
                 ]}
                 onPress={() => {
-                  setSelectedCompany(company);
-                  // Update selectedPlatform in store based on selected company
+                  if (company === selectedCompany) return;
                   const platform = getPlatformFromCompany(company);
                   setSelectedPlatform(platform);
-                  // Reset fetch refs to allow refetch with new company
+                  // Cancel in-flight L2 batch and clear staged state in one render.
+                  fetchTokenRef.current++;
                   hasFetchedRef.current = null;
-                  setTopCategories([]);
-                  setAllL2ByL1({});
-                  // Reset selected category so useTopCategoriesMutation.onSuccess auto-selects the first category of the new company
+                  // If we have a warm payload for the next platform, hydrate it inline so
+                  // there's no flash of empty state between tab change and refetch.
+                  const cached = peekCategoryBrowsePayload(platform, locale || 'en');
+                  if (cached?.categories?.length) {
+                    setTopCategories(cached.categories);
+                    setAllL2ByL1(cached.l2ByL1);
+                    setIsLoadingAllL2(false);
+                    hasFetchedRef.current = platform;
+                  } else {
+                    setTopCategories([]);
+                    setAllL2ByL1({});
+                  }
+                  // Stale-recovery effect snaps selectedCategory to the first L1 of the new list.
                   setSelectedCategory('');
+                  setSelectedCompany(company);
                 }}
               >
                 <Text style={[
@@ -713,7 +812,7 @@ const CategoryTabScreen: React.FC = () => {
   );
 
   
-  const renderLevel1CategoryItem = ({ item }: { item: any }) => {
+  const renderLevel1CategoryItem = useCallback(({ item }: { item: any }) => {
     const isSelected = selectedCategory === item.id;
     return (
       <TouchableOpacity
@@ -731,14 +830,26 @@ const CategoryTabScreen: React.FC = () => {
         </Text>
       </TouchableOpacity>
     );
-  };
+  }, [selectedCategory, handleCategoryPress]);
 
-  const renderL2Row = ({ item }: { item: any }) => (
-    item?.isPlaceholder ? (
-      <View style={styles.browseSubcatRow}>
-        <View style={styles.browseSubcatSkelText} />
-      </View>
-    ) : (
+  const renderL2Row = useCallback(({ item }: { item: any }) => {
+    if (item?.isPlaceholder) {
+      return (
+        <View style={styles.browseSubcatRow}>
+          <View style={styles.browseSubcatSkelText} />
+        </View>
+      );
+    }
+    if (item?.isEmpty) {
+      return (
+        <View style={styles.browseSubcatRow}>
+          <Text style={styles.browseSubcatEmpty} numberOfLines={1}>
+            {t('category.noItemsAvailableForCategory')}
+          </Text>
+        </View>
+      );
+    }
+    return (
       <TouchableOpacity
         style={styles.browseSubcatRow}
         activeOpacity={0.75}
@@ -753,10 +864,11 @@ const CategoryTabScreen: React.FC = () => {
         </Text>
         <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
       </TouchableOpacity>
-    )
-  );
+    );
+  }, [openProductDiscoveryForL2, locale]);
 
-  const renderL1SectionHeader = ({ section }: { section: any }) => (
+  /** Per-L1 block header on the right (title row), then L2 rows in that section. */
+  const renderL1SectionHeader = useCallback(({ section }: { section: any }) => (
     <View style={styles.browseSectionHeader}>
       <Text
         style={styles.browseSectionHeaderText}
@@ -766,7 +878,7 @@ const CategoryTabScreen: React.FC = () => {
         {section.title}
       </Text>
     </View>
-  );
+  ), []);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -788,16 +900,17 @@ const CategoryTabScreen: React.FC = () => {
               scrollEnabled
               showsVerticalScrollIndicator={false}
               style={styles.leftCategoryList}
-              refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-              }
+              {...(Platform.OS === 'android' ? { overScrollMode: 'never' as const } : {})}
               onScrollToIndexFailed={(info) => {
+                const idx = info.index;
+                const n = categoriesToDisplay.length;
+                const viewPosition = getLeftListViewPosition(idx, n);
                 setTimeout(() => {
                   try {
                     leftCategoryListRef.current?.scrollToIndex({
-                      index: info.index,
-                      animated: true,
-                      viewPosition: 0.35,
+                      index: idx,
+                      animated: false,
+                      viewPosition,
                     });
                   } catch {
                     /* retry once after measurement */
@@ -814,50 +927,38 @@ const CategoryTabScreen: React.FC = () => {
               <ActivityIndicator size="small" color={COLORS.primary} />
             </View>
           ) : (
-            <SectionList
-              ref={sectionListRef}
-              sections={sections}
-              keyExtractor={(item: any, index: number) => `l2-${item.id}-${index}`}
-              renderItem={renderL2Row}
-              renderSectionHeader={renderL1SectionHeader}
-              stickySectionHeadersEnabled
-              showsVerticalScrollIndicator={false}
-              onViewableItemsChanged={onViewableItemsChanged}
-              viewabilityConfig={viewabilityConfig}
-              onScrollToIndexFailed={(info) => {
-                const pending = pendingScrollTargetRef.current;
-                if (!pending) return;
-                if (info?.highestMeasuredFrameIndex == null || info.highestMeasuredFrameIndex < 0) {
-                  return;
-                }
-                retryPendingTargetScroll();
-              }}
-              onScroll={handleRightListScroll}
-              scrollEventThrottle={16}
-              onLayout={retryPendingTargetScroll}
-              onContentSizeChange={retryPendingTargetScroll}
-              onScrollBeginDrag={() => {
-                // User took over manual scrolling; stop anchor corrections.
-                anchoredCategoryIdRef.current = null;
-                pendingScrollTargetRef.current = null;
-                if (pendingScrollRetryTimerRef.current) {
-                  clearTimeout(pendingScrollRetryTimerRef.current);
-                  pendingScrollRetryTimerRef.current = null;
-                }
-                setIsCategoryNavigating(false);
-              }}
-              refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-              }
-              contentContainerStyle={styles.browseSectionListContent}
-              ListHeaderComponent={
-                <View style={styles.browseSubcatHeader}>
-                  <Text style={styles.browseSubcatTitle}>
-                    {t('category.browseSubcategories')}
-                  </Text>
-                </View>
-              }
-            />
+            <View style={styles.rightColumnInner}>
+              <View style={styles.rightSectionListWrap}>
+                <SectionList
+                  ref={sectionListRef}
+                  style={styles.rightSectionList}
+                  sections={sections}
+                  keyExtractor={(item: any) => `l2-${item.l1Id ?? 'x'}-${item.id}`}
+                  renderItem={renderL2Row}
+                  renderSectionHeader={renderL1SectionHeader}
+                  stickySectionHeadersEnabled
+                  showsVerticalScrollIndicator={false}
+                  getItemLayout={getItemLayout as any}
+                  viewabilityConfig={rightViewabilityConfigRef.current}
+                  onViewableItemsChanged={onRightViewableItemsChanged.current}
+                  onScrollToIndexFailed={() => {
+                    const id = tapAlignCategoryIdRef.current ?? selectedCategory;
+                    if (!id) return;
+                    const idx = topCategories.findIndex((t: any) => t._id === id);
+                    if (idx < 0) return;
+                    setTimeout(() => performTargetScroll(idx), 80);
+                  }}
+                  onScrollBeginDrag={() => {
+                    tapAlignCategoryIdRef.current = null;
+                    skipRightAutoAlignRef.current = true;
+                  }}
+                  refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+                  }
+                  contentContainerStyle={styles.browseSectionListContent}
+                />
+              </View>
+            </View>
           )}
         </View>
       </View>
@@ -922,6 +1023,18 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
   },
+  rightColumnInner: {
+    flex: 1,
+    minHeight: 0,
+  },
+  rightSectionListWrap: {
+    flex: 1,
+    minHeight: 0,
+    position: 'relative',
+  },
+  rightSectionList: {
+    flex: 1,
+  },
   categoryItem: {
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.sm,
@@ -970,7 +1083,8 @@ const styles = StyleSheet.create({
   browseSubcatRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.sm,
+    height: ROW_HEIGHT,
+    paddingHorizontal: SPACING.sm,
     gap: SPACING.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.gray[200],
@@ -986,6 +1100,12 @@ const styles = StyleSheet.create({
     height: 14,
     backgroundColor: COLORS.gray[200],
     borderRadius: 4,
+  },
+  browseSubcatEmpty: {
+    flex: 1,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
+    fontStyle: 'italic',
   },
   browseQuickJumpWrap: {
     marginBottom: SPACING.md,
@@ -1030,7 +1150,7 @@ const styles = StyleSheet.create({
   browseSectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.sm,
+    height: SECTION_HEADER_HEIGHT,
     paddingHorizontal: SPACING.sm,
     backgroundColor: COLORS.gray[50],
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -1039,7 +1159,7 @@ const styles = StyleSheet.create({
   },
   browseSectionHeaderText: {
     flex: 1,
-    fontSize: FONTS.sizes.md ,
+    fontSize: FONTS.sizes.md,
     fontWeight: '600',
     color: COLORS.text.red,
   },
