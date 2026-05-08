@@ -12,6 +12,8 @@ import {
   StatusBar,
   Alert,
   Platform,
+  Modal,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
@@ -110,9 +112,13 @@ const CategoryTabScreen: React.FC = () => {
     return company.toLowerCase();
   };
   
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
+  const isTabletLayout = Math.min(winWidth, winHeight) >= 600;
+
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCount, setUnreadCount] = useState(25);
   const [imagePickerModalVisible, setImagePickerModalVisible] = useState(false);
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<string>('All');
   const [topCategories, setTopCategories] = useState<any[]>([]);
   // L2 categories grouped by parent L1 id; the right column reads from this
@@ -808,6 +814,16 @@ const CategoryTabScreen: React.FC = () => {
         />
       </View>
       {renderCompanyTabs()}
+      {isTabletLayout && (
+        <TouchableOpacity
+          style={styles.categoryBaton}
+          onPress={() => setCategoryModalVisible(true)}
+          activeOpacity={0.8}
+        >
+          <Icon name="grid-outline" size={18} color={COLORS.text.primary} />
+          <Text style={styles.categoryBatonText}>{t('navigation.category')}</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -880,89 +896,118 @@ const CategoryTabScreen: React.FC = () => {
     </View>
   ), []);
 
+  const renderCategoryBody = () => (
+    <View style={styles.mainContent}>
+      <View style={styles.leftColumn}>
+        {isLoadingTopCategories && categoriesToDisplay.length === 0 ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color={COLORS.primary} />
+          </View>
+        ) : (
+          <FlatList
+            ref={leftCategoryListRef}
+            data={categoriesToDisplay}
+            renderItem={renderLevel1CategoryItem}
+            keyExtractor={(item) => `category-${item.id || item.name}`}
+            extraData={selectedCategory}
+            scrollEnabled
+            showsVerticalScrollIndicator={false}
+            style={styles.leftCategoryList}
+            {...(Platform.OS === 'android' ? { overScrollMode: 'never' as const } : {})}
+            onScrollToIndexFailed={(info) => {
+              const idx = info.index;
+              const n = categoriesToDisplay.length;
+              const viewPosition = getLeftListViewPosition(idx, n);
+              setTimeout(() => {
+                try {
+                  leftCategoryListRef.current?.scrollToIndex({
+                    index: idx,
+                    animated: false,
+                    viewPosition,
+                  });
+                } catch {
+                  /* retry once after measurement */
+                }
+              }, 120);
+            }}
+          />
+        )}
+      </View>
+
+      <View style={styles.rightColumn}>
+        {sections.length === 0 && isLoadingAllL2 ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color={COLORS.primary} />
+          </View>
+        ) : (
+          <View style={styles.rightColumnInner}>
+            <View style={styles.rightSectionListWrap}>
+              <SectionList
+                ref={sectionListRef}
+                style={styles.rightSectionList}
+                sections={sections}
+                keyExtractor={(item: any) => `l2-${item.l1Id ?? 'x'}-${item.id}`}
+                renderItem={renderL2Row}
+                renderSectionHeader={renderL1SectionHeader}
+                stickySectionHeadersEnabled
+                showsVerticalScrollIndicator={false}
+                getItemLayout={getItemLayout as any}
+                viewabilityConfig={rightViewabilityConfigRef.current}
+                onViewableItemsChanged={onRightViewableItemsChanged.current}
+                onScrollToIndexFailed={() => {
+                  const id = tapAlignCategoryIdRef.current ?? selectedCategory;
+                  if (!id) return;
+                  const idx = topCategories.findIndex((t: any) => t._id === id);
+                  if (idx < 0) return;
+                  setTimeout(() => performTargetScroll(idx), 80);
+                }}
+                onScrollBeginDrag={() => {
+                  tapAlignCategoryIdRef.current = null;
+                  skipRightAutoAlignRef.current = true;
+                }}
+                refreshControl={
+                  <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+                }
+                contentContainerStyle={styles.browseSectionListContent}
+              />
+            </View>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       {renderHeader()}
-      
-      <View style={styles.mainContent}>
-        <View style={styles.leftColumn}>
-          {isLoadingTopCategories && categoriesToDisplay.length === 0 ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color={COLORS.primary} />
-            </View>
-          ) : (
-            <FlatList
-              ref={leftCategoryListRef}
-              data={categoriesToDisplay}
-              renderItem={renderLevel1CategoryItem}
-              keyExtractor={(item) => `category-${item.id || item.name}`}
-              extraData={selectedCategory}
-              scrollEnabled
-              showsVerticalScrollIndicator={false}
-              style={styles.leftCategoryList}
-              {...(Platform.OS === 'android' ? { overScrollMode: 'never' as const } : {})}
-              onScrollToIndexFailed={(info) => {
-                const idx = info.index;
-                const n = categoriesToDisplay.length;
-                const viewPosition = getLeftListViewPosition(idx, n);
-                setTimeout(() => {
-                  try {
-                    leftCategoryListRef.current?.scrollToIndex({
-                      index: idx,
-                      animated: false,
-                      viewPosition,
-                    });
-                  } catch {
-                    /* retry once after measurement */
-                  }
-                }, 120);
-              }}
-            />
-          )}
-        </View>
 
-        <View style={styles.rightColumn}>
-          {sections.length === 0 && isLoadingAllL2 ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color={COLORS.primary} />
-            </View>
-          ) : (
-            <View style={styles.rightColumnInner}>
-              <View style={styles.rightSectionListWrap}>
-                <SectionList
-                  ref={sectionListRef}
-                  style={styles.rightSectionList}
-                  sections={sections}
-                  keyExtractor={(item: any) => `l2-${item.l1Id ?? 'x'}-${item.id}`}
-                  renderItem={renderL2Row}
-                  renderSectionHeader={renderL1SectionHeader}
-                  stickySectionHeadersEnabled
-                  showsVerticalScrollIndicator={false}
-                  getItemLayout={getItemLayout as any}
-                  viewabilityConfig={rightViewabilityConfigRef.current}
-                  onViewableItemsChanged={onRightViewableItemsChanged.current}
-                  onScrollToIndexFailed={() => {
-                    const id = tapAlignCategoryIdRef.current ?? selectedCategory;
-                    if (!id) return;
-                    const idx = topCategories.findIndex((t: any) => t._id === id);
-                    if (idx < 0) return;
-                    setTimeout(() => performTargetScroll(idx), 80);
-                  }}
-                  onScrollBeginDrag={() => {
-                    tapAlignCategoryIdRef.current = null;
-                    skipRightAutoAlignRef.current = true;
-                  }}
-                  refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-                  }
-                  contentContainerStyle={styles.browseSectionListContent}
-                />
+      {isTabletLayout ? (
+        <Modal
+          visible={categoryModalVisible}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setCategoryModalVisible(false)}
+        >
+          <View style={styles.categoryModalBackdrop}>
+            <View style={styles.categoryModalCard}>
+              <View style={styles.categoryModalHeader}>
+                <Text style={styles.categoryModalTitle}>{t('navigation.category')}</Text>
+                <TouchableOpacity
+                  hitSlop={BACK_NAVIGATION_HIT_SLOP}
+                  onPress={() => setCategoryModalVisible(false)}
+                  style={styles.categoryModalClose}
+                >
+                  <Icon name="close" size={22} color={COLORS.text.primary} />
+                </TouchableOpacity>
               </View>
+              {renderCategoryBody()}
             </View>
-          )}
-        </View>
-      </View>
-      
+          </View>
+        </Modal>
+      ) : (
+        renderCategoryBody()
+      )}
+
       <ImagePickerModal
         visible={imagePickerModalVisible}
         onClose={() => setImagePickerModalVisible(false)}
@@ -1189,6 +1234,64 @@ const styles = StyleSheet.create({
   companyTabsContainer: {
     backgroundColor: COLORS.white,
     paddingVertical: SPACING.md,
+  },
+  categoryBaton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: COLORS.gray[100],
+    borderRadius: BORDER_RADIUS.full,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    gap: SPACING.sm,
+  },
+  categoryBatonText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+  },
+  categoryModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.lg,
+  },
+  categoryModalCard: {
+    width: '90%',
+    maxWidth: 720,
+    height: '85%',
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
+    ...SHADOWS.sm,
+  },
+  categoryModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.gray[200],
+  },
+  categoryModalTitle: {
+    fontSize: FONTS.sizes.lg,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+  },
+  categoryModalClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.gray[100],
   },
   companyTabs: {
     alignItems: 'center',
