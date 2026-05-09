@@ -47,9 +47,8 @@ type SellerPageProps = {
 const SellerPage: React.FC<SellerPageProps> = ({ embedded = false, onEmbeddedBack }) => {
   const navigation = useNavigation<NavigationProp>();
   const { t } = useTranslation();
-  const { mutate: fetchDashboardSummary, summary, directTeam, isLoading, isError, error } = useSellerDashboardSummaryMutation();
+  const { mutate: fetchDashboardSummary, summary, isError, error } = useSellerDashboardSummaryMutation();
   const [sellerInfos, setSellerInfos] = useState<Seller[]>([]);
-  const [teamLoading, setTeamLoading] = useState<boolean>(false);
   const [teamError, setTeamError] = useState<string | null>(null);
   const localizeSellerError = useCallback(
     (rawMessage: string | null | undefined) => {
@@ -57,7 +56,7 @@ const SellerPage: React.FC<SellerPageProps> = ({ embedded = false, onEmbeddedBac
       if (!rawMessage) return fallback;
       const normalized = rawMessage.trim().toLowerCase();
       if (normalized.includes('seller access required')) {
-        return t('sellerInfo.orderData.sellerAccessRequired') || fallback;
+        return '';
       }
       return rawMessage;
     },
@@ -84,7 +83,6 @@ const SellerPage: React.FC<SellerPageProps> = ({ embedded = false, onEmbeddedBac
 
   useEffect(() => {
     const fetchDirectTeam = async () => {
-      setTeamLoading(true);
       setTeamError(null);
       try {
         const token = await getStoredToken();
@@ -124,8 +122,6 @@ const SellerPage: React.FC<SellerPageProps> = ({ embedded = false, onEmbeddedBac
         const message = err instanceof Error ? localizeSellerError(err.message) : localizeSellerError('Failed to load direct team.');
         setTeamError(message);
         setSellerInfos([]);
-      } finally {
-        setTeamLoading(false);
       }
     };
 
@@ -350,19 +346,9 @@ const SellerPage: React.FC<SellerPageProps> = ({ embedded = false, onEmbeddedBac
 
         {renderCards()}
         
-        {isLoading && (
-          <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>{t('sellerInfo.loadingSummary') || 'Loading summary...'}</Text>
-          </View>
-        )}
-        {isError && error ? (
+        {isError && error && localizeSellerError(error) ? (
           <View style={styles.loadingContainer}>
             <Text style={styles.loadingText}>{localizeSellerError(error)}</Text>
-          </View>
-        ) : null}
-        {teamLoading ? (
-          <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>{t('sellerInfo.loadingSummary') || 'Loading summary...'}</Text>
           </View>
         ) : null}
         {teamError ? (

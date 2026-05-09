@@ -139,6 +139,7 @@ const ProductDetailScreen: React.FC = () => {
   // Single-fire guard for the auto-trigger useEffect below. Declared here
   // (above the addToCart hook) so the hook's onError closure can reset it.
   const autoAddTriggeredRef = useRef(false);
+  const autoBuyTriggeredRef = useRef(false);
 
   // Scroll-based header animation
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -262,10 +263,10 @@ const ProductDetailScreen: React.FC = () => {
   // Add to cart mutation (for Add to Cart button)
   const { mutate: addToCart, isLoading: isAddingToCart } = useAddToCartMutation({
     onSuccess: (data) => {
-      // console.log('Product added to cart successfully:', data);
       showToast(t('product.addedToCart'), 'success');
-      // Navigate to cart screen
-      navigation.navigate('Cart');
+      // Stay on the product page; clear the post-login loader if it was
+      // shown so the user falls back to the regular product detail view.
+      setIsAutoCartFlow(false);
     },
     onError: (error) => {
       // console.error('Failed to add product to cart:', error);
@@ -397,6 +398,7 @@ const ProductDetailScreen: React.FC = () => {
     },
     onError: (error) => {
       showToast(error || t('product.failedToProceed'), 'error');
+      autoBuyTriggeredRef.current = false;
     },
   });
 
@@ -419,7 +421,7 @@ const ProductDetailScreen: React.FC = () => {
     }
 
     const isLiked = isProductLiked(product);
-    const source = (product as any).source || selectedPlatform || '1688';
+    const source = (product as any).source || sourceRef.current || selectedPlatform || '1688';
     const country = locale === 'zh' ? 'en' : locale;
 
     if (isLiked) {
@@ -486,12 +488,21 @@ const ProductDetailScreen: React.FC = () => {
       ];
       
       const response = await productsApi.followStoreWithProducts(shopId, shopName, products, platform);
-      
+
       if (response.success) {
         setIsStoreFollowed(true);
         showToast(t('live.storeFollowedSuccessfully'), 'success');
       } else {
         showToast(response.message || t('live.failedToFollowStore'), 'error');
+      }
+
+      if (shopId) {
+        navigation.navigate('SellerProfile', {
+          sellerId: shopId,
+          sellerName: shopName,
+          source: source,
+          country: locale === 'zh' ? 'en' : locale,
+        });
       }
     } catch (error) {
       showToast(t('live.failedToFollowStore'), 'error');
@@ -964,8 +975,12 @@ const ProductDetailScreen: React.FC = () => {
           subject: apiProduct.subject || '',
           subjectTrans: apiProduct.subjectTrans || apiProduct.subject || '',
           promotionUrl: apiProduct.promotionUrl || '',
+          // Live-commerce internal seller id. The live channel's
+          // /live-commerce/sellers/:sellerId endpoint keys off this Mongo
+          // _id rather than the 1688 sellerOpenId.
+          ownerSellerId: apiProduct.ownerSellerId || '',
         };
-        
+
         setProduct(mappedProduct);
         setDetailFetched(true);
         // Mark this productId as fetched
@@ -1072,14 +1087,150 @@ const ProductDetailScreen: React.FC = () => {
   // cancel cleanup ran on every product mutation, which prevented the
   // related-products fetch from ever firing in some cases.
   const relatedFetchedForRef = useRef<string | null>(null);
+  // For live-commerce products, the "Recommended Products" section shows
+  // OTHER products from the same live-commerce seller via the live channel
+  // endpoint (/live-commerce/sellers/:sellerId), keyed by the live channel's
+  // internal `ownerSellerId` (Mongo _id) — the 1688 `sellerOpenId` is empty
+  // for ownmall products. The mapped output matches the Product shape that
+  // the related-recommendations onSuccess produces so the rest of the
+  // rendering / pagination code is unchanged.
+  const fetchSellerOffersAsRelated = useCallback(async (page: number) => {
+    const currentProductId = (productId || offerId)?.toString() || '';
+    const liveSellerId = (product as any)?.ownerSellerId || '';
+    if (!liveSellerId) {
+      setRelatedProductsHasMore(false);
+      isLoadingMoreRelatedRef.current = false;
+      return;
+    }
+
+    try {
+      const response = await productsApi.getLiveCommerceSellerDetail(liveSellerId, {
+        page,
+        pageSize: 10,
+      });
+      if (!response.success || !response.data) {
+        setRelatedProductsHasMore(false);
+        isLoadingMoreRelatedRef.current = false;
+        return;
+      }
+
+      const items = response.data.items || [];
+      const mapped: Product[] = items.map((item: any) => {
+        const id = item.productId || item.product?.id || item.id || '';
+        const itemTitle =
+          item.product?.titleKo || item.product?.titleEn || item.product?.titleZh ||
+          item.liveTitle || '';
+        return {
+          id: String(id),
+          externalId: String(id),
+          offerId: String(id),
+          name: itemTitle,
+          description: '',
+          price: parseFloat(String(item.product?.price ?? 0)),
+          originalPrice: parseFloat(String(item.product?.price ?? item.product?.promotionPrice ?? 0)),
+          image: item.product?.imageUrl || item.imageUrl || item.mediaUrl || '',
+          images: [item.product?.imageUrl || item.imageUrl || item.mediaUrl || ''].filter(Boolean),
+          category: { id: '', name: '', icon: '', image: '', subcategories: [] },
+          subcategory: '',
+          brand: '',
+          seller: {
+            id: liveSellerId,
+            name: '',
+            avatar: '',
+            rating: 0,
+            reviewCount: 0,
+            isVerified: false,
+            followersCount: 0,
+            description: '',
+            location: '',
+            joinedDate: new Date(),
+          },
+          rating: item.reviewScore || 0,
+          reviewCount: item.reviewNumbers || 0,
+          rating_count: item.reviewNumbers || 0,
+          inStock: true,
+          stockCount: typeof item.stockCount === 'number' ? item.stockCount : 0,
+          tags: [],
+          isNew: false,
+          isFeatured: false,
+          isOnSale: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          orderCount: item.itemsSold || 0,
+          repurchaseRate: '',
+          mainVideo: '',
+          rawVariants: [],
+          attributes: [],
+          productSkuInfos: [],
+          productSaleInfo: {},
+          productShippingInfo: {},
+          sellerDataInfo: {},
+          minOrderQuantity: 1,
+          unitInfo: {},
+          subject: itemTitle,
+          subjectTrans: itemTitle,
+          promotionUrl: '',
+          source: 'live-commerce',
+          liveCode:
+            item.liveCode ||
+            item.live_code ||
+            item.liveCommerceCode ||
+            item.product?.liveCode ||
+            undefined,
+        } as any;
+      })
+      // Drop the product the user is currently viewing.
+      .filter((p: any) => p.externalId && p.externalId !== currentProductId);
+
+      const productKey = (p: any): string =>
+        (p?.offerId?.toString?.()) || (p?.externalId?.toString?.()) || (p?.id?.toString?.()) || '';
+
+      if (page === 1) {
+        setRelatedProducts(mapped);
+      } else {
+        setRelatedProducts(prev => {
+          const seen = new Set(prev.map(productKey).filter(Boolean));
+          const fresh = mapped.filter((p: any) => {
+            const k = productKey(p);
+            if (!k || seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          });
+          return [...prev, ...fresh];
+        });
+      }
+
+      const pagination = response.data.pagination;
+      const totalPages = pagination
+        ? Math.ceil((pagination.total || 0) / (pagination.pageSize || 10))
+        : 0;
+      const hasMore = !!pagination && (pagination.page || 1) < totalPages;
+      setRelatedProductsHasMore(hasMore);
+      isLoadingMoreRelatedRef.current = false;
+    } catch {
+      setRelatedProductsHasMore(false);
+      isLoadingMoreRelatedRef.current = false;
+    }
+  }, [product, productId, offerId]);
+
   useEffect(() => {
     const currentProductId = (productId || offerId)?.toString();
     if (!currentProductId || !product || !detailFetched) return;
-    if (relatedFetchedForRef.current === currentProductId) return;
-    relatedFetchedForRef.current = currentProductId;
 
     const language = locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en';
     const fetchSource = sourceRef.current;
+    const isLive = routeSource === 'live-commerce' || routeSource === 'live';
+
+    // For live, the dedup key includes ownerSellerId so the effect re-fires
+    // once seller info populates (initial productData payload may arrive
+    // without it).
+    const liveSellerIdNow = (product as any)?.ownerSellerId || '';
+    const dedupKey = isLive
+      ? `${currentProductId}|${liveSellerIdNow}`
+      : currentProductId;
+    if (relatedFetchedForRef.current === dedupKey) return;
+    if (isLive && !liveSellerIdNow) return; // Wait for seller info to land.
+    relatedFetchedForRef.current = dedupKey;
 
     // Reset pagination state for the new product.
     setRelatedProductsPage(1);
@@ -1088,7 +1239,9 @@ const ProductDetailScreen: React.FC = () => {
     relatedProductsPageRef.current = 1;
     isLoadingMoreRelatedRef.current = false;
 
-    if (fetchSource === 'taobao') {
+    if (isLive) {
+      fetchSellerOffersAsRelated(1);
+    } else if (fetchSource === 'taobao') {
       const searchKeyword = product.category?.name || '';
       if (searchKeyword) {
         searchProducts(searchKeyword, fetchSource, language, 1, 20, undefined, undefined, undefined, undefined, false);
@@ -1105,13 +1258,18 @@ const ProductDetailScreen: React.FC = () => {
     if (relatedProductsPage <= 1) return;
     if (!relatedProductsHasMore) return;
     const fetchSource = sourceRef.current;
-    if (fetchSource === 'taobao') return; // Taobao path uses a different feed.
+    const isLive = routeSource === 'live-commerce' || routeSource === 'live';
+    if (!isLive && fetchSource === 'taobao') return; // Taobao path uses a different feed.
     const currentProductId = (productId || offerId)?.toString();
     if (!currentProductId) return;
     const language = locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en';
     relatedProductsPageRef.current = relatedProductsPage;
     isLoadingMoreRelatedRef.current = true;
-    fetchRelatedRecommendations(currentProductId, relatedProductsPage, 10, language, fetchSource);
+    if (isLive) {
+      fetchSellerOffersAsRelated(relatedProductsPage);
+    } else {
+      fetchRelatedRecommendations(currentProductId, relatedProductsPage, 10, language, fetchSource);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [relatedProductsPage, relatedProductsHasMore]);
   
@@ -1603,6 +1761,7 @@ const ProductDetailScreen: React.FC = () => {
   // non-null; the ref bridges the auto-trigger useEffect (which lives
   // here, above the return) to that later definition.
   const handleAddToCartRef = useRef<() => void>(() => {});
+  const handleBuyNowRef = useRef<() => void>(() => {});
 
   // Auto-execute add-to-cart when the user returns from the login screen
   // after being prompted by the unauthenticated branch in handleAddToCart.
@@ -1631,6 +1790,33 @@ const ProductDetailScreen: React.FC = () => {
   }, [
     (route.params as any)?.autoAddToCart,
     isAutoCartFlow,
+    isAuthenticated,
+    detailFetched,
+    product,
+    canAddToCart,
+  ]);
+
+  // Auto-execute Buy Now when the user returns from Login/Signup after
+  // being prompted from the Buy Now button. Mirrors the autoAddToCart
+  // flow so the user is taken directly to the purchase page without
+  // tapping Buy Now again.
+  useEffect(() => {
+    const arrivedFromAuth = Boolean((route.params as any)?.autoBuyNow);
+
+    if (
+      !autoBuyTriggeredRef.current &&
+      arrivedFromAuth &&
+      isAuthenticated &&
+      detailFetched &&
+      product &&
+      canAddToCart
+    ) {
+      autoBuyTriggeredRef.current = true;
+      navigation.setParams({ autoBuyNow: undefined } as any);
+      handleBuyNowRef.current();
+    }
+  }, [
+    (route.params as any)?.autoBuyNow,
     isAuthenticated,
     detailFetched,
     product,
@@ -2017,6 +2203,8 @@ const ProductDetailScreen: React.FC = () => {
     }
   };
 
+  handleBuyNowRef.current = handleBuyNow;
+
   const handleCartIconPress = () => {
     if (!isAuthenticated) {
       return;
@@ -2109,16 +2297,18 @@ const ProductDetailScreen: React.FC = () => {
           />
         </Animated.View>
 
-        {/* Camera icon — fades out on scroll */}
-        <Animated.View style={[styles.headerCameraIcon, { opacity: cameraIconOpacity }]}>
-          <TouchableOpacity
-            style={styles.headerButton}
-            onPress={handleSimilarImageSearch}
-            disabled={isFetchingBase64}
-          >
-            <SearchImageIcon width={30} height={30} color={COLORS.black}/>
-          </TouchableOpacity>
-        </Animated.View>
+        {/* Camera icon — fades out on scroll. Hidden for live-commerce. */}
+        {route.params?.source !== 'live-commerce' && (
+          <Animated.View style={[styles.headerCameraIcon, { opacity: cameraIconOpacity }]}>
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={handleSimilarImageSearch}
+              disabled={isFetchingBase64}
+            >
+              <SearchImageIcon width={30} height={30} color={COLORS.black}/>
+            </TouchableOpacity>
+          </Animated.View>
+        )}
 
         <View style={styles.headerRight}>
           <TouchableOpacity style={styles.headerButton} onPress={handleShare}>
@@ -2442,7 +2632,7 @@ const ProductDetailScreen: React.FC = () => {
   );
 
 
-  const renderVariationSelector = (variationType: { name: string; options: Array<{ value: string; image?: string; [key: string]: any }> }, index: number) => {
+  const renderVariationSelector = (variationType: { name: string; options: Array<{ value: string; image?: string; [key: string]: any }> }) => {
     const variationName = variationType.name.toLowerCase();
 
     // Get selected value from selectedVariations state
@@ -2545,11 +2735,13 @@ const ProductDetailScreen: React.FC = () => {
       }
     };
 
-    // First variation type shows with images (if available), others show only text
-    const isFirstVariation = index === 0;
+    // Color variations render with images; Size (and any other type) render
+    // as text-only buttons. Identify by the i18n-mapped key so the API's
+    // raw type name (颜色 / 색상 / etc.) doesn't matter.
+    const isColorVariation = i18nKey === 'color';
     const hasImages = variationType.options.some((opt: any) => opt.image);
 
-    if (isFirstVariation) {
+    if (isColorVariation) {
       // Render first variation type with images (if available) and text
       return (
         <View style={styles.selectorContainer}>
@@ -2633,14 +2825,26 @@ const ProductDetailScreen: React.FC = () => {
 
   const renderAllVariations = () => {
     const variationTypes = getVariationTypes();
-    
+
     if (variationTypes.length === 0) {
       return null;
     }
-    
-    return variationTypes.map((variationType, index) => (
-      <View key={index} style={{ paddingBottom: SPACING.md}}>
-        {renderVariationSelector(variationType, index)}
+
+    // Sort so Color always renders above Size. Other variation types keep
+    // their original API order, after Color and before Size.
+    const COLOR_NAMES = new Set(['color', 'colour', '颜色', '色彩', '色', '색상', '색깔', '컬러']);
+    const SIZE_NAMES = new Set(['size', '尺码', '尺寸', '사이즈', '크기']);
+    const rank = (name: string) => {
+      const lower = name.toLowerCase();
+      if (COLOR_NAMES.has(lower) || COLOR_NAMES.has(name)) return 0;
+      if (SIZE_NAMES.has(lower) || SIZE_NAMES.has(name)) return 2;
+      return 1;
+    };
+    const ordered = [...variationTypes].sort((a, b) => rank(a.name) - rank(b.name));
+
+    return ordered.map((variationType, index) => (
+      <View key={index} style={{ paddingBottom: SPACING.md }}>
+        {renderVariationSelector(variationType)}
       </View>
     ));
   };
@@ -3098,14 +3302,18 @@ const ProductDetailScreen: React.FC = () => {
       {/* Bottom row with main action buttons */}
       <View style={styles.mainActionRow}>
         <View style={{flexDirection: 'row', alignItems: 'center', gap: SPACING.sm}}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.cameraButton}
             onPress={() => {
+              if (route.params?.source === 'live-commerce' || route.params?.source === 'live') {
+                navigation.navigate('FollowedStore');
+                return;
+              }
               const sellerId = product.seller?.id || (product as any).sellerOpenId || '';
-              const shopId = source === 'taobao' 
+              const shopId = source === 'taobao'
                 ? (product.seller?.id || (product as any).shop_id || '')
                 : sellerId;
-              
+
               if (shopId) {
                 navigation.navigate('SellerProfile', {
                   sellerId: shopId,
@@ -3170,7 +3378,10 @@ const ProductDetailScreen: React.FC = () => {
               pulseStock();
               if (isAddingToCartForBuyNow) return;
               if (!isAuthenticated) {
-                // Navigate to login page with return navigation info (same as Add to Cart)
+                // Navigate to login page with return navigation info. The
+                // autoBuyNow flag tells the post-auth useEffect to re-fire
+                // Buy Now once the user is authenticated and the product is
+                // ready, so they land directly on the purchase page.
                 navigation.navigate('Auth', {
                   screen: 'Login',
                   params: {
@@ -3179,6 +3390,7 @@ const ProductDetailScreen: React.FC = () => {
                       productId: productId || offerId,
                       offerId: offerId,
                       productData: product,
+                      autoBuyNow: true,
                     },
                   },
                 } as never);
@@ -3355,7 +3567,7 @@ const ProductDetailScreen: React.FC = () => {
         {renderPriceRow()}
         {renderAllVariations()}
         {/* {renderServiceCommitment()} */}
-        {routeSource !== 'live-commerce' && routeSource !== 'live' && renderSellerInfo()}
+        {renderSellerInfo()}
         {/* {renderReviews()} */}
         {renderProductDetails()}
         {renderRelatedProducts()}

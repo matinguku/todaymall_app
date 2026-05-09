@@ -1502,6 +1502,7 @@ export const productsApi = {
                 // Root-level fields not in productData
                 companyName: ownProduct.companyName || '',
                 sellerOpenId: ownProduct.sellerOpenId || '',
+                ownerSellerId: ownProduct.ownerSellerId || '',
                 promotionUrl: ownProduct.promotionUrl || '',
                 tradeScore: ownProduct.sellerRating || 0,
                 soldOut: String(ownProduct.soldAmount || 0),

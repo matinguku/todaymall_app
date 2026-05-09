@@ -21,6 +21,7 @@ import { RootStackParamList, Address, CustomSwitchProps } from '../../../../../t
 import { useAuth } from '../../../../../context/AuthContext';
 import { useUpdateAddressMutation } from '../../../../../hooks/useUpdateAddressMutation';
 import { useDeleteAddressMutation } from '../../../../../hooks/useDeleteAddressMutation';
+import { useTranslation } from '../../../../../hooks/useTranslation';
 
 type EditAddressScreenNavigationProp = StackNavigationProp<RootStackParamList, 'EditAddress'>;
 type EditAddressScreenRouteProp = RouteProp<RootStackParamList, 'EditAddress'>;
@@ -31,6 +32,7 @@ const EditAddressScreen: React.FC = () => {
   const fromShippingSettings = route.params?.fromShippingSettings || false;
   const { address } = route.params;
   const { user, updateUser } = useAuth();
+  const { t } = useTranslation();
   
   const [formData, setFormData] = useState({
     recipient: (address as any).name || address.street || '',
@@ -82,12 +84,12 @@ const EditAddressScreen: React.FC = () => {
         }
       }
       
-      Alert.alert('Success', 'Address updated successfully', [
-        { text: 'OK', onPress: () => navigation.goBack() },
+      Alert.alert(t('profile.success'), t('profile.addressUpdatedSuccessfully'), [
+        { text: t('profile.ok'), onPress: () => navigation.goBack() },
       ]);
     },
     onError: (errorMessage) => {
-      Alert.alert('Error', errorMessage);
+      Alert.alert(t('profile.error'), errorMessage);
     },
   });
   
@@ -104,18 +106,18 @@ const EditAddressScreen: React.FC = () => {
       const updatedAddresses = currentAddresses.filter(addr => addr.id !== address.id);
       updateUser({ addresses: updatedAddresses });
       
-      Alert.alert('Success', 'Address deleted successfully', [
-        { text: 'OK', onPress: () => navigation.goBack() },
+      Alert.alert(t('profile.success'), t('profile.addressDeletedSuccessfully'), [
+        { text: t('profile.ok'), onPress: () => navigation.goBack() },
       ]);
     },
     onError: (errorMessage) => {
-      Alert.alert('Error', errorMessage);
+      Alert.alert(t('profile.error'), errorMessage);
     },
   });
 
   const handleSaveAddress = () => {
     if (!formData.recipient || !formData.contact || !formData.personalCustomsCode || !formData.detailedAddress || !formData.zipCode) {
-      Alert.alert('Missing Information', 'Please fill in all required fields.');
+      Alert.alert(t('profile.missingInformation'), t('profile.pleaseFillinAllRequiredFields'));
       return;
     }
 
@@ -137,12 +139,12 @@ const EditAddressScreen: React.FC = () => {
 
   const handleDeleteAddress = () => {
     Alert.alert(
-      'Delete Address',
-      'Are you sure you want to delete this address?',
+      t('profile.deleteAddress'),
+      t('profile.addressDeleteConfirmSingle'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('profile.cancel'), style: 'cancel' },
         {
-          text: 'Delete',
+          text: t('profile.delete'),
           style: 'destructive',
           onPress: () => {
             // Call the delete address mutation
@@ -167,7 +169,7 @@ const EditAddressScreen: React.FC = () => {
       >
         <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
       </TouchableOpacity>
-      <Text style={styles.headerTitle}>Edit Address</Text>
+      <Text style={styles.headerTitle}>{t('profile.editAddress')}</Text>
       <TouchableOpacity
         style={styles.deleteButtonHeader}
         onPress={handleDeleteAddress}
@@ -245,13 +247,13 @@ const EditAddressScreen: React.FC = () => {
         <View style={styles.formContainer}>
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>
-              Recipient<Text style={styles.required}>*</Text>
+              {t('profile.recipient')}<Text style={styles.required}>*</Text>
             </Text>
             <TextInput
               style={styles.textInput}
               value={formData.recipient}
               onChangeText={(text) => setFormData(prev => ({ ...prev, recipient: text }))}
-              placeholder="Enter recipient name"
+              placeholder={t('profile.enterRecipientName')}
               placeholderTextColor={COLORS.gray[400]}
               editable={!isUpdating && !isDeleting}
             />
@@ -259,13 +261,13 @@ const EditAddressScreen: React.FC = () => {
 
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>
-              Contact Number<Text style={styles.required}>*</Text>
+              {t('profile.contactNumber')}<Text style={styles.required}>*</Text>
             </Text>
             <TextInput
               style={styles.textInput}
               value={formData.contact}
               onChangeText={(text) => setFormData(prev => ({ ...prev, contact: text }))}
-              placeholder="Enter your phone number"
+              placeholder={t('profile.enterPhoneNumber')}
               placeholderTextColor={COLORS.gray[400]}
               keyboardType="phone-pad"
               editable={!isUpdating && !isDeleting}
@@ -274,13 +276,13 @@ const EditAddressScreen: React.FC = () => {
 
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>
-              Detailed Address<Text style={styles.required}>*</Text>
+              {t('profile.detailedAddress')}<Text style={styles.required}>*</Text>
             </Text>
             <TextInput
               style={styles.textInput}
               value={formData.detailedAddress}
               onChangeText={(text) => setFormData(prev => ({ ...prev, detailedAddress: text }))}
-              placeholder="Enter detailed address"
+              placeholder={t('profile.enterDetailedAddress')}
               placeholderTextColor={COLORS.gray[400]}
               editable={!isUpdating && !isDeleting}
             />
@@ -288,13 +290,13 @@ const EditAddressScreen: React.FC = () => {
 
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>
-              Postal Code<Text style={styles.required}>*</Text>
+              {t('profile.postalCode')}<Text style={styles.required}>*</Text>
             </Text>
             <TextInput
               style={styles.textInput}
               value={formData.zipCode}
               onChangeText={(text) => setFormData(prev => ({ ...prev, zipCode: text }))}
-              placeholder="Enter postal code"
+              placeholder={t('profile.enterPostalCode')}
               placeholderTextColor={COLORS.gray[400]}
               keyboardType="numeric"
               editable={!isUpdating && !isDeleting}
@@ -303,25 +305,25 @@ const EditAddressScreen: React.FC = () => {
 
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>
-              Personal Customs Code<Text style={styles.required}>*</Text>
+              {t('profile.personalCustomsCode')}<Text style={styles.required}>*</Text>
             </Text>
             <TextInput
               style={styles.textInput}
               value={formData.personalCustomsCode}
               onChangeText={(text) => setFormData(prev => ({ ...prev, personalCustomsCode: text }))}
-              placeholder="Enter personal customs code"
+              placeholder={t('profile.enterPersonalCustomsCode')}
               placeholderTextColor={COLORS.gray[400]}
               editable={!isUpdating && !isDeleting}
             />
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Note</Text>
+            <Text style={styles.inputLabel}>{t('profile.note')}</Text>
             <TextInput
               style={[styles.textInput, styles.textArea]}
               value={formData.note}
               onChangeText={(text) => setFormData(prev => ({ ...prev, note: text }))}
-              placeholder="Enter delivery note"
+              placeholder={t('profile.enterDeliveryNote')}
               placeholderTextColor={COLORS.gray[400]}
               multiline
               numberOfLines={3}
@@ -337,7 +339,7 @@ const EditAddressScreen: React.FC = () => {
             disabled={isUpdating || isDeleting}
           >
             <View style={styles.primaryAddressRow}>
-              <Text style={styles.primaryAddressText}>Set as Primary Address</Text>
+              <Text style={styles.primaryAddressText}>{t('profile.setAsPrimaryAddress')}</Text>
               <View style={styles.checkbox}>
                 <CustomSwitch
                   value={isPrimary}
@@ -365,7 +367,7 @@ const EditAddressScreen: React.FC = () => {
                     inactiveColor={COLORS.gray[300]}
                   />
                 </View>
-                <Text style={styles.primaryAddressText}>Set as Store Address</Text>
+                <Text style={styles.primaryAddressText}>{t('profile.setAsStoreAddress')}</Text>
               </View>
             </TouchableOpacity>
           )}
@@ -380,7 +382,7 @@ const EditAddressScreen: React.FC = () => {
             {isDeleting ? (
               <ActivityIndicator size="small" color={COLORS.black} />
             ) : (
-              <Text style={styles.deleteButtonText}>Delete</Text>
+              <Text style={styles.deleteButtonText}>{t('profile.delete')}</Text>
             )}
           </TouchableOpacity>
           <TouchableOpacity 
@@ -392,7 +394,7 @@ const EditAddressScreen: React.FC = () => {
             {isUpdating ? (
               <ActivityIndicator size="small" color={COLORS.white} />
             ) : (
-              <Text style={styles.saveButtonText}>Save</Text>
+              <Text style={styles.saveButtonText}>{t('profile.save')}</Text>
             )}
           </TouchableOpacity>
         </View>

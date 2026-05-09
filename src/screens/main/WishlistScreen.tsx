@@ -15,7 +15,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
 import { BackNavTouchableOpacity } from '../../components/BackNavTouchable';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import TuneIcon from '../../assets/icons/TuneIcon';
 import ImageSearchResultsModal from './searchScreen/ImageSearchResultsModal';
 
@@ -133,29 +133,51 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false, onEmb
   }, [locale]);
 
   const mapWishlistItem = useCallback((item: any) => {
-    const nameStr = resolveText(item.subjectMultiLang ?? item.title) || '';
-    const storeNameStr = resolveText(item.storeNameMultiLang ?? item.storeName) || '';
-    const primaryImage =
-      item.imageUrl ||
-      item.image ||
-      item.photoUrl ||
-      item.thumbnail ||
-      item.thumbnailUrl ||
-      item.mainImage ||
-      item.productImage ||
-      item.productImageUrl ||
+    // Some backend responses nest the product fields under `product` /
+    // `productData` (ownmall shape), so look there too. `pick(field)` returns
+    // the first non-empty value across the candidate paths.
+    const pick = (...paths: any[]) => paths.find((v) => v !== undefined && v !== null && v !== '');
+    const nested = item?.product || item?.productData || {};
+
+    // Ownmall / live-commerce items expose titles as `titleKo` / `titleEn` /
+    // `titleZh` rather than the `subjectMultiLang` shape used by 1688 items.
+    // Build a multi-lang object from whichever fields are present so the
+    // localized title resolves for both shapes.
+    const titleKo = pick(item?.titleKo, nested?.titleKo);
+    const titleEn = pick(item?.titleEn, nested?.titleEn);
+    const titleZh = pick(item?.titleZh, nested?.titleZh);
+    const ownMallTitle =
+      (titleKo || titleEn || titleZh)
+        ? getLocalizedText({ en: titleEn || '', ko: titleKo || '', zh: titleZh || '' }, locale)
+        : '';
+    const nameStr =
+      resolveText(item.subjectMultiLang ?? item.title ?? nested.subjectMultiLang ?? nested.title) ||
+      ownMallTitle ||
+      pick(item.subject, nested.subject, item.productTitle, nested.productTitle, item.name, nested.name) ||
       '';
+    const storeNameStr = resolveText(item.storeNameMultiLang ?? item.storeName ?? nested.storeNameMultiLang ?? nested.storeName) || '';
+    const primaryImage =
+      pick(
+        item.imageUrl, item.image, item.photoUrl, item.thumbnail, item.thumbnailUrl,
+        item.mainImage, item.productImage, item.productImageUrl,
+        nested.imageUrl, nested.image, nested.photoUrl, nested.thumbnail, nested.thumbnailUrl,
+        nested.mainImage, nested.productImage, nested.productImageUrl,
+      ) || '';
+    const externalIdStr =
+      (
+        pick(item.externalId, item.offerId, item.productId, nested.offerId, nested.productId, nested.externalId)
+      )?.toString() || '';
     return {
-      id: item.externalId?.toString() || item._id?.toString() || '',
+      id: externalIdStr || item._id?.toString() || '',
       _id: item._id ?? '',
-      externalId: item.externalId?.toString() || '',
-      offerId: item.externalId?.toString() || '',
+      externalId: externalIdStr,
+      offerId: externalIdStr,
       name: nameStr,
       title: nameStr,
       image: primaryImage,
       images: primaryImage ? [primaryImage] : [],
-      price: item.price ?? 0,
-      originalPrice: item.price ?? 0,
+      price: pick(item.price, item.salePriceKrw, item.priceKrw, item.productPrice, nested.price, nested.salePriceKrw, nested.priceKrw, nested.productPrice) ?? 0,
+      originalPrice: pick(item.price, item.tagPriceKrw, item.salePriceKrw, item.priceKrw, item.productPrice, nested.price, nested.tagPriceKrw, nested.salePriceKrw, nested.priceKrw, nested.productPrice) ?? 0,
       description: '',
       category: { id: '', name: '', icon: '', image: '', subcategories: [] },
       subcategory: '',
@@ -167,14 +189,14 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false, onEmb
       createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
       updatedAt: item.updatedAt ? new Date(item.updatedAt) : new Date(),
       orderCount: 0,
-      source: item.source || '1688',
+      source: item.source || nested.source || '1688',
       purchased: item.purchased, isDiscounted: item.isDiscounted,
       isExpired: item.isExpired, isLowStock: item.isLowStock,
       productDetailFetchedAt: item.productDetailFetchedAt,
       storeId: item.storeId, storeName: storeNameStr,
       originalData: item,
     };
-  }, [resolveText]);
+  }, [resolveText, locale]);
 
   const getWishlistImageUri = useCallback((item: any): string => {
     return (
@@ -192,16 +214,26 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false, onEmb
     );
   }, []);
 
-  const buildWishlistParams = (grouped = false) => ({
-    discounted: false,
-    sort: sortBy === 'newest' ? 'recently_saved' : 'earliest',
-    timeFilter:
+  // Only attach params the user actually picked. The /wishlist endpoint
+  // scopes responses to 1688 when filter params are present, so the default
+  // (no params) is what surfaces ownmall/live items alongside 1688.
+  const buildWishlistParams = (grouped = false) => {
+    const params: any = {};
+    if (sortBy && sortBy !== 'newest') {
+      params.sort = sortBy === 'oldest' ? 'earliest' : sortBy;
+    }
+    if (
       tempFilters.collectionTime.length > 0 &&
       WISHLIST_TIME_FILTER_KEYS.includes(tempFilters.collectionTime[0] as WishlistTimeFilterKey)
-        ? tempFilters.collectionTime[0]
-        : '90d',
-    ...(grouped ? { groupByStore: true } : {}),
-  });
+    ) {
+      params.timeFilter = tempFilters.collectionTime[0];
+    }
+    if (tempFilters.discoverDeals.includes('Discounted')) {
+      params.discounted = true;
+    }
+    if (grouped) params.groupByStore = true;
+    return params;
+  };
 
   const collectionTimeLabel = (key: string) => {
     if (WISHLIST_TIME_FILTER_KEYS.includes(key as WishlistTimeFilterKey)) {
@@ -330,6 +362,16 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false, onEmb
     groupByStore,
     fetchWishlist,
   ]);
+
+  // Refetch on screen focus so newly-added items (e.g. live products added
+  // from ProductDetail) appear without remounting.
+  useFocusEffect(
+    useCallback(() => {
+      if (!isAuthenticated) return;
+      fetchWishlist(buildWishlistParams(groupByStore));
+      refreshExternalIds();
+    }, [isAuthenticated, fetchWishlist, groupByStore, refreshExternalIds])
+  );
 
   // Delete from wishlist mutation
   const { mutate: deleteFromWishlist } = useDeleteFromWishlistMutation({

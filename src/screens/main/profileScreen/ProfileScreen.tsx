@@ -452,11 +452,9 @@ const ProfileScreen: React.FC = () => {
         if (!isAuthenticated || isGuest || !user) return;
         try {
           const [wishlistRes, viewedRes, depositRes] = await Promise.allSettled([
-            wishlistApi.getWishlist({
-              discounted: false,
-              sort: 'recently_saved',
-              timeFilter: '90d',
-            }),
+            // No params: server returns the full list across sources (1688 +
+            // ownmall/live). Filter params would scope the response to 1688.
+            wishlistApi.getWishlist(),
             productsApi.getRecentlyViewedProducts(100),
             depositApi.getBalance(),
           ]);

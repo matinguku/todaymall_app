@@ -117,19 +117,18 @@ export const wishlistApi = {
         }
       }
 
-      const discounted = params?.discounted ?? true;
-      const options = params?.options ?? '';
-      const sort = params?.sort ?? 'recently_saved';
-      const timeFilter = params?.timeFilter ?? '90d';
-      const queryParams: Record<string, string> = {
-        discounted: String(discounted),
-        options,
-        sort,
-        timeFilter,
-      };
+      // The /wishlist endpoint scopes results by `source` when filter params
+      // (discounted/sort/timeFilter) are present, returning only 1688 items.
+      // Omitting these params returns the full list across sources (1688 +
+      // ownmall/live), so we only attach params the caller explicitly set.
+      const queryParams: Record<string, string> = {};
+      if (params?.discounted !== undefined) queryParams.discounted = String(params.discounted);
+      if (params?.options) queryParams.options = params.options;
+      if (params?.sort) queryParams.sort = params.sort;
+      if (params?.timeFilter) queryParams.timeFilter = params.timeFilter;
       if (params?.groupByStore) queryParams.groupByStore = 'true';
       const query = new URLSearchParams(queryParams).toString();
-      const url = `${API_BASE_URL}/wishlist?${query}`;
+      const url = query ? `${API_BASE_URL}/wishlist?${query}` : `${API_BASE_URL}/wishlist`;
       const signatureHeaders = await buildSignatureHeaders('GET', url);
 
       const response = await axios.get(url, {
@@ -139,8 +138,6 @@ export const wishlistApi = {
           ...signatureHeaders,
         },
       });
-
-      // console.log('Get wishlist response:', response.data);
 
       if (!response.data || !response.data.data) {
         return {

@@ -560,8 +560,8 @@ const PopularItemCard: React.FC<{ item: any; locale: 'en' | 'ko' | 'zh'; rank?: 
             {title}
           </Text>
           <View style={styles.popularBottomStripPriceRow}>
-            <Text style={styles.popularStripPrice}>{formatPriceKRW(price)}</Text>
-            <Text style={styles.popularStripShopNow}>{t('live.shopNow').replace('{arrow}', '>')}</Text>
+            <Text style={styles.popularStripPrice} numberOfLines={1}>{formatPriceKRW(price)}</Text>
+            <Text style={styles.popularStripShopNow} numberOfLines={1}>{t('live.shopNow').replace('{arrow}', '>')}</Text>
           </View>
         </View>
       </View>
@@ -2139,13 +2139,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
+    gap: SPACING.xs,
   },
   popularStripPrice: {
+    flex: 1,
+    minWidth: 0,
     fontSize: FONTS.sizes.md,
     fontWeight: '900',
     color: COLORS.white,
   },
   popularStripShopNow: {
+    flexShrink: 0,
     fontSize: FONTS.sizes.xs,
     fontWeight: '600',
     color: COLORS.red,

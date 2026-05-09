@@ -48,7 +48,7 @@ const SellerTeamInfo: React.FC<SellerTeamInfoProps> = ({ embedded = false, onEmb
       if (!rawMessage) return fallback;
       const normalized = rawMessage.trim().toLowerCase();
       if (normalized.includes('seller access required')) {
-        return t('sellerInfo.orderData.sellerAccessRequired') || fallback;
+        return '';
       }
       return rawMessage;
     },
@@ -163,7 +163,6 @@ const SellerTeamInfo: React.FC<SellerTeamInfoProps> = ({ embedded = false, onEmb
         {/* Seller List */}
         <View style={styles.listContainer}>
           <Text style={styles.sectionTitle}>{t('sellerInfo.team.sectionTitle')}</Text>
-          {isLoading ? <Text style={styles.infoText}>{t('sellerInfo.loadingSummary') || 'Loading summary...'}</Text> : null}
           {error ? <Text style={styles.errorText}>{localizeSellerError(error)}</Text> : null}
           {!isLoading && !error && sellerData.length === 0 ? (
             <Text style={styles.infoText}>{t('sellerInfo.noData') || 'No direct team data.'}</Text>

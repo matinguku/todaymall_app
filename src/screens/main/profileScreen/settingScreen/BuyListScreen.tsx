@@ -1514,8 +1514,10 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
           <TouchableOpacity
             style={styles.secondaryButton}
             onPress={() => {
-              setRefundSelectedItems(new Set());
-              setRefundModalOrder(order);
+              navigation.navigate('OrderInquiry', {
+                orderId: order.id,
+                orderNumber: getDisplayOrderNumber(order),
+              });
             }}
           >
             <Text style={styles.secondaryButtonText}>{t('profile.refund') || 'Refund'}</Text>
@@ -1549,7 +1551,10 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
   // Check if a tab has orders with unread messages
   const filteredOrders = useMemo(
     () => {
-      let result = orders;
+      // Refund split-orders (e.g. orderNumber suffixed `-S0n`) come back
+      // with no items and would render as bare order-number cards. Drop
+      // any order that has nothing to display in the list.
+      let result = orders.filter(order => Array.isArray(order.items) && order.items.length > 0);
       // Filter by active tab (status group key)
       if (activeTab !== 'all') {
         result = result.filter(order => order.statusGroup === activeTab);

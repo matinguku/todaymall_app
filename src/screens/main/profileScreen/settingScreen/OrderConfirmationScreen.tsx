@@ -360,7 +360,7 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    padding: SPACING.xl,
+    padding: SPACING.xs,
     backgroundColor: COLORS.white,
   },
   successIcon: {

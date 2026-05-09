@@ -74,7 +74,7 @@ const SellerSalesRefundInfoScreen: React.FC<SellerSalesRefundInfoScreenProps> = 
       if (!rawMessage) return fallback;
       const normalized = rawMessage.trim().toLowerCase();
       if (normalized.includes('seller access required')) {
-        return t('sellerInfo.orderData.sellerAccessRequired') || fallback;
+        return '';
       }
       return rawMessage;
     },
@@ -270,7 +270,7 @@ const SellerSalesRefundInfoScreen: React.FC<SellerSalesRefundInfoScreenProps> = 
         <View style={styles.emptyBox}>
           <Text style={styles.emptyText}>{t('sellerInfo.orderData.loading')}</Text>
         </View>
-      ) : isError ? (
+      ) : isError && localizeSellerError(error) ? (
         <View style={styles.emptyBox}>
           <Text style={styles.emptyText}>{localizeSellerError(error)}</Text>
         </View>

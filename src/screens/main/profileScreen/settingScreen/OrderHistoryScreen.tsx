@@ -17,12 +17,14 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
 import { RootStackParamList, CustomerOrderDetails } from '../../../../types';
 import { useAuth } from '../../../../context/AuthContext';
+import { useTranslation } from '../../../../hooks/useTranslation';
 
 type OrderHistoryScreenNavigationProp = StackNavigationProp<RootStackParamList, 'OrderHistory'>;
 
 const OrderHistoryScreen: React.FC = () => {
   const navigation = useNavigation<OrderHistoryScreenNavigationProp>();
   const { user } = useAuth();
+  const { t } = useTranslation();
   
   const [orders, setOrders] = useState<CustomerOrderDetails[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,36 +132,36 @@ const OrderHistoryScreen: React.FC = () => {
       >
         <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
       </TouchableOpacity>
-      <Text style={styles.headerTitle}>Order History</Text>
+      <Text style={styles.headerTitle}>{t('profile.orderHistoryScreen.title')}</Text>
       <View style={styles.placeholder} />
     </View>
   );
 
   const renderTabs = () => (
     <View style={styles.tabsContainer}>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.tab, activeTab === 'all' && styles.activeTab]}
         onPress={() => setActiveTab('all')}
       >
-        <Text style={[styles.tabText, activeTab === 'all' && styles.activeTabText]}>All</Text>
+        <Text style={[styles.tabText, activeTab === 'all' && styles.activeTabText]}>{t('profile.orderHistoryScreen.tabAll')}</Text>
       </TouchableOpacity>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.tab, activeTab === 'sent' && styles.activeTab]}
         onPress={() => setActiveTab('sent')}
       >
-        <Text style={[styles.tabText, activeTab === 'sent' && styles.activeTabText]}>Sent</Text>
+        <Text style={[styles.tabText, activeTab === 'sent' && styles.activeTabText]}>{t('profile.orderHistoryScreen.tabSent')}</Text>
       </TouchableOpacity>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.tab, activeTab === 'cancelled' && styles.activeTab]}
         onPress={() => setActiveTab('cancelled')}
       >
-        <Text style={[styles.tabText, activeTab === 'cancelled' && styles.activeTabText]}>Cancelled</Text>
+        <Text style={[styles.tabText, activeTab === 'cancelled' && styles.activeTabText]}>{t('profile.orderHistoryScreen.tabCancelled')}</Text>
       </TouchableOpacity>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.tab, activeTab === 'confirmed' && styles.activeTab]}
         onPress={() => setActiveTab('confirmed')}
       >
-        <Text style={[styles.tabText, activeTab === 'confirmed' && styles.activeTabText]}>Confirmed</Text>
+        <Text style={[styles.tabText, activeTab === 'confirmed' && styles.activeTabText]}>{t('profile.orderHistoryScreen.tabConfirmed')}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -171,7 +173,7 @@ const OrderHistoryScreen: React.FC = () => {
     >
       <View style={styles.orderHeader}>
         <View style={styles.orderInfo}>
-          <Text style={styles.orderId}>Order #{item.id}</Text>
+          <Text style={styles.orderId}>{t('profile.orderHistoryScreen.orderNumber').replace('{id}', String(item.id))}</Text>
           <Text style={styles.orderDate}>
             {new Date(item.created_at).toLocaleDateString()}
           </Text>
@@ -186,25 +188,24 @@ const OrderHistoryScreen: React.FC = () => {
             styles.statusText,
             { color: getStatusColor(item.order_status) }
           ]}>
-            {item.order_status.charAt(0).toUpperCase() + item.order_status.slice(1)}
+            {t(`profile.orderHistoryScreen.status.${item.order_status}`)}
           </Text>
         </View>
       </View>
 
-      {/* For now, we'll show a simple representation of order items */}
       <View style={styles.orderItems}>
-        <Text style={styles.itemName}>Order Amount: ${item.order_amount}</Text>
-        <Text style={styles.itemQuantity}>Payment Status: {item.payment_status}</Text>
+        <Text style={styles.itemName}>{t('profile.orderHistoryScreen.orderAmount').replace('{amount}', `$${item.order_amount}`)}</Text>
+        <Text style={styles.itemQuantity}>{t('profile.orderHistoryScreen.paymentStatus').replace('{status}', String(item.payment_status))}</Text>
       </View>
 
       <View style={styles.orderFooter}>
-        <Text style={styles.totalLabel}>Total: ${item.order_amount}</Text>
+        <Text style={styles.totalLabel}>{t('profile.orderHistoryScreen.total').replace('{amount}', `$${item.order_amount}`)}</Text>
         <View style={styles.orderActions}>
           <TouchableOpacity style={styles.actionButton}>
-            <Text style={styles.actionText}>Track</Text>
+            <Text style={styles.actionText}>{t('profile.orderHistoryScreen.track')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionButton}>
-            <Text style={styles.actionText}>Reorder</Text>
+            <Text style={styles.actionText}>{t('profile.orderHistoryScreen.reorder')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -214,15 +215,15 @@ const OrderHistoryScreen: React.FC = () => {
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
       <Icon name="receipt-outline" size={80} color={COLORS.text.secondary} />
-      <Text style={styles.emptyTitle}>No orders yet</Text>
+      <Text style={styles.emptyTitle}>{t('profile.orderHistoryScreen.noOrders')}</Text>
       <Text style={styles.emptySubtitle}>
-        Your order history will appear here once you start shopping
+        {t('profile.orderHistoryScreen.emptySubtitle')}
       </Text>
       <TouchableOpacity
         style={styles.shopNowButton}
         onPress={() => navigation.navigate('Main' as never)}
       >
-        <Text style={styles.shopNowButtonText}>Start Shopping</Text>
+        <Text style={styles.shopNowButtonText}>{t('profile.orderHistoryScreen.startShopping')}</Text>
       </TouchableOpacity>
     </View>
   );

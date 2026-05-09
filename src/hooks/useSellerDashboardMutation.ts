@@ -184,6 +184,21 @@ export const useSellerDashboardMutation = (): UseSellerDashboardMutationResult =
         throw new Error(lastErrorMessage);
       }
 
+      // TEMP DEBUG: dump the first row's keys + any rebate-ish values so we
+      // can see exactly which field carries the per-order rebate amount.
+      if (parsedRows[0]) {
+        const r = parsedRows[0];
+        const rebateKeys = Object.keys(r).filter((k) => k.toLowerCase().includes('rebate') || k.toLowerCase().includes('commission') || k.toLowerCase().includes('reward'));
+        console.log('[seller-dashboard] firstRow keys:', Object.keys(r));
+        console.log('[seller-dashboard] firstRow rebateLikeKeys:', rebateKeys.map((k) => `${k}=${JSON.stringify(r[k])}`));
+        console.log('[seller-dashboard] firstRow rebate fields:', {
+          rebateKrw: r.rebateKrw,
+          teamRebateNetKrw: r.teamRebateNetKrw,
+          rebateAmountKrw: r.rebateAmountKrw,
+          rebate: r.rebate,
+        });
+      }
+
       const normalizedRows = parsedRows.map((row, index) => normalizeItem(row, index));
 
       setTotal(parsedTotal);

@@ -8,12 +8,13 @@ import {
   TextInput,
   ActivityIndicator,
   RefreshControl,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import Text from '../../../components/Text';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SCREEN_WIDTH, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SCREEN_WIDTH, BACK_NAVIGATION_HIT_SLOP, IMAGE_CONFIG } from '../../../constants';
 import ArrowBackIcon from '../../../assets/icons/ArrowBackIcon';
 import { useAppSelector } from '../../../store/hooks';
 import { productsApi } from '../../../services/productsApi';
@@ -22,11 +23,18 @@ import { useTranslation } from '../../../hooks/useTranslation';
 import SearchIcon from '../../../assets/icons/SearchIcon';
 import SensorsIcon from '../../../assets/icons/SensorsIcon';
 import ArrowDropDownIcon from '../../../assets/icons/ArrowDropDownIcon';
+import { formatPriceKRW } from '../../../utils/i18nHelpers';
 
 const CARD_GAP = SPACING.smmd;
 const CARD_WIDTH = (SCREEN_WIDTH - SPACING.md * 2 - CARD_GAP) / 2;
 
+const PRODUCT_GAP = 6;
+const PRODUCT_COLUMN_COUNT = 3;
+const PRODUCT_CARD_WIDTH =
+  (SCREEN_WIDTH - SPACING.md * 2 - PRODUCT_GAP * (PRODUCT_COLUMN_COUNT - 1)) / PRODUCT_COLUMN_COUNT;
+
 type SortOption = 'bestMatch' | 'viewers' | 'newest';
+type FilterTab = 'bestMatch' | 'sales' | 'newArrivals';
 const asArray = (value: any): any[] => (Array.isArray(value) ? value : []);
 
 // ─── Seller Card ──────────────────────────────────────────
@@ -109,6 +117,16 @@ const LiveSellerSearchScreen: React.FC = () => {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+
+  // Products-mode state — mirrors LiveSellerDetailScreen so the UI/UX is
+  // identical (search input, '전체 상품' category dropdown, filter tabs,
+  // date dropdown).
+  const [productSearchQuery, setProductSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedDate, setSelectedDate] = useState<string>('all');
+  const [activeFilter, setActiveFilter] = useState<FilterTab>('bestMatch');
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [showDateDropdown, setShowDateDropdown] = useState(false);
 
   // Fallback: load from live commerce main data when no search query
   const {
@@ -231,6 +249,115 @@ const LiveSellerSearchScreen: React.FC = () => {
     return result;
   }, [searchResults, fallbackSellers, hasSearched, sortOption]);
 
+  // Flatten the live products carried by each seller's `currentLiveStatuses`
+  // (or any compatible `products` array) so products mode can render them
+  // as a single grid like LiveSellerDetailScreen does for one seller.
+  const allLiveProducts = useMemo(() => {
+    const out: any[] = [];
+    displaySellers.forEach((seller: any) => {
+      const sellerId = seller._id || seller.id || seller.sellerId || '';
+      const sellerName = seller.userName || seller.nickname || seller.sellerName || '';
+      const statuses = Array.isArray(seller.currentLiveStatuses) ? seller.currentLiveStatuses : [];
+      const items = statuses.length > 0
+        ? statuses
+        : Array.isArray(seller.products) ? seller.products : [];
+      items.forEach((it: any, idx: number) => {
+        const id = it.productId || it.id || it._id || `${sellerId}-${idx}`;
+        const title =
+          it.productTitle?.[locale] ||
+          it.productTitle?.en ||
+          it.title ||
+          it.name ||
+          '';
+        const image = it.productImageUrl || it.imageUrl || it.image || '';
+        const price = parseFloat(String(it.price ?? it.salePrice ?? 0));
+        const originalPrice = parseFloat(String(it.originalPrice ?? it.tagPrice ?? 0));
+        const liveDateRaw =
+          it.liveDate || it.broadcastDate || it.startedAt || it.createdAt || null;
+        const liveDate = (() => {
+          if (!liveDateRaw) return '';
+          const d = new Date(liveDateRaw as any);
+          if (isNaN(d.getTime())) return '';
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        })();
+        out.push({
+          id: String(id),
+          externalId: String(id),
+          image,
+          price,
+          originalPrice,
+          title,
+          name: title,
+          category: it.category || it.categoryName || '',
+          liveDate,
+          soldCount: it.itemsSold || it.soldCount || 0,
+          reviewCount: it.reviewNumbers || it.reviewCount || 0,
+          createdAt: it.createdAt ? new Date(it.createdAt).getTime() : 0,
+          inStock: it.inStock !== false,
+          liveCode: it.liveCode || it.live_code || '',
+          sellerId,
+          sellerName,
+          source: 'live-commerce',
+        });
+      });
+    });
+    return out;
+  }, [displaySellers, locale]);
+
+  const productCategories = useMemo(() => {
+    const cats = new Set<string>();
+    allLiveProducts.forEach((p) => {
+      if (p.category) cats.add(p.category);
+    });
+    return ['all', ...Array.from(cats)];
+  }, [allLiveProducts]);
+
+  const dateGroups = useMemo(() => {
+    const set = new Set<string>();
+    allLiveProducts.forEach((p) => {
+      if (p.liveDate) set.add(p.liveDate);
+    });
+    return ['all', ...Array.from(set).sort((a, b) => b.localeCompare(a))];
+  }, [allLiveProducts]);
+
+  const formatDateLabel = useCallback(
+    (key: string) => {
+      if (key === 'all') return t('live.allDates') || 'All dates';
+      const d = new Date(`${key}T00:00:00`);
+      if (isNaN(d.getTime())) return key;
+      return d.toLocaleDateString();
+    },
+    [t],
+  );
+
+  const filteredProducts = useMemo(() => {
+    let result = [...allLiveProducts];
+
+    const keyword = productSearchQuery.trim().toLowerCase();
+    if (keyword) {
+      result = result.filter((p) =>
+        String(p.title || p.name || '').toLowerCase().includes(keyword),
+      );
+    }
+    if (selectedCategory !== 'all') {
+      result = result.filter((p) => p.category === selectedCategory);
+    }
+    if (selectedDate !== 'all') {
+      result = result.filter((p) => p.liveDate === selectedDate);
+    }
+    switch (activeFilter) {
+      case 'sales':
+        result.sort((a, b) => (b.soldCount || 0) - (a.soldCount || 0));
+        break;
+      case 'newArrivals':
+        result.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        break;
+      default:
+        break;
+    }
+    return result;
+  }, [allLiveProducts, productSearchQuery, selectedCategory, selectedDate, activeFilter]);
+
   const isLoading = isSearching || isLoadingFallback;
 
   const handleSellerPress = useCallback((seller: any) => {
@@ -252,6 +379,43 @@ const LiveSellerSearchScreen: React.FC = () => {
     viewers: t('live.mostViewers'),
     newest: t('live.newest'),
   };
+
+  const renderProduct = useCallback(({ item }: { item: any }) => {
+    const imageUri = item.image || '';
+    const price = item.price || 0;
+    const originalPrice = item.originalPrice || 0;
+    const title = item.title || item.name || '';
+    const dimImage = item.inStock === false;
+
+    return (
+      <TouchableOpacity
+        style={styles.productCard}
+        activeOpacity={0.8}
+        onPress={() => navigation.navigate('ProductDetail', {
+          productId: item.id,
+          offerId: item.externalId,
+          source: 'live-commerce',
+          liveCode: item.liveCode,
+        })}
+      >
+        <Image
+          source={{ uri: imageUri || `https://via.placeholder.com/${IMAGE_CONFIG.PRODUCT_DISPLAY_PIXEL}.png?text=Product` }}
+          style={[styles.productImage, dimImage && { opacity: 0.5 }]}
+          resizeMode="cover"
+        />
+        <View style={styles.productInfoContainer}>
+          <Text style={styles.productPrice}>{formatPriceKRW(price)}</Text>
+          {originalPrice > 0 && originalPrice > price && (
+            <Text style={styles.productOriginalPrice}>{formatPriceKRW(originalPrice)}</Text>
+          )}
+          <Text style={styles.productTitle} numberOfLines={2}>{title}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  }, [navigation]);
+
+  const productKeyExtractor = useCallback((item: any, index: number) =>
+    item.id || item.externalId || `live-product-${index}`, []);
 
   const renderSellerItem = useCallback(({ item }: { item: any }) => (
     <SellerCard
@@ -391,65 +555,224 @@ const LiveSellerSearchScreen: React.FC = () => {
       </SafeAreaView>
 
       {/* Sort bar - outside FlatList so dropdown renders on top */}
-      <View style={{backgroundColor: '#FFFFFFA1', paddingBottom: SPACING.sm}}>
-        <View style={styles.sortContainer}>
-          <Text style={styles.sortLabel}>{t('live.sortBy')}</Text>
-          <TouchableOpacity
-            style={styles.sortDropdown}
-            onPress={() => setShowSortDropdown(!showSortDropdown)}
-          >
-            <Text style={styles.sortDropdownText}>{sortLabels[sortOption]}</Text>
-            <ArrowDropDownIcon width={12} height={12} color={COLORS.text.primary} />
-          </TouchableOpacity>
-
-          {showSortDropdown && (
-            <View style={styles.sortDropdownMenu}>
-              {(Object.keys(sortLabels) as SortOption[]).map((key) => (
+      <View style={{backgroundColor: '#FFFFFFA1', paddingBottom: SPACING.sm, flex: 1}}>
+        {searchMode === 'products' ? (
+          <>
+            {/* Category pill + product search input */}
+            <View style={styles.productSearchRow}>
+              <View style={styles.categoryDropdownContainer}>
                 <TouchableOpacity
-                  key={key}
-                  style={[
-                    styles.sortDropdownItem,
-                    sortOption === key && styles.sortDropdownItemActive,
-                  ]}
-                  onPress={() => {
-                    setSortOption(key);
-                    setShowSortDropdown(false);
-                  }}
+                  style={styles.categoryDropdown}
+                  onPress={() => setShowCategoryDropdown(!showCategoryDropdown)}
                 >
-                  <Text
-                    style={[
-                      styles.sortDropdownItemText,
-                      sortOption === key && styles.sortDropdownItemTextActive,
-                    ]}
-                  >
-                    {sortLabels[key]}
+                  <Text style={styles.categoryDropdownText} numberOfLines={1}>
+                    {selectedCategory === 'all' ? (t('live.allItems') || '전체 상품') : selectedCategory}
                   </Text>
+                  <ArrowDropDownIcon width={16} height={16} color={COLORS.text.primary} />
                 </TouchableOpacity>
-              ))}
+                {showCategoryDropdown && (
+                  <View style={styles.categoryDropdownMenuInline}>
+                    {productCategories.map((cat) => (
+                      <TouchableOpacity
+                        key={cat}
+                        style={[
+                          styles.categoryDropdownItem,
+                          selectedCategory === cat && styles.categoryDropdownItemActive,
+                        ]}
+                        onPress={() => {
+                          setSelectedCategory(cat);
+                          setShowCategoryDropdown(false);
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.categoryDropdownItemText,
+                            selectedCategory === cat && styles.categoryDropdownItemTextActive,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {cat === 'all' ? (t('live.allItems') || '전체 상품') : cat}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+              <View style={styles.productSearchInputWrap}>
+                <SearchIcon width={16} height={16} color={COLORS.text.secondary} />
+                <TextInput
+                  style={styles.productSearchInput}
+                  value={productSearchQuery}
+                  onChangeText={setProductSearchQuery}
+                  placeholder={t('live.searchNow')}
+                  placeholderTextColor={COLORS.text.secondary}
+                  returnKeyType="search"
+                />
+              </View>
             </View>
-          )}
-        </View>
-        {/* Seller grid */}
-        {isLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
-          </View>
+
+            {/* Filter Tabs */}
+            <View style={styles.filterTabsContainer}>
+              <TouchableOpacity
+                style={[styles.filterTab, activeFilter === 'bestMatch' && styles.filterTabActive]}
+                onPress={() => setActiveFilter('bestMatch')}
+              >
+                <Text style={[styles.filterTabText, activeFilter === 'bestMatch' && styles.filterTabTextActive]}>
+                  {t('live.bestMatch')}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.filterTab, activeFilter === 'sales' && styles.filterTabActive]}
+                onPress={() => setActiveFilter('sales')}
+              >
+                <Text style={[styles.filterTabText, activeFilter === 'sales' && styles.filterTabTextActive]}>
+                  {t('live.sales')}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.filterTab, activeFilter === 'newArrivals' && styles.filterTabActive]}
+                onPress={() => setActiveFilter('newArrivals')}
+              >
+                <Text style={[styles.filterTabText, activeFilter === 'newArrivals' && styles.filterTabTextActive]}>
+                  {t('live.newArrivals')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Date dropdown trigger — opens modal. Hidden when no dates. */}
+            {dateGroups.length > 1 && (
+              <TouchableOpacity
+                style={styles.dateDropdown}
+                activeOpacity={0.8}
+                onPress={() => setShowDateDropdown(true)}
+              >
+                <Text style={styles.dateDropdownText}>{formatDateLabel(selectedDate)}</Text>
+                <ArrowDropDownIcon width={18} height={18} color={COLORS.text.primary} />
+              </TouchableOpacity>
+            )}
+
+            {/* Product grid */}
+            {isLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+              </View>
+            ) : (
+              <FlatList
+                data={filteredProducts}
+                renderItem={renderProduct}
+                keyExtractor={productKeyExtractor}
+                numColumns={3}
+                columnWrapperStyle={styles.productsRow}
+                ListEmptyComponent={renderEmpty}
+                contentContainerStyle={styles.listContent}
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                  <RefreshControl refreshing={isLoading} onRefresh={() => fetchLiveCommerce()} />
+                }
+              />
+            )}
+          </>
         ) : (
-          <FlatList
-            data={displaySellers}
-            renderItem={renderSellerItem}
-            keyExtractor={keyExtractor}
-            numColumns={2}
-            columnWrapperStyle={styles.gridRow}
-            ListEmptyComponent={renderEmpty}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl refreshing={isLoading} onRefresh={() => fetchLiveCommerce()} />
-            }
-          />
+          <>
+            <View style={styles.sortContainer}>
+              <Text style={styles.sortLabel}>{t('live.sortBy')}</Text>
+              <TouchableOpacity
+                style={styles.sortDropdown}
+                onPress={() => setShowSortDropdown(!showSortDropdown)}
+              >
+                <Text style={styles.sortDropdownText}>{sortLabels[sortOption]}</Text>
+                <ArrowDropDownIcon width={12} height={12} color={COLORS.text.primary} />
+              </TouchableOpacity>
+
+              {showSortDropdown && (
+                <View style={styles.sortDropdownMenu}>
+                  {(Object.keys(sortLabels) as SortOption[]).map((key) => (
+                    <TouchableOpacity
+                      key={key}
+                      style={[
+                        styles.sortDropdownItem,
+                        sortOption === key && styles.sortDropdownItemActive,
+                      ]}
+                      onPress={() => {
+                        setSortOption(key);
+                        setShowSortDropdown(false);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.sortDropdownItemText,
+                          sortOption === key && styles.sortDropdownItemTextActive,
+                        ]}
+                      >
+                        {sortLabels[key]}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+            {/* Seller grid */}
+            {isLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+              </View>
+            ) : (
+              <FlatList
+                data={displaySellers}
+                renderItem={renderSellerItem}
+                keyExtractor={keyExtractor}
+                numColumns={2}
+                columnWrapperStyle={styles.gridRow}
+                ListEmptyComponent={renderEmpty}
+                contentContainerStyle={styles.listContent}
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                  <RefreshControl refreshing={isLoading} onRefresh={() => fetchLiveCommerce()} />
+                }
+              />
+            )}
+          </>
         )}
       </View>
+
+      {/* Date Dropdown Modal — products mode */}
+      <Modal
+        visible={showDateDropdown}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDateDropdown(false)}
+      >
+        <TouchableOpacity
+          style={styles.dropdownModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowDateDropdown(false)}
+        >
+          <View style={styles.dropdownModalContent}>
+            {dateGroups.map((d) => (
+              <TouchableOpacity
+                key={`date-${d}`}
+                style={[
+                  styles.categoryDropdownItem,
+                  selectedDate === d && styles.categoryDropdownItemActive,
+                ]}
+                onPress={() => {
+                  setSelectedDate(d);
+                  setShowDateDropdown(false);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.categoryDropdownItemText,
+                    selectedDate === d && styles.categoryDropdownItemTextActive,
+                  ]}
+                >
+                  {formatDateLabel(d)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
@@ -783,6 +1106,189 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: FONTS.sizes.md,
     color: COLORS.text.secondary,
+  },
+
+  // ─── Products mode (mirrors LiveSellerDetailScreen) ────────
+  productSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.smmd,
+    zIndex: 10,
+  },
+  categoryDropdownContainer: {
+    position: 'relative',
+    width: '25%',
+    minWidth: 60,
+    zIndex: 10,
+  },
+  categoryDropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.gray[300],
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    minHeight: 40,
+  },
+  categoryDropdownText: {
+    textAlign: 'center',
+    fontSize: FONTS.sizes.xs,
+    fontWeight: '500',
+    color: COLORS.text.primary,
+    flex: 1,
+    marginRight: 2,
+  },
+  categoryDropdownMenuInline: {
+    position: 'absolute',
+    top: '110%',
+    left: 0,
+    minWidth: '100%',
+    maxHeight: '150%',
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    zIndex: 30,
+  },
+  categoryDropdownItem: {
+    paddingHorizontal: SPACING.smmd,
+    paddingVertical: SPACING.smmd,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray[100],
+  },
+  categoryDropdownItemActive: {
+    backgroundColor: COLORS.gray[50],
+  },
+  categoryDropdownItemText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.primary,
+  },
+  categoryDropdownItemTextActive: {
+    fontWeight: '700',
+    color: COLORS.red,
+  },
+  productSearchInputWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.gray[300],
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.smmd,
+    paddingVertical: SPACING.sm,
+  },
+  productSearchInput: {
+    flex: 1,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.primary,
+    padding: 0,
+  },
+  filterTabsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.smmd,
+    gap: SPACING.md,
+  },
+  filterTab: {
+    paddingBottom: SPACING.sm,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  filterTabActive: {
+    borderBottomColor: COLORS.red,
+  },
+  filterTabText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '500',
+    color: COLORS.text.secondary,
+  },
+  filterTabTextActive: {
+    fontWeight: '700',
+    color: COLORS.red,
+  },
+  dateDropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.gray[100],
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    marginHorizontal: SPACING.md,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.smmd,
+  },
+  dateDropdownText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '600',
+    color: COLORS.text.primary,
+  },
+  dropdownModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.lg,
+  },
+  dropdownModalContent: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: SPACING.xs,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  productsRow: {
+    paddingHorizontal: SPACING.md,
+    gap: PRODUCT_GAP,
+    marginBottom: PRODUCT_GAP,
+  },
+  productCard: {
+    width: PRODUCT_CARD_WIDTH,
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    overflow: 'hidden',
+  },
+  productImage: {
+    width: '100%',
+    height: PRODUCT_CARD_WIDTH * 1.5,
+    backgroundColor: COLORS.gray[200],
+    borderRadius: BORDER_RADIUS.md,
+  },
+  productInfoContainer: {
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: SPACING.xs,
+  },
+  productPrice: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '800',
+    color: COLORS.red,
+  },
+  productOriginalPrice: {
+    fontSize: 11,
+    color: COLORS.text.secondary,
+    textDecorationLine: 'line-through' as const,
+  },
+  productTitle: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: COLORS.text.primary,
+    marginTop: 2,
   },
 });
 

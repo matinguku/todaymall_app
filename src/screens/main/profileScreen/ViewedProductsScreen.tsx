@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../components/Icon';
 // import { BackNavTouchableOpacity } from '../../../components/BackNavTouchable';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
 import { useAppSelector } from '../../../store/hooks';
 import { translations } from '../../../i18n/translations';
@@ -48,6 +48,27 @@ const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = 
     return value || key;
   };
 
+  // Field-name fallbacks so live (own-mall) entries — which use
+  // `imageUrl`/`titleKo`/`titleEn`/`titleZh` — render the same as 1688
+  // entries that use `photoUrl`/`title`.
+  const getViewedImage = (item: any): string =>
+    item?.photoUrl ||
+    item?.imageUrl ||
+    item?.image ||
+    item?.thumbnail ||
+    item?.thumbnailUrl ||
+    item?.productImageUrl ||
+    item?.productImage ||
+    '';
+  const getViewedTitle = (item: any): string => {
+    if (item?.title) return item.title;
+    if (locale === 'ko') return item?.titleKo || item?.titleEn || item?.titleZh || item?.subject || item?.name || '';
+    if (locale === 'zh') return item?.titleZh || item?.titleEn || item?.titleKo || item?.subject || item?.name || '';
+    return item?.titleEn || item?.titleKo || item?.titleZh || item?.subject || item?.name || '';
+  };
+  const getViewedPrice = (item: any): number =>
+    item?.price ?? item?.salePriceKrw ?? item?.priceKrw ?? item?.productPrice ?? 0;
+
   const [filterVisible, setFilterVisible] = useState(false);
   const [isManagementMode, setIsManagementMode] = useState(false);
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
@@ -71,6 +92,14 @@ const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = 
   useEffect(() => {
     fetchViewedProducts(1, true);
   }, []);
+
+  // Refetch on screen focus so newly-viewed items (e.g. live products just
+  // opened in ProductDetail) appear without remounting.
+  useFocusEffect(
+    useCallback(() => {
+      fetchViewedProducts(1, true);
+    }, [])
+  );
 
   // Load more when currentPage changes
   useEffect(() => {
@@ -480,12 +509,12 @@ const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = 
         }}
       >
         <View style={styles.productImageContainer}>
-          <Image 
-            source={{ uri: item.photoUrl || 'https://via.placeholder.com/300' }} 
-            style={styles.productImage} 
+          <Image
+            source={{ uri: getViewedImage(item) || 'https://via.placeholder.com/300' }}
+            style={styles.productImage}
           />
           {isManagementMode && (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.checkboxOverlay}
               onPress={() => handleToggleProduct(item.productId)}
               activeOpacity={0.7}
@@ -499,9 +528,9 @@ const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = 
           )}
         </View>
         <View style={styles.productInfo}>
-          <Text style={styles.productPrice}>¥{item.price}</Text>
+          <Text style={styles.productPrice}>¥{getViewedPrice(item)}</Text>
           <Text style={styles.productTitle} numberOfLines={1} ellipsizeMode="tail">
-            {item.title}
+            {getViewedTitle(item)}
           </Text>
         </View>
       </TouchableOpacity>

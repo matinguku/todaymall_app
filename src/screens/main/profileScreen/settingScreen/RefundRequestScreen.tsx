@@ -11,15 +11,16 @@ import { formatPriceKRW } from '../../../../utils/i18nHelpers';
 import { useToast } from '../../../../context/ToastContext';
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
 import { orderApi } from '../../../../services/orderApi';
+import { useTranslation } from '../../../../hooks/useTranslation';
 
-const REFUND_REASONS = [
-  'Overpaid/Discount Not Applied',
-  'Changed My Mind',
-  'Refund by Mutual Agreement',
-  'Empty Package',
-  'Failed to Ship on Time',
-  'Package Not Delivered',
-  'Item Damaged, Delivery Refused',
+const REFUND_REASON_KEYS: Array<{ id: string; key: string; canonical: string }> = [
+  { id: 'overpaid', key: 'profile.refundReasons.overpaid', canonical: 'Overpaid/Discount Not Applied' },
+  { id: 'changedMind', key: 'profile.refundReasons.changedMind', canonical: 'Changed My Mind' },
+  { id: 'mutualAgreement', key: 'profile.refundReasons.mutualAgreement', canonical: 'Refund by Mutual Agreement' },
+  { id: 'emptyPackage', key: 'profile.refundReasons.emptyPackage', canonical: 'Empty Package' },
+  { id: 'failedToShip', key: 'profile.refundReasons.failedToShip', canonical: 'Failed to Ship on Time' },
+  { id: 'packageNotDelivered', key: 'profile.refundReasons.packageNotDelivered', canonical: 'Package Not Delivered' },
+  { id: 'itemDamaged', key: 'profile.refundReasons.itemDamaged', canonical: 'Item Damaged, Delivery Refused' },
 ];
 
 const RefundRequestScreen: React.FC = () => {
@@ -28,40 +29,41 @@ const RefundRequestScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { orderId, orderNumber, items, refundData } = route.params || {};
   const { showToast } = useToast();
+  const { t } = useTranslation();
 
   const [selectedReason, setSelectedReason] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handlePickImage = () => {
-    Alert.alert('Add Image', 'Choose an option', [
-      { text: 'Take Photo', onPress: async () => {
+    Alert.alert(t('profile.addImage'), t('profile.chooseAnOption'), [
+      { text: t('profile.takePhoto'), onPress: async () => {
         try {
           const result = await launchCamera({ mediaType: 'photo', saveToPhotos: false });
           if (result.assets?.[0]?.uri) setImages(prev => [...prev, result.assets![0].uri!].slice(0, 5));
         } catch (e) {
-          showToast('Camera not available', 'error');
+          showToast(t('profile.cameraNotAvailable'), 'error');
         }
       }},
-      { text: 'Choose from Library', onPress: async () => {
+      { text: t('profile.chooseFromLibrary'), onPress: async () => {
         try {
           const result = await launchImageLibrary({ mediaType: 'photo', selectionLimit: 5 - images.length });
           if (result.assets) setImages(prev => [...prev, ...result.assets!.map(a => a.uri || '')].filter(Boolean).slice(0, 5));
         } catch (e) {
-          showToast('Failed to pick image', 'error');
+          showToast(t('profile.failedToPickImage'), 'error');
         }
       }},
-      { text: 'Cancel', style: 'cancel' },
+      { text: t('profile.cancel'), style: 'cancel' },
     ]);
   };
 
   const handleSubmit = async () => {
     if (!selectedReason) {
-      showToast('Please select a refund reason', 'warning');
+      showToast(t('profile.pleaseSelectARefundReason'), 'warning');
       return;
     }
     if (!orderId) {
-      showToast('Missing order', 'error');
+      showToast(t('profile.missingOrder'), 'error');
       return;
     }
     setIsSubmitting(true);
@@ -71,20 +73,21 @@ const RefundRequestScreen: React.FC = () => {
         quantity: Number(item.quantity) || 1,
       })).filter((row) => row.itemId.length > 0);
 
+      const reasonCanonical = REFUND_REASON_KEYS.find(r => r.id === selectedReason)?.canonical || selectedReason;
       const res = await orderApi.submitRefundRequest(String(orderId), {
-        reason: selectedReason,
+        reason: reasonCanonical,
         items: lineItems,
         evidenceImageUris: images.length > 0 ? images : undefined,
       });
 
       if (!res.success) {
-        showToast(res.error || 'Failed to submit refund', 'error');
+        showToast(res.error || t('profile.failedToSubmitRefund'), 'error');
         return;
       }
-      showToast(res.message || 'Refund request submitted', 'success');
+      showToast(res.message || t('profile.refundRequestSubmitted'), 'success');
       navigation.goBack();
     } catch {
-      showToast('Failed to submit refund', 'error');
+      showToast(t('profile.failedToSubmitRefund'), 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -97,20 +100,20 @@ const RefundRequestScreen: React.FC = () => {
         <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Icon name="arrow-back" size={20} color={COLORS.text.primary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Refund Request</Text>
+        <Text style={styles.headerTitle}>{t('profile.refundRequest')}</Text>
         <View style={{ width: 32 }} />
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         {/* Order info */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Order</Text>
+          <Text style={styles.sectionTitle}>{t('profile.order')}</Text>
           <Text style={styles.orderNumber}>{orderNumber}</Text>
         </View>
 
         {/* Refund items */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Items</Text>
+          <Text style={styles.sectionTitle}>{t('profile.items')}</Text>
           {(items || []).map((item: any, i: number) => (
             <View key={i} style={styles.itemRow}>
               <Image source={{ uri: item.image }} style={styles.itemImage} />
@@ -124,19 +127,19 @@ const RefundRequestScreen: React.FC = () => {
 
         {/* Refund amount — always shown */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Refund Amount</Text>
+          <Text style={styles.sectionTitle}>{t('profile.refundAmount')}</Text>
           {refundData ? (
             <>
               <View style={styles.amountRow}>
-                <Text style={styles.amountLabel}>Product</Text>
+                <Text style={styles.amountLabel}>{t('profile.itemAmount')}</Text>
                 <Text style={styles.amountValue}>{formatPriceKRW(refundData.itemAmount)}</Text>
               </View>
               <View style={styles.amountRow}>
-                <Text style={styles.amountLabel}>Shipping</Text>
+                <Text style={styles.amountLabel}>{t('profile.shippingAmount')}</Text>
                 <Text style={styles.amountValue}>{formatPriceKRW(refundData.shippingAmount)}</Text>
               </View>
               <View style={[styles.amountRow, styles.amountTotal]}>
-                <Text style={styles.amountTotalLabel}>Total Refund</Text>
+                <Text style={styles.amountTotalLabel}>{t('profile.totalRefund')}</Text>
                 <Text style={styles.amountTotalValue}>{formatPriceKRW(refundData.totalRefundAmount)}</Text>
               </View>
               <View style={styles.totalHighlight}>
@@ -144,30 +147,30 @@ const RefundRequestScreen: React.FC = () => {
               </View>
             </>
           ) : (
-            <Text style={styles.amountLabel}>Calculating...</Text>
+            <Text style={styles.amountLabel}>{t('profile.calculating')}</Text>
           )}
         </View>
 
         {/* Refund reason */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Refund Reason</Text>
-          {REFUND_REASONS.map((reason) => (
+          <Text style={styles.sectionTitle}>{t('profile.refundReason')}</Text>
+          {REFUND_REASON_KEYS.map((reason) => (
             <TouchableOpacity
-              key={reason}
+              key={reason.id}
               style={styles.reasonRow}
-              onPress={() => setSelectedReason(reason)}
+              onPress={() => setSelectedReason(reason.id)}
             >
-              <View style={[styles.radio, selectedReason === reason && styles.radioSelected]}>
-                {selectedReason === reason && <View style={styles.radioDot} />}
+              <View style={[styles.radio, selectedReason === reason.id && styles.radioSelected]}>
+                {selectedReason === reason.id && <View style={styles.radioDot} />}
               </View>
-              <Text style={styles.reasonText}>{reason}</Text>
+              <Text style={styles.reasonText}>{t(reason.key)}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
         {/* Image upload */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Images ({images.length}/5)</Text>
+          <Text style={styles.sectionTitle}>{t('profile.imagesCount').replace('{count}', images.length.toString())}</Text>
           <View style={styles.imageRow}>
             {images.map((uri, i) => (
               <View key={i} style={styles.imageThumbContainer}>
@@ -183,7 +186,7 @@ const RefundRequestScreen: React.FC = () => {
             {images.length < 5 && (
               <TouchableOpacity style={styles.imageAddBtn} onPress={handlePickImage}>
                 <Icon name="camera-outline" size={24} color={COLORS.text.secondary} />
-                <Text style={styles.imageAddText}>Add</Text>
+                <Text style={styles.imageAddText}>{t('profile.add')}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -200,7 +203,7 @@ const RefundRequestScreen: React.FC = () => {
           {isSubmitting ? (
             <ActivityIndicator size="small" color={COLORS.white} />
           ) : (
-            <Text style={styles.submitBtnText}>Submit Refund</Text>
+            <Text style={styles.submitBtnText}>{t('profile.submitRefund')}</Text>
           )}
         </TouchableOpacity>
       </View>

@@ -20,7 +20,7 @@ import ArrowBackIcon from '../../assets/icons/ArrowBackIcon';
 import ArrowDownIcon from '../../assets/icons/ArrowDownIcon';
 import { Button, TextInput } from '../../components';
 import LinearGradient from 'react-native-linear-gradient';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { useRegisterMutation } from '../../hooks/useAuthMutations';
@@ -33,6 +33,9 @@ import ArrowDropDownIcon from '../../assets/icons/ArrowDropDownIcon';
 
 const SignupScreen: React.FC = () => {
   const navigation = useNavigation();
+  const route = useRoute<any>();
+  const returnTo = route.params?.returnTo;
+  const returnParams = route.params?.returnParams;
   const { signupError, clearSignupError, setAuthenticatedUser } = useAuth();
   const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
   const { showToast } = useToast();
@@ -272,11 +275,9 @@ const SignupScreen: React.FC = () => {
   };
 
   const handleLogin = () => {
-    // console.log('SignupScreen: handleLogin called - navigating to Login');
-    // console.log('SignupScreen: handleLogin call stack:', new Error().stack);
     // Clear any signup errors before navigating to login
     clearSignupError();
-    navigation.navigate('Login' as never);
+    (navigation as any).navigate('Login', { returnTo, returnParams });
   };
 
   useFocusEffect(

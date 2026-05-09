@@ -90,6 +90,13 @@ const LiveSellerDetailScreen: React.FC = () => {
   const flatListRef = useRef<FlatList>(null);
   const isFetchingProductsRef = useRef(false);
 
+  // Window-relative position of the date dropdown trigger. Measured via
+  // measureInWindow() when the user taps the trigger — used to absolutely
+  // place the dropdown menu (rendered in a Modal) directly below it,
+  // avoiding z-stacking conflicts with the FlatList below the header.
+  const dateTriggerRef = useRef<View | null>(null);
+  const [dateAnchor, setDateAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+
   // ─── Wishlist mutations ───────────────────────────────────
   const { mutate: addToWishlist } = useAddToWishlistMutation({
     onSuccess: async () => {
@@ -665,20 +672,39 @@ const LiveSellerDetailScreen: React.FC = () => {
         </TouchableOpacity>
       </View>
 
-      {/* Date classifier — entire row is tappable; opens a Modal that
-          lets the user pick a broadcast date. Hidden when no product
-          carries a date so the layout stays clean. */}
+      {/* Date classifier — entire row is tappable; toggles an inline
+          dropdown anchored directly below the button so the choices
+          appear in place. Hidden when no product carries a date so the
+          layout stays clean. */}
       {dateGroups.length > 1 && (
-        <TouchableOpacity
-          style={styles.dateDropdown}
-          activeOpacity={0.8}
-          onPress={() => setShowDateDropdown(true)}
+        <View
+          ref={(r) => { dateTriggerRef.current = r; }}
+          style={styles.dateDropdownContainer}
+          collapsable={false}
         >
-          <Text style={styles.dateDropdownText}>
-            {formatDateLabel(selectedDate)}
-          </Text>
-          <ArrowDropDownIcon width={18} height={18} color={COLORS.text.primary} />
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.dateDropdown,
+              showDateDropdown && styles.dateDropdownOpen,
+            ]}
+            activeOpacity={0.8}
+            onPress={() => {
+              if (showDateDropdown) {
+                setShowDateDropdown(false);
+                return;
+              }
+              dateTriggerRef.current?.measureInWindow((x, y, width, height) => {
+                setDateAnchor({ x, y, width, height });
+                setShowDateDropdown(true);
+              });
+            }}
+          >
+            <Text style={styles.dateDropdownText}>
+              {formatDateLabel(selectedDate)}
+            </Text>
+            <ArrowDropDownIcon width={18} height={18} color={COLORS.text.primary} />
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -863,42 +889,56 @@ const LiveSellerDetailScreen: React.FC = () => {
         </Animated.View>
       )}
 
-      {/* Date Dropdown Modal — same UX as the category dropdown. */}
+      {/* Date Dropdown — rendered in a transparent Modal so it always
+          paints above the FlatList (which on Android wins z-stacking
+          against any sibling overlay). Anchored at the trigger's measured
+          window position so visually it sits flush below the button. */}
       <Modal
-        visible={showDateDropdown}
+        visible={showDateDropdown && !!dateAnchor}
         transparent
         animationType="fade"
         onRequestClose={() => setShowDateDropdown(false)}
       >
         <TouchableOpacity
-          style={styles.dropdownModalOverlay}
+          style={StyleSheet.absoluteFill}
           activeOpacity={1}
           onPress={() => setShowDateDropdown(false)}
         >
-          <View style={styles.dropdownModalContent}>
-            {dateGroups.map((d) => (
-              <TouchableOpacity
-                key={`date-${d}`}
-                style={[
-                  styles.categoryDropdownItem,
-                  selectedDate === d && styles.categoryDropdownItemActive,
-                ]}
-                onPress={() => {
-                  setSelectedDate(d);
-                  setShowDateDropdown(false);
-                }}
-              >
-                <Text
+          {dateAnchor && (
+            <View
+              style={[
+                styles.dateDropdownAnchoredMenu,
+                {
+                  top: dateAnchor.y + dateAnchor.height,
+                  left: dateAnchor.x,
+                  width: dateAnchor.width,
+                },
+              ]}
+            >
+              {dateGroups.map((d) => (
+                <TouchableOpacity
+                  key={`date-${d}`}
                   style={[
-                    styles.categoryDropdownItemText,
-                    selectedDate === d && styles.categoryDropdownItemTextActive,
+                    styles.categoryDropdownItem,
+                    selectedDate === d && styles.categoryDropdownItemActive,
                   ]}
+                  onPress={() => {
+                    setSelectedDate(d);
+                    setShowDateDropdown(false);
+                  }}
                 >
-                  {formatDateLabel(d)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+                  <Text
+                    style={[
+                      styles.categoryDropdownItemText,
+                      selectedDate === d && styles.categoryDropdownItemTextActive,
+                    ]}
+                  >
+                    {formatDateLabel(d)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </TouchableOpacity>
       </Modal>
 
@@ -972,8 +1012,15 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   // Date classifier dropdown trigger — full-width row that opens the
-  // Modal date picker. Mirrors the look of the category dropdown above
-  // it for consistency.
+  // Inline date dropdown. The container holds both the trigger and the
+  // dropdown menu so the menu can position itself directly below the
+  // trigger via absolute positioning + zIndex.
+  dateDropdownContainer: {
+    position: 'relative',
+    marginHorizontal: SPACING.md,
+    marginTop: SPACING.sm,
+    zIndex: 20,
+  },
   dateDropdown: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -984,13 +1031,38 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,
     borderColor: COLORS.gray[200],
-    marginHorizontal: SPACING.md,
-    marginTop: SPACING.sm,
+  },
+  // When the dropdown is open, drop the trigger's bottom rounding and
+  // bottom border so the menu visually merges with it (no gap, no double
+  // border between the two pieces).
+  dateDropdownOpen: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderBottomWidth: 0,
   },
   dateDropdownText: {
     fontSize: FONTS.sizes.sm,
     fontWeight: '600',
     color: COLORS.text.primary,
+  },
+  // Anchored dropdown menu rendered inside a Modal. `top`/`left`/`width`
+  // come from the trigger's measureInWindow() so the menu sits flush
+  // below the date button. Bottom corners stay rounded; the top is
+  // squared so it visually merges with the open trigger.
+  dateDropdownAnchoredMenu: {
+    position: 'absolute',
+    backgroundColor: COLORS.white,
+    borderBottomLeftRadius: BORDER_RADIUS.md,
+    borderBottomRightRadius: BORDER_RADIUS.md,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: COLORS.gray[200],
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 8,
   },
   backButton: {
     width: 36,
@@ -1132,6 +1204,7 @@ const styles = StyleSheet.create({
     minHeight: 40,
   },
   dropdownModalOverlay: {
+    top: 0,
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.3)',
     justifyContent: 'center',
@@ -1271,8 +1344,9 @@ const styles = StyleSheet.create({
   },
   productImage: {
     width: '100%',
-    height: PRODUCT_CARD_WIDTH * 1.2,
+    height: PRODUCT_CARD_WIDTH * 1.5,
     backgroundColor: COLORS.gray[200],
+    borderRadius: BORDER_RADIUS.md,
   },
   productInfoContainer: {
     paddingHorizontal: SPACING.xs,

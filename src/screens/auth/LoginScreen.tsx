@@ -411,7 +411,7 @@ const LoginScreen: React.FC = () => {
   };
 
   const handleSignup = () => {
-    navigation.navigate('Signup' as never);
+    (navigation as any).navigate('Signup', { returnTo, returnParams });
   };
 
   const closeNonMemberModal = () => {
