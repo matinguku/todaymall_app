@@ -83,9 +83,10 @@ class SocketService {
         return;
       }
 
-      // If connection recently failed, don't retry immediately
+      // If connection recently failed, don't retry immediately. Log
+      // suppressed — repeated cooldown-skip messages add noise to the
+      // device log without changing behavior.
       if (this.connectionFailed && Date.now() - this.lastFailTime < this.RETRY_COOLDOWN) {
-        console.log('[SocketService] Connection on cooldown, skipping (retry in', Math.round((this.RETRY_COOLDOWN - (Date.now() - this.lastFailTime)) / 1000), 's)');
         resolve();
         return;
       }
@@ -129,8 +130,12 @@ class SocketService {
                 Authorization: `Bearer ${authToken}`,
               }
             : {},
-          // Prefer websocket on native; xhr polling alone often surfaces as "xhr poll error" on RN.
-          transports: ['websocket', 'polling'],
+          // Start with HTTP long-polling (same scheme/host as REST, which
+          // we know works) and let socket.io upgrade to WebSocket once
+          // the session is established. Going WS-first frequently fails
+          // on Android emulators / strict proxies that strip the Upgrade
+          // header — the connect_error storm we saw came from that.
+          transports: ['polling', 'websocket'],
           reconnection: true,
           reconnectionDelay: 2000,
           reconnectionDelayMax: 10000,
@@ -153,21 +158,15 @@ class SocketService {
           settle();
         });
 
-        this.socket.on('connect_error', (error) => {
+        this.socket.on('connect_error', (_error) => {
           this.reconnectAttempts += 1;
-          // console.debug: visible in Metro / debugger only — avoids LogBox for transient network issues.
-          console.debug(
-            `[SocketService] Connection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}: ${error.message}`,
-          );
-
+          // Per-attempt logging removed: the connect_error event fires
+          // repeatedly while the server-side WS is unreachable and the
+          // noise drowns out useful logs. The graceful fallback to REST
+          // below still happens; we just stop announcing each attempt.
           if (this.reconnectAttempts >= this.maxReconnectAttempts) {
             this.connectionFailed = true;
             this.lastFailTime = Date.now();
-            console.debug(
-              '[SocketService] Socket unavailable after max attempts; using REST until cooldown (' +
-                this.RETRY_COOLDOWN / 1000 +
-                's).',
-            );
             if (this.socket) {
               this.socket.disconnect();
             }
@@ -186,14 +185,13 @@ class SocketService {
           this.connectionFailed = false;
         });
 
-        this.socket.on('reconnect_error', (error) => {
-          if (this.reconnectAttempts % 3 === 0) {
-            console.debug('[SocketService] Reconnection error:', error.message);
-          }
+        this.socket.on('reconnect_error', (_error) => {
+          // Reconnection errors are expected while the server-side WS
+          // is unreachable; suppressed to keep the log clean. The
+          // socket.io client itself stops after maxReconnectAttempts.
         });
 
         this.socket.on('reconnect_failed', () => {
-          console.debug('[SocketService] Reconnection failed after max attempts. App will use REST API.');
           this.connectionFailed = true;
           this.lastFailTime = Date.now();
         });

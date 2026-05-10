@@ -18,6 +18,7 @@ import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, BACK_NAVIGATION_HIT_SLO
 import { RootStackParamList, CustomerOrderDetails } from '../../../../types';
 import { useAuth } from '../../../../context/AuthContext';
 import { useTranslation } from '../../../../hooks/useTranslation';
+import { formatPriceKRW } from '../../../../utils/i18nHelpers';
 
 type OrderHistoryScreenNavigationProp = StackNavigationProp<RootStackParamList, 'OrderHistory'>;
 
@@ -188,18 +189,42 @@ const OrderHistoryScreen: React.FC = () => {
             styles.statusText,
             { color: getStatusColor(item.order_status) }
           ]}>
-            {t(`profile.orderHistoryScreen.status.${item.order_status}`)}
+            {(() => {
+              // Resolve the localized status; if the key isn't in the
+              // translations sub-object, t() returns the raw key string —
+              // fall back to a capitalized version of the API value.
+              const key = `profile.orderHistoryScreen.status.${item.order_status}`;
+              const localized = t(key);
+              if (localized && localized !== key) return localized;
+              const raw = String(item.order_status || '');
+              return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : '';
+            })()}
           </Text>
         </View>
       </View>
 
       <View style={styles.orderItems}>
-        <Text style={styles.itemName}>{t('profile.orderHistoryScreen.orderAmount').replace('{amount}', `$${item.order_amount}`)}</Text>
-        <Text style={styles.itemQuantity}>{t('profile.orderHistoryScreen.paymentStatus').replace('{status}', String(item.payment_status))}</Text>
+        <Text style={styles.itemName}>
+          {t('profile.orderHistoryScreen.orderAmount').replace('{amount}', formatPriceKRW(Number(item.order_amount) || 0))}
+        </Text>
+        <Text style={styles.itemQuantity}>
+          {t('profile.orderHistoryScreen.paymentStatus').replace(
+            '{status}',
+            (() => {
+              const key = `profile.orderHistoryScreen.paymentStatusValues.${item.payment_status}`;
+              const localized = t(key);
+              if (localized && localized !== key) return localized;
+              const raw = String(item.payment_status || '');
+              return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : '';
+            })(),
+          )}
+        </Text>
       </View>
 
       <View style={styles.orderFooter}>
-        <Text style={styles.totalLabel}>{t('profile.orderHistoryScreen.total').replace('{amount}', `$${item.order_amount}`)}</Text>
+        <Text style={styles.totalLabel}>
+          {t('profile.orderHistoryScreen.total').replace('{amount}', formatPriceKRW(Number(item.order_amount) || 0))}
+        </Text>
         <View style={styles.orderActions}>
           <TouchableOpacity style={styles.actionButton}>
             <Text style={styles.actionText}>{t('profile.orderHistoryScreen.track')}</Text>

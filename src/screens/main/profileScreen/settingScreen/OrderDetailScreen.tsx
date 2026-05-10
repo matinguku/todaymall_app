@@ -14,12 +14,42 @@ import { useToast } from '../../../../context/ToastContext';
 import { formatPriceKRW } from '../../../../utils/i18nHelpers';
 import { orderApi } from '../../../../services/orderApi';
 import { logDevApiFailure } from '../../../../utils/devLog';
+import { useTranslation } from '../../../../hooks/useTranslation';
+
+// Maps the raw progressStatus value (e.g. 'BUYING_MANUAL') to the
+// existing pages.orders.status.* i18n key so the order detail header
+// shows a localized label instead of the backend constant.
+const PROGRESS_STATUS_TRANSLATION_KEY: Record<string, string> = {
+  BUY_PAY_WAIT: 'pages.orders.status.paymentPending',
+  BUY_PAY_DONE: 'pages.orders.status.paymentComplete',
+  BUYING_MANUAL: 'pages.orders.status.purchasing',
+  BUYING_FINANCIAL_SETTLEMENT: 'pages.orders.status.financialSettlement',
+  BUYING_PROBLEM: 'pages.orders.status.problemProduct',
+  BUY_FINAL_DONE: 'pages.orders.status.purchaseFinalComplete',
+  WH_ARRIVE_EXPECTED: 'pages.orders.status.centerArrivalExpected',
+  DELIVERY_EXCEPTION: 'pages.orders.status.deliveryException',
+  WH_IN_EXPECTED: 'pages.orders.status.expectedWarehouseIn',
+  WH_IN_PROGRESS: 'pages.orders.status.warehouseInProgress',
+  WH_IN_DONE: 'pages.orders.status.warehouseInComplete',
+  WH_PICK_DONE: 'pages.orders.status.domesticWarehousePacking',
+  WH_PAY_WAIT: 'pages.orders.status.waitingSettlement',
+  WH_PAY_DONE: 'pages.orders.status.settlementComplete',
+  WH_SHIPPED: 'pages.orders.status.shipmentComplete',
+  INTERNATIONAL_SHIPPING: 'pages.orders.status.internationalShippingInProgress',
+  INTERNATIONAL_SHIPPED: 'pages.orders.status.internationalShippingComplete',
+  ORDER_RECEIVED: 'pages.orders.status.orderReceived',
+  ERR_IN: 'pages.orders.status.errorWarehouse',
+  NO_ORDER_INFO: 'pages.orders.status.noOrderInfo',
+  USER_REFUND_REQ: 'pages.orders.status.userRefundRequest',
+  USER_REFUND_COMPLETED: 'pages.orders.status.userRefundComplete',
+};
 
 const OrderDetailScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
+  const { t } = useTranslation();
   const { order: initialOrder } = route.params || {};
   const [currentOrder, setCurrentOrder] = useState(initialOrder);
   const order = currentOrder;
@@ -45,11 +75,11 @@ const OrderDetailScreen: React.FC = () => {
           <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} onPress={() => navigation.goBack()} style={styles.backButton}>
             <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Order Detail</Text>
+          <Text style={styles.headerTitle}>{t('profile.orderDetail')}</Text>
           <View style={{ width: 40 }} />
         </View>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ color: COLORS.text.secondary }}>Order not found</Text>
+          <Text style={{ color: COLORS.text.secondary }}>{t('profile.orderNotFound')}</Text>
         </View>
       </SafeAreaView>
     );
@@ -166,7 +196,17 @@ const OrderDetailScreen: React.FC = () => {
         <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} onPress={() => navigation.goBack()} style={styles.backButton}>
           <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>{order.progressStatus || order.orderStatus || 'Order Detail'}</Text>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          {(() => {
+            const ps = order.progressStatus;
+            const key = ps ? PROGRESS_STATUS_TRANSLATION_KEY[ps] : null;
+            const localized = key ? t(key) : null;
+            // If the lookup fell back to the raw key, ignore it and fall
+            // through to a stable default rather than show 'pages.orders.status.foo'.
+            if (localized && localized !== key) return localized;
+            return t('profile.orderDetail');
+          })()}
+        </Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -232,24 +272,24 @@ const OrderDetailScreen: React.FC = () => {
             <View style={styles.summaryBox}>
               {order.firstTierCost?.productTotalKRW != null && (
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Product total</Text>
+                  <Text style={styles.summaryLabel}>{t('profile.productTotal')}</Text>
                   <Text style={styles.summaryValue}>{formatPriceKRW(order.firstTierCost.productTotalKRW)}</Text>
                 </View>
               )}
               {order.firstTierCost?.chinaShippingKRW != null && (
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>China shipping</Text>
+                  <Text style={styles.summaryLabel}>{t('profile.chinaShipping')}</Text>
                   <Text style={styles.summaryValue}>{formatPriceKRW(order.firstTierCost.chinaShippingKRW)}</Text>
                 </View>
               )}
               {order.firstTierCost?.baseInternationalShippingKRW != null && (
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Int'l shipping</Text>
+                  <Text style={styles.summaryLabel}>{t('profile.intlShipping')}</Text>
                   <Text style={styles.summaryValue}>{formatPriceKRW(order.firstTierCost.baseInternationalShippingKRW)}</Text>
                 </View>
               )}
               <View style={[styles.summaryRow, styles.summaryTotal]}>
-                <Text style={styles.summaryTotalLabel}>Amount paid</Text>
+                <Text style={styles.summaryTotalLabel}>{t('payment.amountPaid')}</Text>
                 <Text style={styles.summaryTotalValue}>{formatPriceKRW(order.totalAmount ?? order.paidAmount ?? 0)}</Text>
               </View>
             </View>
@@ -258,18 +298,18 @@ const OrderDetailScreen: React.FC = () => {
 
         {/* Order details */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Order Details</Text>
+          <Text style={styles.sectionTitle}>{t('profile.orderDetails')}</Text>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Order No.</Text>
+            <Text style={styles.detailLabel}>{t('profile.orderNo')}</Text>
             <View style={styles.detailValueRow}>
               <Text style={styles.detailValue} numberOfLines={1}>{order.orderNumber}</Text>
               <TouchableOpacity onPress={() => copy(order.orderNumber)}>
-                <Text style={styles.copyBtn}>Copy</Text>
+                <Text style={styles.copyBtn}>{t('profile.copy')}</Text>
               </TouchableOpacity>
             </View>
           </View>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Created</Text>
+            <Text style={styles.detailLabel}>{t('profile.created')}</Text>
             <Text style={styles.detailValue}>{new Date(order.createdAt || order.date).toLocaleString()}</Text>
           </View>
         </View>
@@ -279,7 +319,7 @@ const OrderDetailScreen: React.FC = () => {
       <View style={[styles.bottomBar, { paddingBottom: SPACING.md + insets.bottom }]}>
         {isPayCase ? (
           <TouchableOpacity style={styles.payBtn} onPress={handlePayUnpaidOrder}>
-            <Text style={styles.payBtnText}>Pay</Text>
+            <Text style={styles.payBtnText}>{t('cart.pay')}</Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
@@ -290,7 +330,7 @@ const OrderDetailScreen: React.FC = () => {
             {isConfirming ? (
               <ActivityIndicator size="small" color={COLORS.white} />
             ) : (
-              <Text style={styles.confirmBtnText}>Confirm Receipt</Text>
+              <Text style={styles.confirmBtnText}>{t('profile.confirmReceipt')}</Text>
             )}
           </TouchableOpacity>
         )}

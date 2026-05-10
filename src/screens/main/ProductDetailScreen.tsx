@@ -124,6 +124,10 @@ const ProductDetailScreen: React.FC = () => {
   // CPU budget on the first paint.
   const [detailFetched, setDetailFetched] = useState(false);
   const [wishlistCount, setWishlistCount] = useState<number | null>(null);
+  // Live-commerce seller info (avatar, name, viewer count, etc.). Populated
+  // from /live-commerce/sellers/:sellerId when the recommendations fetch
+  // runs for live products. Used by the seller mini-card under the title.
+  const [liveSellerInfo, setLiveSellerInfo] = useState<any>(null);
 
   // Post-login auto-add-to-cart flow.
   // When a logged-out user taps "Add to Cart" we navigate to Login with
@@ -1021,7 +1025,15 @@ const ProductDetailScreen: React.FC = () => {
             title: t('notFound.productTitle') || 'Product Not Found',
           });
         }, 500);
-      } else if (!errorMessage.includes('numeric') && !errorMessage.includes('offerid')) {
+      } else if (
+        !errorMessage.includes('numeric') &&
+        !errorMessage.includes('offerid') &&
+        !product
+      ) {
+        // Only surface the error toast when we have nothing to show. If
+        // the screen is already rendering with initialProductData, the
+        // background refresh failure is silent — the user still sees the
+        // product card payload.
         showToast(error || t('home.productDetailsError'), 'error');
       }
     },
@@ -1112,6 +1124,13 @@ const ProductDetailScreen: React.FC = () => {
         setRelatedProductsHasMore(false);
         isLoadingMoreRelatedRef.current = false;
         return;
+      }
+
+      // Capture the seller's profile (avatar, name, etc.) so the seller
+      // mini-card under the product title can render a real picture
+      // instead of the placeholder.
+      if (response.data.liveSeller) {
+        setLiveSellerInfo(response.data.liveSeller);
       }
 
       const items = response.data.items || [];
@@ -2470,12 +2489,68 @@ const ProductDetailScreen: React.FC = () => {
     // Get soldOut number from product
     const soldOut = (product as any).soldOut || '0';
     
+    const isLive = routeSource === 'live-commerce' || routeSource === 'live';
+    const liveSellerId = (product as any).ownerSellerId || product.seller?.id || '';
+    // The live channel's /live-commerce/sellers/:sellerId response carries
+    // the avatar / display name; the product detail API doesn't. Prefer
+    // those fields when liveSellerInfo has resolved (the recommendations
+    // fetch populates it shortly after detail loads).
+    const liveSellerName =
+      liveSellerInfo?.userName ||
+      liveSellerInfo?.nickname ||
+      liveSellerInfo?.sellerName ||
+      (product as any).metadata?.original1688Data?.companyName ||
+      product.seller?.name ||
+      '';
+    const liveSellerAvatar =
+      liveSellerInfo?.picUrl ||
+      liveSellerInfo?.sellerAvatar ||
+      liveSellerInfo?.avatar ||
+      product.seller?.avatar ||
+      (product as any).sellerAvatar ||
+      '';
+
     return (
       <View style={styles.productInfoContainer}>
         <Text style={styles.productName} numberOfLines={2}>
           {product.name || t('product.product')}
         </Text>
-        
+
+        {/* Live seller mini-card — sits directly under the product title
+            on live-commerce products. Tapping anywhere on the row opens
+            the seller's live page. Hidden when seller info is unavailable
+            or the product isn't from the live channel. */}
+        {isLive && liveSellerId ? (
+          <TouchableOpacity
+            style={styles.liveSellerRow}
+            activeOpacity={0.7}
+            onPress={() => {
+              navigation.navigate('LiveSellerDetail', {
+                sellerId: liveSellerId,
+                sellerName: liveSellerName,
+                source: 'ownmall',
+              });
+            }}
+          >
+            <Image
+              source={{
+                uri: liveSellerAvatar ||
+                  `https://via.placeholder.com/80.png?text=${encodeURIComponent(liveSellerName?.[0] || 'S')}`,
+              }}
+              style={styles.liveSellerAvatar}
+            />
+            <View style={styles.liveSellerTextWrap}>
+              <Text style={styles.liveSellerName} numberOfLines={1}>
+                {liveSellerName || t('live.live')}
+              </Text>
+              <Text style={styles.liveSellerSubtitle} numberOfLines={1}>
+                {t('live.viewSeller')} {'>'}
+              </Text>
+            </View>
+            <ArrowRightIcon width={14} height={14} color={COLORS.text.secondary} />
+          </TouchableOpacity>
+        ) : null}
+
         {/* Review/Rating Row */}
         <View style={styles.ratingRow}>
           <View style={styles.ratingContainer}>
@@ -3811,6 +3886,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     marginTop: SPACING.xs,
+  },
+  // Live-only seller mini-card rendered directly under the product title.
+  liveSellerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    marginTop: SPACING.xs,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray[100],
+  },
+  liveSellerAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.gray[200],
+  },
+  liveSellerTextWrap: {
+    flex: 1,
+  },
+  liveSellerName: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+  },
+  liveSellerSubtitle: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.text.secondary,
+    marginTop: 2,
   },
   discountBadgeInline: {
     backgroundColor: COLORS.red,

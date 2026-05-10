@@ -258,7 +258,12 @@ const mapOrderStatusMeta = (order: ApiOrder): Pick<Order, 'status' | 'statusGrou
   };
 };
 
-const ORDER_BATCH_SIZE = 4;
+// Server caps pageSize at ~50; values above that are rejected with
+// "invalid value". After the first page loads we auto-paginate through
+// the rest (see the useEffect on hasMore below) so the local `orders`
+// array still ends up containing every order — important because the
+// chip + sub-status counts are derived from it.
+const ORDER_BATCH_SIZE = 50;
 
 interface BuyListScreenProps {
   /**
@@ -372,7 +377,6 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
   });
   const [orders, setOrders] = useState<Order[]>([]);
   const [viewFilterCounts, setViewFilterCounts] = useState<Record<string, number>>({});
-  const [unpaidTotalCount, setUnpaidTotalCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const pageRef = useRef(1);
@@ -693,7 +697,8 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
   const handleProductPress = async (product: Product) => {
     const offerId = (product as any).offerId;
     const productIdToUse = offerId || product.id;
-    await navigateToProductDetail(productIdToUse, selectedPlatform, locale);
+    const productSource = (product as any).source || selectedPlatform;
+    await navigateToProductDetail(productIdToUse, productSource, locale);
   };
 
   // Recommendations API mutation with infinite scroll support
@@ -1606,42 +1611,36 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
   // sub-status or active tab is currently selected. Top-level filters
   // (date/platform/customs/transport/search) still affect this count because
   // they're applied at the API layer.
+  // Count cards directly from the loaded `orders` array. Each group's
+  // count is the number of orders whose progressStatus belongs to that
+  // group; each sub-status count is the number of orders matching that
+  // exact status. Recomputed only when `orders` changes — no extra
+  // network call needed.
+  const { groupCounts: derivedGroupCounts, statusCounts: derivedStatusCounts } = useMemo(() => {
+    const groupAcc: Record<string, number> = {
+      purchase_agency: 0,
+      warehouse: 0,
+      international_shipping: 0,
+      error: 0,
+    };
+    const statusAcc: Record<string, number> = {};
+    for (const o of orders) {
+      const ps = (o as any)?.progressStatus;
+      if (!ps) continue;
+      statusAcc[ps] = (statusAcc[ps] || 0) + 1;
+      for (const group of STATUS_GROUPS) {
+        if ((group.statuses as readonly string[]).includes(ps)) {
+          groupAcc[group.key] += 1;
+          break;
+        }
+      }
+    }
+    return { groupCounts: groupAcc, statusCounts: statusAcc };
+  }, [orders]);
+
   const getGroupOrderCount = (groupKey: string): number => {
-    if (groupKey === 'purchase_agency') {
-      return unpaidTotalCount;
-    }
-    const group = STATUS_GROUPS.find(g => g.key === groupKey);
-    if (!group) return 0;
-    return orders.filter(order => {
-      for (const status of group.statuses) {
-        if (status === order.progressStatus) return true;
-      }
-      return false;
-    }).length;
+    return derivedGroupCounts[groupKey] ?? 0;
   };
-
-  const fetchUnpaidTotalCount = useCallback(async () => {
-    if (isGuest || !user) {
-      setUnpaidTotalCount(0);
-      return;
-    }
-    try {
-      const response = await orderApi.getOrders({
-        page: 1,
-        pageSize: 1,
-        viewFilter: 'unpaid',
-      });
-      if (response.success && response.data?.pagination) {
-        setUnpaidTotalCount(response.data.pagination.total ?? 0);
-      }
-    } catch {
-      // silently fail
-    }
-  }, [isGuest, user]);
-
-  useEffect(() => {
-    fetchUnpaidTotalCount();
-  }, [fetchUnpaidTotalCount]);
 
   const renderCategoryStatusFilters = () => {
     const groups = STATUS_GROUPS;
@@ -1700,6 +1699,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
               <Text style={styles.dropdownModalTitle}>{currentGroup ? (t(currentGroup.titleKey) || currentGroup.title) : ''}</Text>
               {(currentGroup?.statuses || []).map((ps) => {
                 const meta = PROGRESS_STATUS_META[ps];
+                const count = derivedStatusCounts[ps] || 0;
                 return (
                   <TouchableOpacity
                     key={ps}
@@ -1707,7 +1707,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
                     onPress={() => { setSelectedProgressStatus(ps); setExpandedStatusGroup(null); }}
                   >
                     <Text style={[styles.groupDropdownText, selectedProgressStatus === ps && styles.groupDropdownTextActive]}>
-                      {t(meta?.translationKey || ps)}
+                      {t(meta?.translationKey || ps)} ({count})
                     </Text>
                   </TouchableOpacity>
                 );
@@ -1833,11 +1833,12 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
                 onEmbeddedBack();
                 return;
               }
-              if (navigation.canGoBack()) {
-                navigation.goBack();
-              } else {
-                navigation.navigate('Main' as never);
-              }
+              // Always land on the Profile (account) tab when leaving the
+              // My Orders screen — the user enters from there, so going
+              // back should return them there even if the navigation
+              // stack was reset (e.g. opened via a deep link or after a
+              // payment redirect).
+              (navigation as any).navigate('Main', { screen: 'Profile' });
             }}
           >
             <Icon name="chevron-back" size={24} color={COLORS.text.primary} />
@@ -2129,7 +2130,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
           <View style={styles.atcModalContent}>
             {/* Header */}
             <View style={styles.atcModalHeader}>
-              <Text style={styles.atcModalTitle}>Add to Cart</Text>
+              <Text style={styles.atcModalTitle}>{t('product.addToCart')}</Text>
               <TouchableOpacity onPress={() => setAddToCartModalVisible(false)}>
                 <Icon name="close" size={22} color={COLORS.text.primary} />
               </TouchableOpacity>
@@ -2259,7 +2260,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
 
                 {/* Quantity */}
                 <View style={styles.atcSection}>
-                  <Text style={styles.atcSectionTitle}>Quantity</Text>
+                  <Text style={styles.atcSectionTitle}>{t('product.quantity')}</Text>
                   <View style={styles.atcQtyRow}>
                     <TouchableOpacity style={styles.atcQtyBtn} onPress={() => setAddToCartQuantity(q => Math.max(1, q - 1))}>
                       <Icon name="remove" size={18} color={COLORS.text.primary} />
@@ -2275,7 +2276,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
 
             {/* Add to cart button */}
             <TouchableOpacity style={styles.atcConfirmButton} onPress={handleConfirmAddToCart}>
-              <Text style={styles.atcConfirmButtonText}>Add to Cart</Text>
+              <Text style={styles.atcConfirmButtonText}>{t('product.addToCart')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -2754,13 +2755,13 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
         <View style={styles.modalOverlay}>
           <View style={styles.addressModalContent}>
             <View style={styles.addressModalHeader}>
-              <Text style={styles.addressModalTitle}>Edit address</Text>
+              <Text style={styles.addressModalTitle}>{t('profile.editAddress')}</Text>
               <TouchableOpacity onPress={() => setAddressModalVisible(false)}>
                 <Icon name="close" size={24} color={COLORS.text.primary} />
               </TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.addressModalLabel}>Currently delivering to:</Text>
+              <Text style={styles.addressModalLabel}>{t('profile.addressCurrentlyDeliveringTo')}</Text>
               <View style={styles.addressModalRow}>
                 <View style={styles.addressModalDropdown}>
                   <Text style={styles.addressModalDropdownText}>한국</Text>
@@ -2774,42 +2775,42 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
                 </TouchableOpacity> */}
               </View>
 
-              <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>Address information:</Text>
+              <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>{t('profile.addressInformation')}</Text>
               <TouchableOpacity style={styles.addressSearchBtn} onPress={() => setShowKakaoAddress(true)}>
                 <Icon name="search" size={16} color={COLORS.white} />
-                <Text style={styles.addressSearchBtnText}>Search Address (Kakao)</Text>
+                <Text style={styles.addressSearchBtnText}>{t('profile.addressSearchKakao')}</Text>
               </TouchableOpacity>
 
-              <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>Postal code:</Text>
+              <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>{t('profile.postalCode')}:</Text>
               <TextInput
                 style={styles.addressModalInput}
-                placeholder="e.g. 06000"
+                placeholder={t('profile.addressPostalCodePlaceholder')}
                 placeholderTextColor={COLORS.gray[400]}
                 value={editAddress.zonecode}
                 onChangeText={(v) => setEditAddress(prev => ({ ...prev, zonecode: v }))}
                 keyboardType="number-pad"
               />
 
-              <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>Detail address:</Text>
+              <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>{t('profile.addressDetailLabel')}</Text>
               <TextInput
                 style={styles.addressModalInput}
-                placeholder="Search address above or enter manually"
+                placeholder={t('profile.searchAddress')}
                 placeholderTextColor={COLORS.gray[400]}
                 value={editAddress.detailAddress}
                 onChangeText={(v) => setEditAddress(prev => ({ ...prev, detailAddress: v }))}
               />
 
-              <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>Recipient name:</Text>
+              <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>{t('profile.recipient')}:</Text>
               <TextInput
                 style={styles.addressModalInput}
-                placeholder="Up to 25 characters"
+                placeholder={t('profile.addressRecipientPlaceholder')}
                 placeholderTextColor={COLORS.gray[400]}
                 value={editAddress.recipient}
                 onChangeText={(v) => setEditAddress(prev => ({ ...prev, recipient: v }))}
                 maxLength={25}
               />
 
-              <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>Mobile number:</Text>
+              <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>{t('profile.addressMobileNumber')}</Text>
               <View style={styles.addressModalPhoneRow}>
                 <View style={styles.addressModalPhoneCode}>
                   <Text style={{ fontSize: FONTS.sizes.sm, color: COLORS.text.primary }}>한국 +82</Text>
@@ -2823,10 +2824,10 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
                 />
               </View>
 
-              <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>Customs clearance code:</Text>
+              <Text style={styles.addressModalLabel}><Text style={styles.addressModalRequired}>* </Text>{t('profile.personalCustomsCode')}:</Text>
               <TextInput
                 style={styles.addressModalInput}
-                placeholder="Please enter the customs clearance code"
+                placeholder={t('profile.addressCustomsCodePlaceholder')}
                 placeholderTextColor={COLORS.gray[400]}
                 value={editAddress.customsCode}
                 onChangeText={(v) => setEditAddress(prev => ({ ...prev, customsCode: v }))}
@@ -2882,7 +2883,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
                 {isSavingAddress ? (
                   <ActivityIndicator size="small" color={COLORS.white} />
                 ) : (
-                  <Text style={styles.addressModalSaveButtonText}>Save</Text>
+                  <Text style={styles.addressModalSaveButtonText}>{t('profile.save')}</Text>
                 )}
               </TouchableOpacity>
             </ScrollView>

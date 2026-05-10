@@ -233,17 +233,51 @@ type ProfileOrderBucket =
   | 'refunds'
   | 'problemProducts';
 
+// Each Profile bucket reflects the orders the user sees inside the
+// matching BuyList view. Buckets with their own dedicated badge in the
+// "내 주문" card (problemProducts / shipping_delay / error / refunds) are
+// listed individually so they don't double-count under the broader
+// group bucket above them.
 const PROGRESS_STATUS_TO_PROFILE_BUCKET: Record<string, ProfileOrderBucket> = {
-  BUY_PAY_WAIT: 'unpaid',                  // 구매결제대기
-  WH_PAY_WAIT: 'to_be_shipped',            // 출고결제대기
-  INTERNATIONAL_SHIPPING: 'shipped',       // 국제운송중
-  INTERNATIONAL_SHIPPED: 'processed',      // 리뷰대기 (delivered, awaiting review)
-  DELIVERY_EXCEPTION: 'shipping_delay',    // 현지배송지연
-  BUYING_PROBLEM: 'problemProducts',       // 문제상품
-  ERR_IN: 'error',                         // 오류입고
-  NO_ORDER_INFO: 'error',                  // 오류입고 (no order info)
-  USER_REFUND_REQ: 'refunds',              // 반품/환불
-  USER_REFUND_COMPLETED: 'refunds',        // 반품/환불
+  // 구매결제대기 — purchase agency group (excluding BUYING_PROBLEM which
+  // has its own 문제상품 badge).
+  BUY_PAY_WAIT: 'unpaid',
+  BUY_PAY_DONE: 'unpaid',
+  BUYING_MANUAL: 'unpaid',
+  BUYING_FINANCIAL_SETTLEMENT: 'unpaid',
+  BUY_FINAL_DONE: 'unpaid',
+
+  // 문제상품
+  BUYING_PROBLEM: 'problemProducts',
+
+  // 출고결제대기 — warehouse group (excluding DELIVERY_EXCEPTION which
+  // has its own 현지배송지연 badge).
+  WH_ARRIVE_EXPECTED: 'to_be_shipped',
+  WH_IN_EXPECTED: 'to_be_shipped',
+  WH_IN_PROGRESS: 'to_be_shipped',
+  WH_IN_DONE: 'to_be_shipped',
+  WH_PICK_DONE: 'to_be_shipped',
+  WH_PAY_WAIT: 'to_be_shipped',
+  WH_PAY_DONE: 'to_be_shipped',
+  WH_SHIPPED: 'to_be_shipped',
+
+  // 현지배송지연
+  DELIVERY_EXCEPTION: 'shipping_delay',
+
+  // 국제운송중
+  INTERNATIONAL_SHIPPING: 'shipped',
+
+  // 리뷰대기 — delivered / awaiting review
+  INTERNATIONAL_SHIPPED: 'processed',
+  ORDER_RECEIVED: 'processed',
+
+  // 오류입고
+  ERR_IN: 'error',
+  NO_ORDER_INFO: 'error',
+
+  // 반품/환불
+  USER_REFUND_REQ: 'refunds',
+  USER_REFUND_COMPLETED: 'refunds',
 };
 
 const EMPTY_ORDER_COUNTS: Record<ProfileOrderBucket, number> = {
@@ -259,13 +293,40 @@ const EMPTY_ORDER_COUNTS: Record<ProfileOrderBucket, number> = {
 
 function computeProfileOrderCounts(orders: unknown): Record<ProfileOrderBucket, number> {
   const counts: Record<ProfileOrderBucket, number> = { ...EMPTY_ORDER_COUNTS };
-  if (!Array.isArray(orders)) return counts;
+  if (!Array.isArray(orders)) {
+    console.log('[ProfileCounts] orders is not an array:', typeof orders, orders === null ? 'null' : '');
+    return counts;
+  }
+
+  console.log('[ProfileCounts] aggregating', orders.length, 'orders');
+
+  // Bucket each order via its progressStatus. Orders without a
+  // recognized status whose paymentStatus is 'unpaid' still fall into
+  // the unpaid bucket so the badge matches BuyList's "Pay" button rule.
   for (const order of orders) {
-    const ps: string | undefined = (order as any)?.progressStatus;
-    if (!ps) continue;
-    const bucket = PROGRESS_STATUS_TO_PROFILE_BUCKET[ps];
+    const o = order as any;
+    const ps: string | undefined = o?.progressStatus;
+    const paymentStatus: string | undefined = o?.paymentStatus;
+
+    console.log('[ProfileCounts] order', {
+      progressStatus: ps,
+      paymentStatus,
+      orderStatus: o?.orderStatus,
+      shippingStatus: o?.shippingStatus,
+      warehouseStatus: o?.warehouseStatus,
+      hasItems: Array.isArray(o?.items) ? o.items.length : 0,
+    });
+
+    let bucket: ProfileOrderBucket | undefined = ps
+      ? PROGRESS_STATUS_TO_PROFILE_BUCKET[ps]
+      : undefined;
+    if (!bucket && paymentStatus === 'unpaid') {
+      bucket = 'unpaid';
+    }
     if (bucket) counts[bucket] += 1;
   }
+
+  console.log('[ProfileCounts] result:', counts);
   return counts;
 }
 
@@ -445,6 +506,7 @@ const ProfileScreen: React.FC = () => {
       fetchUnreadCounts();
 
       // Get order counts from API
+      console.log('[ProfileCounts] calling getOrders');
       getOrders({ page: 1, pageSize: 100 });
 
       // Set wishlist and viewed counts from API
@@ -1049,7 +1111,7 @@ const ProfileScreen: React.FC = () => {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.myOrderItem}
-              onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'international_shipping' })}
+              onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'warehouse' })}
             >
               <Text style={styles.myOrderItemCount}>{orderCounts.shipping_delay}</Text>
               <Text style={styles.myOrderItemText}>{t('profile.toShippingDelay')}</Text>
@@ -1084,18 +1146,10 @@ const ProfileScreen: React.FC = () => {
               <Text style={styles.myOrderItemCount}>{orderCounts.problemProducts}</Text>
               <Text style={styles.myOrderItemText}>{t('profile.toProblem')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.myOrderItem}
-              onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'refunds' })}
+              onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'error' })}
             >
-              {/* <DeliveryIcon width={24} height={24} color={COLORS.black} /> */}
-              {/* <NotificationBadge
-                customIcon={<DeliveryIcon width={24} height={24} color={COLORS.black} />}
-                count={0}
-                badgeColor={COLORS.red}
-                onPress={() => navigation.navigate('BuyList', { initialTab: 'progressing' })}
-                showCount={true}
-              /> */}
               <Text style={styles.myOrderItemCount}>{orderCounts.error}</Text>
               <Text style={styles.myOrderItemText}>{t('profile.toErrorIn')}</Text>
             </TouchableOpacity>

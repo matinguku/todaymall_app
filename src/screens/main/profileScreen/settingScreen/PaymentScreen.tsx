@@ -36,6 +36,7 @@ import { useToast } from '../../../../context/ToastContext';
 import { formatPriceKRW, formatKRWDirect, formatDepositBalance } from '../../../../utils/i18nHelpers';
 import { addressApi } from '../../../../services/addressApi';
 import { orderApi } from '../../../../services/orderApi';
+import { depositApi } from '../../../../services/depositApi';
 import type { BillgateResult } from '../../../../lib/billgate/types';
 
 interface PaymentScreenParams {
@@ -175,6 +176,9 @@ const PaymentScreen: React.FC = () => {
   const [showPaymentDropdown, setShowPaymentDropdown] = useState(false);
   const [depositAmount, setDepositAmount] = useState<string>('0');
   const [memberName, setMemberName] = useState<string>('');
+  // Fresh deposit balance from /deposits/balance — the user object cached
+  // in AuthContext can be stale after recent recharges/withdrawals.
+  const [freshDepositBalance, setFreshDepositBalance] = useState<number | null>(null);
   const { showToast } = useToast();
 
   // Set default address on mount
@@ -184,6 +188,34 @@ const PaymentScreen: React.FC = () => {
       setSelectedAddress(defaultAddress);
     }
   }, [user]);
+
+  // Fetch the live deposit balance on mount so the "Balance: ₩…" line on
+  // the order confirmation page matches the actual account balance.
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await depositApi.getBalance();
+        if (cancelled) return;
+        if (res.success && res.data) {
+          const d = res.data as any;
+          const candidate =
+            d.depositBalance ?? d.balance ?? d.totalDeposit ?? d.availableDeposit ?? d.withdrawableAmount;
+          if (typeof candidate === 'number') {
+            setFreshDepositBalance(candidate);
+          } else if (typeof candidate === 'string') {
+            const parsed = parseFloat(candidate);
+            setFreshDepositBalance(Number.isNaN(parsed) ? 0 : parsed);
+          }
+        }
+      } catch {
+        // silently fall back to user.depositBalance
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Refresh address selection when returning from AddNewAddress screen
   useFocusEffect(
@@ -613,7 +645,12 @@ const PaymentScreen: React.FC = () => {
 
 
   const renderPaymentMethods = () => {
-    const depositBalance = (user as any)?.depositBalance ?? (user as any)?.balance ?? 0;
+    // Prefer the freshly fetched balance over the (potentially stale)
+    // user object cached in AuthContext.
+    const depositBalance =
+      typeof freshDepositBalance === 'number'
+        ? freshDepositBalance
+        : ((user as any)?.depositBalance ?? (user as any)?.balance ?? 0);
     const paymentOptions = [
       { id: 'bank', label: t('payment.bank') || 'Bank' },
       { id: 'credit_card', label: t('payment.creditCard') || 'Credit Card' },
@@ -1012,8 +1049,12 @@ const PaymentScreen: React.FC = () => {
         </View>
       )}
 
-      {/* Points */}
-      {availablePointsAmount > 0 && (
+      {/* Points — temporarily disabled. Set POINTS_USAGE_ENABLED back to
+          true to re-enable the points input on the order confirmation
+          page. The downstream `pointsDiscount` calculation already
+          tolerates the section being hidden (pointsInput stays empty,
+          so the discount stays 0). */}
+      {false && availablePointsAmount > 0 && (
         <View style={styles.couponSelectorBlock}>
           <View style={styles.couponSelectorRow}>
             <Icon name="star-outline" size={14} color={COLORS.red} />
@@ -1145,18 +1186,36 @@ const PaymentScreen: React.FC = () => {
     navigation.reset({ index: 0, routes: [{ name: 'BuyList' as never }] });
   };
 
+  // Localize the backend's "Company mall items cannot be combined …"
+  // English message into the user's locale. The backend returns this
+  // string verbatim when the cart mixes ownmall (Company Mall / live)
+  // items with 1688 / Taobao items; we keep the underlying server rule
+  // but render a localized message instead of the raw English.
+  const localizeCheckoutError = (raw: string | undefined | null): string => {
+    const fallback = t('payment.failedToCreateOrder') || 'Failed to create order. Please try again.';
+    if (!raw) return fallback;
+    const lower = String(raw).toLowerCase();
+    if (
+      lower.includes('company mall') &&
+      (lower.includes('1688') || lower.includes('taobao'))
+    ) {
+      return t('payment.cannotMixOwnMallWith1688') || raw;
+    }
+    return raw;
+  };
+
   // Create order mutation
   const { mutate: createOrder, isLoading: isCreatingOrder } = useCreateOrderMutation({
     onSuccess: handleOrderCreated,
     onError: (error) => {
-      Alert.alert('Error', error || 'Failed to create order. Please try again.');
+      Alert.alert(t('profile.error') || 'Error', localizeCheckoutError(error as any));
     },
   });
 
   const { mutate: createOrderDirectPurchase, isLoading: isCreatingDirectOrder } = useCreateOrderDirectPurchaseMutation({
     onSuccess: handleOrderCreated,
     onError: (error) => {
-      Alert.alert('Error', error || 'Failed to create order. Please try again.');
+      Alert.alert(t('profile.error') || 'Error', localizeCheckoutError(error as any));
     },
   });
 
