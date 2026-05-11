@@ -690,10 +690,10 @@ const SearchScreenComponent: React.FC = () => {
               rating: 0, 
               reviewCount: 0, 
               isVerified: false, 
-              followersCount: 0, 
-              description: '', 
-              location: '', 
-              joinedDate: new Date() 
+              followersCount: 0,
+              description: '',
+              location: '',
+              joinedDate: new Date().toISOString()
             },
             rating: item.rating || 0,
             reviewCount: item.sales || 0,
@@ -704,8 +704,8 @@ const SearchScreenComponent: React.FC = () => {
             isNew: false,
             isFeatured: false,
             isOnSale: discount > 0,
-            createdAt: new Date(item.createDate || new Date()),
-            updatedAt: new Date(item.modifyDate || new Date()),
+            createdAt: new Date(item.createDate || new Date()).toISOString(),
+            updatedAt: new Date(item.modifyDate || new Date()).toISOString(),
             orderCount: item.sales || 0,
             repurchaseRate: item.repurchaseRate || '',
             // Store companyName for filtering
@@ -1048,7 +1048,7 @@ const SearchScreenComponent: React.FC = () => {
               followersCount: 0,
               description: '',
               location: '',
-              joinedDate: new Date()
+              joinedDate: new Date().toISOString()
             },
             rating: item.rating || 0,
             reviewCount: item.sales || 0,
@@ -1059,8 +1059,8 @@ const SearchScreenComponent: React.FC = () => {
             isNew: false,
             isFeatured: false,
             isOnSale: discount > 0,
-            createdAt: new Date(item.createDate || new Date()),
-            updatedAt: new Date(item.modifyDate || new Date()),
+            createdAt: new Date(item.createDate || new Date()).toISOString(),
+            updatedAt: new Date(item.modifyDate || new Date()).toISOString(),
             orderCount: item.sales || 0,
             repurchaseRate: item.repurchaseRate || '',
             // Store companyName for filtering
@@ -1549,7 +1549,7 @@ const SearchScreenComponent: React.FC = () => {
         followersCount: 0,
         description: '',
         location: '',
-        joinedDate: new Date()
+        joinedDate: new Date().toISOString()
       },
       rating: item.rating || 0,
       reviewCount: item.reviewCount || item.rating_count || 0,
@@ -1562,8 +1562,12 @@ const SearchScreenComponent: React.FC = () => {
       isNew: item.isNew !== undefined ? item.isNew : false,
       isFeatured: item.isFeatured !== undefined ? item.isFeatured : false,
       isOnSale: item.isOnSale !== undefined ? item.isOnSale : false,
-      createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
-      updatedAt: item.updatedAt ? new Date(item.updatedAt) : new Date(),
+      createdAt: item.createdAt
+        ? new Date(item.createdAt).toISOString()
+        : new Date().toISOString(),
+      updatedAt: item.updatedAt
+        ? new Date(item.updatedAt).toISOString()
+        : new Date().toISOString(),
       orderCount: item.orderCount || item.order_count || 0,
     };
     
@@ -1816,7 +1820,7 @@ const SearchScreenComponent: React.FC = () => {
                         followersCount: 0,
                         description: '',
                         location: '',
-                        joinedDate: new Date()
+                        joinedDate: new Date().toISOString()
                       },
                       rating: 0,
                       reviewCount: 0,
@@ -1827,8 +1831,8 @@ const SearchScreenComponent: React.FC = () => {
                       isNew: false,
                       isFeatured: false,
                       isOnSale: false,
-                      createdAt: new Date(),
-                      updatedAt: new Date(),
+                      createdAt: new Date().toISOString(),
+                      updatedAt: new Date().toISOString(),
                       orderCount: 0,
                     };
                     

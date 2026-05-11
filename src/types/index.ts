@@ -105,8 +105,9 @@ export interface Product {
   isNew: boolean;
   isFeatured: boolean;
   isOnSale: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: string; // ISO timestamp — string-typed so the value stays
+  updatedAt: string; // serializable when Product instances are passed
+  // through React Navigation params (e.g. productData on ProductDetail).
   orderCount?: number;
   wishlists_count?: number; // Add wishlists_count field
   variations?: VariationData;
@@ -181,7 +182,8 @@ export interface Seller {
   description: string;
   banner?: string;
   location: string;
-  joinedDate: Date;
+  joinedDate: string; // ISO timestamp — kept as a string so the value
+  // remains serializable across React Navigation params.
   orderCount?: number;
 }
 
@@ -422,7 +424,11 @@ export type RootStackParamList = {
   Charge: undefined;
   PointDetail: undefined;
   Coupon: undefined;
-  BuyList: { initialTab?: 'category' | 'unpaid' | 'to_be_shipped' | 'shipped' | 'processed' | 'error' | 'shipping_delay' | 'refunds' | 'purchase_agency' | 'warehouse' | 'international_shipping' | 'all' } | undefined;
+  BuyList: {
+    initialTab?: 'category' | 'unpaid' | 'to_be_shipped' | 'shipped' | 'processed' | 'error' | 'shipping_delay' | 'refunds' | 'purchase_agency' | 'warehouse' | 'international_shipping' | 'all';
+    /** When set (e.g. from Profile "My Orders" shortcuts), list only these `progressStatus` values. */
+    statusWhitelist?: string[];
+  } | undefined;
   RefundRequest: { orderId: string; orderNumber: string; items: any[]; refundData?: any };
   ProblemProduct: undefined;
   MyDeliveries: undefined;

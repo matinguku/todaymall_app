@@ -12,6 +12,7 @@ import {
   useWindowDimensions,
   Linking,
   PanResponder,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
@@ -19,7 +20,7 @@ import WebView from 'react-native-webview';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import Text from '../../components/Text';
 import LanguageButton from '../../components/LanguageButton';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SCREEN_WIDTH } from '../../constants';
+import { API_BASE_URL, COLORS, FONTS, SPACING, BORDER_RADIUS, SCREEN_WIDTH } from '../../constants';
 import { useAppSelector } from '../../store/hooks';
 import { useLiveCommerceMutation } from '../../hooks/useLiveCommerceMutation';
 import { useTranslation } from '../../hooks/useTranslation';
@@ -32,6 +33,7 @@ import SensorsIcon from '../../assets/icons/SensorsIcon';
 import SellerMarkIcon from '../../assets/icons/SellerMarkIcon';
 import PartnerShareIcon from '../../assets/icons/PartnerShareIcon';
 import { formatPriceKRW } from '../../utils/i18nHelpers';
+import { productsApi } from '../../services/productsApi';
 
 const CAROUSEL_WIDTH = SCREEN_WIDTH - SPACING.sm * 2;
 const CAROUSEL_HEIGHT = 420;
@@ -570,16 +572,223 @@ const PopularItemCard: React.FC<{ item: any; locale: 'en' | 'ko' | 'zh'; rank?: 
 };
 
 // ─── Point Partner Seller Card ────────────────────────────
-const PARTNER_PRODUCTS_PER_PAGE = 2;
+const PARTNER_PRODUCTS_PER_PAGE = 3;
 
-const PointPartnerSellerCard: React.FC<{ seller: any; locale: 'en' | 'ko' | 'zh'; onPress?: () => void; onProductPress?: (product: any) => void; t: (key: string) => string; cardStyle?: any }> = ({ seller, locale, onPress, onProductPress, t, cardStyle }) => {
+const normalizeListingImageUri = (raw: unknown): string => {
+  if (raw == null) return '';
+  const s = String(raw).trim();
+  if (!s) return '';
+  if (/^\/\//.test(s)) return `https:${s}`;
+  return s;
+};
+
+/** Turn root-relative CDN paths (e.g. `/Dream/...`) into absolute URLs the Image component can load. */
+const resolvePartnerMediaUrl = (raw: string): string => {
+  const s = normalizeListingImageUri(raw);
+  if (!s) return '';
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith('/')) {
+    try {
+      const origin = new URL(API_BASE_URL).origin;
+      return `${origin}${s}`;
+    } catch {
+      return s;
+    }
+  }
+  return s;
+};
+
+/** Last-resort: find any string that looks like an image URL inside nested payloads (CMS / "Dream" folder paths, etc.). */
+const scrapeImageUrlFromUnknown = (obj: unknown, depth = 0): string => {
+  if (obj == null || depth > 6) return '';
+  if (typeof obj === 'string') {
+    const t = obj.trim();
+    if (
+      t.length > 8 &&
+      (/\.(jpe?g|png|webp|gif)(\?|#|$)/i.test(t) ||
+        /^https?:\/\//i.test(t) ||
+        /^\/\//.test(t) ||
+        (t.startsWith('/') && /dream|upload|static|image|media|img|files|assets/i.test(t)))
+    ) {
+      return normalizeListingImageUri(t);
+    }
+    return '';
+  }
+  if (Array.isArray(obj)) {
+    for (const el of obj) {
+      const found = scrapeImageUrlFromUnknown(el, depth + 1);
+      if (found) return found;
+    }
+    return '';
+  }
+  if (typeof obj === 'object') {
+    for (const v of Object.values(obj as Record<string, unknown>)) {
+      const found = scrapeImageUrlFromUnknown(v, depth + 1);
+      if (found) return found;
+    }
+  }
+  return '';
+};
+
+const uniquePartnerProductsById = (list: any[]): any[] => {
+  const seen = new Set<string>();
+  const out: any[] = [];
+  list.forEach((item, i) => {
+    const k = String(item?.productId ?? item?.id ?? item?._id ?? item?.offerId ?? `i-${i}`);
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(item);
+  });
+  return out;
+};
+
+/** Resolves product image for live-status rows and own-mall rows (API field names vary). */
+const pickPartnerListingImage = (prod: any): string => {
+  if (!prod || typeof prod !== 'object') return '';
+  const nested = prod.product || prod.productData || {};
+  const fromImages =
+    Array.isArray(prod.images) && prod.images.length > 0
+      ? prod.images[0]
+      : Array.isArray(nested.images) && nested.images.length > 0
+        ? nested.images[0]
+        : '';
+  const u =
+    prod.productImageUrl ||
+    prod.imageUrl ||
+    prod.image ||
+    prod.mediaUrl ||
+    prod.thumbnail ||
+    prod.coverImage ||
+    prod.picUrl ||
+    prod.picture ||
+    prod.photo ||
+    nested.imageUrl ||
+    nested.main_image_url ||
+    nested.image ||
+    prod.main_image_url ||
+    fromImages;
+  const rawStr = typeof u === 'string' ? u : (u as any)?.url || '';
+  const primary = normalizeListingImageUri(rawStr);
+  if (primary) return resolvePartnerMediaUrl(primary);
+  const scraped = scrapeImageUrlFromUnknown(prod);
+  return resolvePartnerMediaUrl(scraped);
+};
+
+const PointPartnerSellerCard: React.FC<{
+  seller: any;
+  sellerKey: string;
+  locale: 'en' | 'ko' | 'zh';
+  onPress?: () => void;
+  onProductPress?: (product: any) => void;
+  t: (key: string) => string;
+  cardStyle?: any;
+}> = ({ seller, sellerKey, locale, onPress, onProductPress, t, cardStyle }) => {
+  /** Inner width for the product strip (card width minus horizontal padding). Used so paging works on first paint. */
+  const stripWidthFromStyle = useMemo(() => {
+    const w = typeof cardStyle?.width === 'number' ? cardStyle.width : 0;
+    return w > 0 ? Math.max(0, w - SPACING.md * 2) : 0;
+  }, [cardStyle?.width]);
   const name = seller.userName || seller.nickname || 'Seller';
   const avatar = seller.picUrl || 'https://via.placeholder.com/80.png?text=S';
   const followers = seller.followerCount ?? seller.followers ?? seller.totalFollowers ?? 0;
   const totalSales = seller.totalItemsSold ?? seller.totalSales ?? seller.salesCount ?? 0;
   const isLive = seller.currentLiveStatus === 'live';
-  const liveStatuses: any[] = Array.isArray(seller.currentLiveStatuses) ? seller.currentLiveStatuses : [];
+  const sellerId = seller?._id || seller?.id || seller?.sellerId || '';
+
+  // Fetch the same products used by `LiveSellerDetailScreen` so the
+  // Point Partner preview shows the complete listing (not the truncated
+  // embedded `currentLiveStatuses` payload).
+  const [liveSellerPreviewProducts, setLiveSellerPreviewProducts] = useState<any[] | null>(null);
+  const [isFetchingLiveSellerPreviewProducts, setIsFetchingLiveSellerPreviewProducts] = useState(false);
+
+  useEffect(() => {
+    if (!sellerId) return;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        setIsFetchingLiveSellerPreviewProducts(true);
+        // Limit preview thumbnails to reduce network + keep UI stable.
+        const response = await productsApi.getLiveCommerceSellerDetail(sellerId, { page: 1, pageSize: 9 });
+        if (cancelled) return;
+        if (response?.success && response?.data) {
+          const items = (response.data.items || []).slice(0, 9);
+          const mappedProducts = items.map((item: any) => {
+            const product = item?.product || item?.productData || {};
+            const title =
+              locale === 'ko'
+                ? product?.titleKo || product?.titleEn || product?.titleZh || item?.liveTitle || item?.title || ''
+                : locale === 'zh'
+                  ? product?.titleZh || product?.titleEn || product?.titleKo || item?.liveTitle || item?.title || ''
+                  : product?.titleEn || product?.titleKo || product?.titleZh || item?.liveTitle || item?.title || '';
+
+            const rawPrice = product?.price ?? product?.salePrice ?? item?.price ?? 0;
+            const price = parseFloat(String(rawPrice || 0)) || 0;
+
+            const image =
+              product?.imageUrl ||
+              product?.image ||
+              item?.imageUrl ||
+              item?.image ||
+              item?.mediaUrl ||
+              '';
+
+            const id = item?.productId || product?.id || item?.id || '';
+            return {
+              id,
+              externalId: item?.productId || product?.id || item?.id || '',
+              productId: item?.productId,
+              title,
+              liveTitle: title,
+              image,
+              imageUrl: image,
+              price,
+              originalPrice: price,
+              raw: item,
+            };
+          });
+          setLiveSellerPreviewProducts(mappedProducts);
+        }
+      } catch {
+        // Keep embedded fallback when the preview fetch fails.
+      } finally {
+        if (!cancelled) setIsFetchingLiveSellerPreviewProducts(false);
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [sellerId, locale]);
+
+  const rawLiveStatuses: any[] = Array.isArray(seller.currentLiveStatuses) ? seller.currentLiveStatuses : [];
   const ownMallProducts: any[] = Array.isArray(seller.liveOwnMallProducts) ? seller.liveOwnMallProducts : [];
+  /** CMS / alternate buckets (e.g. `dream` folder payloads) when `currentLiveStatuses` is empty. */
+  const dream = (seller as any)?.dream;
+  const dreamListed: any[] = [];
+  if (dream && typeof dream === 'object') {
+    if (Array.isArray(dream.products)) dreamListed.push(...dream.products);
+    if (Array.isArray(dream.items)) dreamListed.push(...dream.items);
+  }
+  const fallbackStrip = uniquePartnerProductsById([
+    ...(Array.isArray(seller.products) ? seller.products : []),
+    ...(Array.isArray(seller.liveProducts) ? seller.liveProducts : []),
+    ...(Array.isArray((seller as any).pointProducts) ? (seller as any).pointProducts : []),
+    ...(Array.isArray((seller as any).dreamProducts) ? (seller as any).dreamProducts : []),
+    ...dreamListed,
+  ]);
+  /** Pager: live-status rows → own-mall → generic seller product lists (products / dream / etc.). */
+  const embeddedCarouselProducts =
+    rawLiveStatuses.length > 0
+      ? rawLiveStatuses
+      : ownMallProducts.length > 0
+        ? ownMallProducts
+        : fallbackStrip;
+  const carouselProducts =
+    liveSellerPreviewProducts && liveSellerPreviewProducts.length > 0
+      ? liveSellerPreviewProducts
+      : embeddedCarouselProducts;
+  /** Second horizontal strip only when both streams exist (avoid duplicating own-mall in pager + strip). */
+  const showOwnMallSecondaryStrip = rawLiveStatuses.length > 0 && ownMallProducts.length > 0;
   const externalLink = seller.sellerLiveLink || seller.liveSellerLink || seller.externalLiveUrl || null;
   const liveChannelLink = seller.liveChannelLink || null;
 
@@ -593,21 +802,22 @@ const PointPartnerSellerCard: React.FC<{ seller: any; locale: 'en' | 'ko' | 'zh'
     return prod?.liveTitle || prod?.title || '';
   };
   const productPrice = (prod: any): number => prod?.price ?? prod?.productPrice ?? 0;
-  const productImage = (prod: any): string =>
-    prod?.productImageUrl || prod?.imageUrl || prod?.image || '';
 
   const pages: any[][] = [];
-  for (let i = 0; i < liveStatuses.length; i += PARTNER_PRODUCTS_PER_PAGE) {
-    pages.push(liveStatuses.slice(i, i + PARTNER_PRODUCTS_PER_PAGE));
+  for (let i = 0; i < carouselProducts.length; i += PARTNER_PRODUCTS_PER_PAGE) {
+    pages.push(carouselProducts.slice(i, i + PARTNER_PRODUCTS_PER_PAGE));
   }
   // Always render at least one page so empty state still occupies the same vertical space.
   if (pages.length === 0) pages.push([]);
 
   const [activePage, setActivePage] = useState(0);
-  const [pageWidth, setPageWidth] = useState(0);
+  const [pageWidth, setPageWidth] = useState(stripWidthFromStyle);
+  useEffect(() => {
+    if (stripWidthFromStyle > 0) setPageWidth(stripWidthFromStyle);
+  }, [stripWidthFromStyle]);
   const onProductsLayout = (e: any) => {
     const w = e?.nativeEvent?.layout?.width ?? 0;
-    if (w && w !== pageWidth) setPageWidth(w);
+    if (w > 0) setPageWidth((pw) => (Math.abs(w - pw) > 0.5 ? w : pw));
   };
   const onProductsScroll = (e: any) => {
     if (!pageWidth) return;
@@ -633,10 +843,10 @@ const PointPartnerSellerCard: React.FC<{ seller: any; locale: 'en' | 'ko' | 'zh'
   const [ownMallRowWidth, setOwnMallRowWidth] = useState(0);
   const [ownMallScrollX, setOwnMallScrollX] = useState(0);
   const ownMallContentWidth = useMemo(() => {
-    if (!ownMallRowWidth || ownMallProducts.length === 0) return 0;
+    if (!ownMallRowWidth || ownMallProducts.length === 0 || !showOwnMallSecondaryStrip) return 0;
     const cellWidth = (ownMallRowWidth - SPACING.sm) / 2;
     return cellWidth * ownMallProducts.length + SPACING.sm * (ownMallProducts.length - 1);
-  }, [ownMallRowWidth, ownMallProducts.length]);
+  }, [ownMallRowWidth, ownMallProducts.length, showOwnMallSecondaryStrip]);
   const ownMallMaxScroll = Math.max(0, ownMallContentWidth - ownMallRowWidth);
   const ownMallTrackWidth = ownMallRowWidth;
   const ownMallThumbWidth = useMemo(() => {
@@ -668,75 +878,123 @@ const PointPartnerSellerCard: React.FC<{ seller: any; locale: 'en' | 'ko' | 'zh'
     }),
   ).current;
 
+  const partnerRowGap = SPACING.xs;
+  const partnerCellW =
+    pageWidth > 0
+      ? (pageWidth - partnerRowGap * (PARTNER_PRODUCTS_PER_PAGE - 1)) / PARTNER_PRODUCTS_PER_PAGE
+      : 0;
+  /** ~52px-class thumb ×1.5, capped so three columns still fit the pager width (card row grows with image). */
+  // Image scale: bump by 1.2x relative to the previous tuned size.
+  const PARTNER_THUMB_SCALE = 1.8;
+  const partnerThumbBase =
+    partnerCellW > 0 ? Math.max(28, Math.min(52, Math.floor(partnerCellW) - 4)) : 44;
+  const partnerThumbSz =
+    partnerCellW > 0
+      ? Math.round(Math.min(partnerThumbBase * PARTNER_THUMB_SCALE, partnerCellW - 2))
+      : Math.round(44 * PARTNER_THUMB_SCALE);
+  // Keep the card height closely coupled to thumbnail size so the "image area"
+  // visually drives the layout (less empty space under the image).
+  const partnerProductRowMinHeight = Math.round(partnerThumbSz + 34);
+
   return (
-    <TouchableOpacity style={[styles.partnerCard, cardStyle]} activeOpacity={0.85} onPress={onPress}>
-      {/* Top: avatar + identity + social link */}
-      <View style={styles.partnerTopRow}>
-        <View style={styles.partnerAvatarWrapper}>
-          <View style={[styles.partnerAvatarRing, isLive && styles.partnerAvatarRingLive]}>
-            <Image source={{ uri: avatar }} style={styles.partnerAvatar} />
+    <View style={[styles.partnerCard, cardStyle]} collapsable={false}>
+      {/* Header only: full-card TouchableOpacity blocks horizontal ScrollView inside parent ScrollView. */}
+      <TouchableOpacity activeOpacity={0.85} onPress={onPress} accessibilityRole="button">
+        <View style={styles.partnerTopRow}>
+          <View style={styles.partnerAvatarWrapper}>
+            <View style={[styles.partnerAvatarRing, isLive && styles.partnerAvatarRingLive]}>
+              <Image source={{ uri: avatar }} style={styles.partnerAvatar} />
+            </View>
+            {isLive && (
+              <>
+                <View style={styles.partnerLiveBadge}>
+                  <Text style={styles.partnerLiveBadgeText}>LIVE</Text>
+                </View>
+                <View style={styles.partnerLiveCaption}>
+                  <Text style={styles.partnerLiveCaptionText} numberOfLines={1}>
+                    {t('live.liveNow')}
+                  </Text>
+                </View>
+              </>
+            )}
           </View>
-          {isLive && (
-            <>
-              <View style={styles.partnerLiveBadge}>
-                <Text style={styles.partnerLiveBadgeText}>LIVE</Text>
-              </View>
-              <View style={styles.partnerLiveCaption}>
-                <Text style={styles.partnerLiveCaptionText} numberOfLines={1}>
-                  {t('live.liveNow')}
-                </Text>
-              </View>
-            </>
+          <View style={styles.partnerIdentity}>
+            <Text style={styles.partnerName} numberOfLines={1}>{name}</Text>
+            <Text style={styles.partnerStats} numberOfLines={1}>
+              {t('live.followers')} {followers}  |  {t('live.totalSales')} {totalSales}
+            </Text>
+          </View>
+          {externalLink && (
+            <TouchableOpacity
+              onPress={openExternal}
+              activeOpacity={0.8}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.partnerSocialBtn}
+            >
+              <Text style={styles.partnerSocialGlyph}>♪</Text>
+            </TouchableOpacity>
+          )}
+          {liveChannelLink && (
+            <TouchableOpacity
+              onPress={openLiveChannel}
+              activeOpacity={0.8}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <PartnerShareIcon width={40} height={40} />
+            </TouchableOpacity>
           )}
         </View>
-        <View style={styles.partnerIdentity}>
-          <Text style={styles.partnerName} numberOfLines={1}>{name}</Text>
-          <Text style={styles.partnerStats} numberOfLines={1}>
-            {t('live.followers')} {followers}  |  {t('live.totalSales')} {totalSales}
-          </Text>
-        </View>
-        {externalLink && (
-          <TouchableOpacity
-            onPress={openExternal}
-            activeOpacity={0.8}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={styles.partnerSocialBtn}
-          >
-            <Text style={styles.partnerSocialGlyph}>♪</Text>
-          </TouchableOpacity>
-        )}
-        {liveChannelLink && (
-          <TouchableOpacity
-            onPress={openLiveChannel}
-            activeOpacity={0.8}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <PartnerShareIcon width={40} height={40} />
-          </TouchableOpacity>
-        )}
-      </View>
+      </TouchableOpacity>
 
-      {/* Products carousel */}
-      <View style={styles.partnerProductsWrap} onLayout={onProductsLayout}>
+      {/* Products carousel: 3 per page, swipe horizontally when more than one page */}
+      <View
+        style={[styles.partnerProductsWrap, { width: '100%', minHeight: partnerProductRowMinHeight }]}
+        onLayout={onProductsLayout}
+      >
         {pageWidth > 0 && (
           <ScrollView
             horizontal
             pagingEnabled
+            nestedScrollEnabled={Platform.OS === 'android'}
+            removeClippedSubviews={false}
             showsHorizontalScrollIndicator={false}
             onScroll={onProductsScroll}
             scrollEventThrottle={16}
             decelerationRate="fast"
+            keyboardShouldPersistTaps="handled"
           >
             {pages.map((page, pageIdx) => (
-              <View key={`page-${pageIdx}`} style={[styles.partnerProductsPage, { width: pageWidth }]}>
+              <View
+                key={`${sellerKey}-page-${pageIdx}`}
+                style={[
+                  styles.partnerProductsPage,
+                  { width: pageWidth, gap: partnerRowGap, minHeight: partnerProductRowMinHeight },
+                ]}
+              >
                 {page.map((prod: any, idx: number) => {
                   const title = localizedTitle(prod);
-                  const img = productImage(prod);
+                  const img = pickPartnerListingImage(prod);
+                  const cellKey = `${sellerKey}-p${pageIdx}-c${idx}-${String(prod?.productId ?? prod?.id ?? prod?._id ?? prod?.offerId ?? 'x')}`;
                   return (
-                    <View key={prod?.id || prod?._id || `${pageIdx}-${idx}`} style={styles.partnerProductCell}>
+                    <TouchableOpacity
+                      key={cellKey}
+                      activeOpacity={0.9}
+                      onPress={() => onProductPress?.(prod)}
+                      accessibilityRole="button"
+                      style={[
+                        styles.partnerProductCell,
+                        partnerCellW > 0 && {
+                          width: partnerCellW,
+                          maxWidth: partnerCellW,
+                          flexGrow: 0,
+                          flexShrink: 0,
+                        },
+                      ]}
+                    >
                       <Image
                         source={{ uri: img || 'https://via.placeholder.com/80x80.png?text=P' }}
-                        style={styles.partnerProductImageLg}
+                        style={[styles.partnerProductImageLg, { width: partnerThumbSz, height: partnerThumbSz }]}
+                        resizeMode="cover"
                       />
                       <View style={styles.partnerProductCellInfo}>
                         <Text style={styles.partnerProductCellTitle} numberOfLines={1}>
@@ -746,12 +1004,23 @@ const PointPartnerSellerCard: React.FC<{ seller: any; locale: 'en' | 'ko' | 'zh'
                           {formatPriceKRW(productPrice(prod))}
                         </Text>
                       </View>
-                    </View>
+                    </TouchableOpacity>
                   );
                 })}
                 {/* Pad short last page so dots stay aligned and layout is uniform */}
                 {Array.from({ length: PARTNER_PRODUCTS_PER_PAGE - page.length }).map((_, i) => (
-                  <View key={`pad-${pageIdx}-${i}`} style={styles.partnerProductCell} />
+                  <View
+                    key={`${sellerKey}-pad-${pageIdx}-${i}`}
+                    style={[
+                      styles.partnerProductCell,
+                      partnerCellW > 0 && {
+                        width: partnerCellW,
+                        maxWidth: partnerCellW,
+                        flexGrow: 0,
+                        flexShrink: 0,
+                      },
+                    ]}
+                  />
                 ))}
               </View>
             ))}
@@ -771,8 +1040,8 @@ const PointPartnerSellerCard: React.FC<{ seller: any; locale: 'en' | 'ko' | 'zh'
         </View>
       )}
 
-      {/* Own-mall product images: 2-up horizontal row with manual draggable bar */}
-      {ownMallProducts.length > 0 && (
+      {/* Own-mall product images: 2-up horizontal row (only when live-status row also exists — otherwise pager uses own-mall). */}
+      {showOwnMallSecondaryStrip && (
         <View
           style={styles.ownMallRowWrap}
           onLayout={(e) => {
@@ -790,12 +1059,12 @@ const PointPartnerSellerCard: React.FC<{ seller: any; locale: 'en' | 'ko' | 'zh'
               contentContainerStyle={styles.ownMallContent}
             >
               {ownMallProducts.map((prod: any, idx: number) => {
-                const img = productImage(prod);
+                const img = pickPartnerListingImage(prod);
                 const cellWidth = (ownMallRowWidth - SPACING.sm) / 2;
                 const imageSize = cellWidth * 0.7;
                 return (
                   <TouchableOpacity
-                    key={prod?.id || prod?._id || `om-${idx}`}
+                    key={`${sellerKey}-om-${String(prod?.id ?? prod?._id ?? prod?.offerId ?? idx)}`}
                     activeOpacity={0.85}
                     onPress={() => onProductPress?.(prod)}
                     style={{
@@ -810,6 +1079,7 @@ const PointPartnerSellerCard: React.FC<{ seller: any; locale: 'en' | 'ko' | 'zh'
                         styles.ownMallProductImage,
                         { width: imageSize, height: imageSize },
                       ]}
+                      resizeMode="cover"
                     />
                     <Text style={styles.ownMallProductPrice} numberOfLines={1}>
                       {formatPriceKRW(prod?.price ?? 0)}
@@ -832,7 +1102,7 @@ const PointPartnerSellerCard: React.FC<{ seller: any; locale: 'en' | 'ko' | 'zh'
           )}
         </View>
       )}
-    </TouchableOpacity>
+    </View>
   );
 };
 
@@ -1373,6 +1643,7 @@ const LiveScreen: React.FC = () => {
                   {pointPartnerSellers.map((seller: any, i: number) => (
                     <PointPartnerSellerCard
                       key={seller._id || i}
+                      sellerKey={String(seller._id ?? seller.id ?? `partner-${i}`)}
                       seller={seller}
                       locale={locale}
                       onPress={() => navigation.navigate('LiveSellerDetail', {
@@ -1497,7 +1768,8 @@ const styles = StyleSheet.create({
   fixedHeaderSubSection: {
     backgroundColor: 'transparent',
     zIndex: 2,
-  },
+    bottom: 0,
+    },
 
   scrollContent: {
     paddingBottom: SPACING.xl,
@@ -2261,34 +2533,35 @@ const styles = StyleSheet.create({
   },
   partnerProductsPage: {
     flexDirection: 'row',
-    gap: SPACING.smmd,
+    alignItems: 'flex-start',
   },
   partnerProductCell: {
-    flex: 1,
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: SPACING.sm,
+    justifyContent: 'flex-start',
     minWidth: 0,
+    gap: 2,
   },
   partnerProductImageLg: {
-    width: 56,
-    height: 56,
-    borderRadius: BORDER_RADIUS.md,
+    borderRadius: BORDER_RADIUS.sm,
     backgroundColor: COLORS.gray[200],
   },
   partnerProductCellInfo: {
-    flex: 1,
+    width: '100%',
     minWidth: 0,
+    alignItems: 'center',
   },
   partnerProductCellTitle: {
-    fontSize: FONTS.sizes.sm,
+    fontSize: FONTS.sizes.xs,
     color: COLORS.text.secondary,
+    textAlign: 'center',
   },
   partnerProductCellPrice: {
-    fontSize: FONTS.sizes.md,
+    fontSize: FONTS.sizes.xs,
     fontWeight: '800',
     color: COLORS.text.primary,
-    marginTop: 2,
+    marginTop: 0,
+    textAlign: 'center',
   },
   partnerDotsRow: {
     flexDirection: 'row',
@@ -2533,7 +2806,7 @@ const liveSkeletonStyles = StyleSheet.create({
   // Partner grid: 4 cards in 2 columns matching partnerCard width formula
   partnerCard: {
     width: (SCREEN_WIDTH - SPACING.md * 2 - SPACING.smmd) / 2,
-    height: 160,
+    height: 162,
     borderRadius: BORDER_RADIUS.lg,
     backgroundColor: COLORS.gray[100],
   },

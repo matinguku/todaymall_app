@@ -20,7 +20,7 @@ import ArrowBackIcon from '../../assets/icons/ArrowBackIcon';
 import ArrowDownIcon from '../../assets/icons/ArrowDownIcon';
 import { Button, TextInput } from '../../components';
 import LinearGradient from 'react-native-linear-gradient';
-import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute, CommonActions } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { useRegisterMutation } from '../../hooks/useAuthMutations';
@@ -63,6 +63,53 @@ const SignupScreen: React.FC = () => {
   const { mutate: register, isLoading, isError, error, isSuccess, data } = useRegisterMutation({
     onSuccess: (data) => {
       showToast(data?.message || t('auth.signupSuccess') || 'Signup successful', 'success');
+
+      // If the register API returned a token + user, log the user in
+      // directly and return to the originating screen (e.g. ProductDetail
+      // with the autoBuyNow flag). This avoids the previous flow:
+      // Signup → Login (push) → re-login → ProductDetail, which combined
+      // with LoginScreen's double-navigation produced visible bouncing
+      // back to the seller page.
+      if (data?.token && data?.user && !data?.requiresVerification) {
+        const u: any = data.user;
+        const fullUser = {
+          id: u.id || u.email || Date.now().toString(),
+          email: u.email || '',
+          name: u.name || u.email?.split('@')[0] || 'User',
+          avatar: u.avatar || 'https://via.placeholder.com/150',
+          phone: u.phone || '',
+          addresses: u.addresses || [],
+          paymentMethods: u.paymentMethods || [],
+          wishlist: u.wishlist || [],
+          followersCount: u.followersCount || 0,
+          followingsCount: u.followingsCount || 0,
+          depositBalance: u.depositBalance ?? 0,
+          points: u.points ?? 0,
+          preferences: u.preferences || {
+            notifications: { email: true, push: true, sms: true },
+            language: 'en',
+            currency: 'USD',
+          },
+          createdAt: u.createdAt || new Date().toISOString(),
+          updatedAt: u.updatedAt || new Date().toISOString(),
+        };
+        setAuthenticatedUser(fullUser as any);
+
+        if (returnTo) {
+          navigation.dispatch(
+            CommonActions.navigate({ name: returnTo, params: returnParams } as any),
+          );
+        } else if (navigation.canGoBack()) {
+          navigation.goBack();
+        } else {
+          (navigation as any).navigate('Main', { screen: 'Home' });
+        }
+        return;
+      }
+
+      // Fallback for API responses that don't include a session token
+      // (e.g. email-verification-required flows). Keep the existing
+      // hand-off to LoginScreen so the user can complete sign-in there.
       handleLogin();
     },
     onError: (errorMessage, errorCode) => {

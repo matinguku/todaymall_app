@@ -954,7 +954,7 @@ export const getProfile = async (): Promise<GetProfileResponse> => {
       };
     }
     
-    const profileUrls = [`${API_BASE_URL}/v1/users/me`, `${API_BASE_URL}/users/profile`];
+    const profileUrls = [`${API_BASE_URL}/users/me`, `${API_BASE_URL}/users/profile`];
     let response: Response | null = null;
     let responseText = '';
     let responseData: any;

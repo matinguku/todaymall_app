@@ -91,7 +91,9 @@ export const buildSignatureHeaders = async (
   // js-sha256: HMAC usage is sha256.hmac(key, message)
   const signature = sha256.hmac(SIGNATURE_SECRET, canonical);
 
-  console.log('[signature]', upperMethod, path, 'ts:', timestamp, 'bodyHash:', bodyHash || '(empty)', 'sig:', signature.slice(0, 16) + '...');
+  if (__DEV__) {
+    console.log('[signature]', upperMethod, path, 'ts:', timestamp, 'bodyHash:', bodyHash || '(empty)', 'sig:', signature.slice(0, 16) + '...');
+  }
 
   return {
     'X-Request-Timestamp': timestamp,

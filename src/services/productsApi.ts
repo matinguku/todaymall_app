@@ -21,6 +21,16 @@ const categoryTreeCache: Record<string, CategoriesTreeResponse> = {};
 
 // Products API
 export const productsApi = {
+  /**
+   * Backend 1688 adapters expect `country=en` even when UI locale is ko/zh.
+   * Localized strings are controlled by `lang` (and some Taobao endpoints use
+   * `language`). Sending `country=ko` has been observed to trigger 500s on
+   * `/v1/products/detail` and some list endpoints.
+   */
+  normalize1688Country: (country: string | undefined | null): string => {
+    // Keep 'en'; otherwise force to 'en' for stability.
+    return String(country || 'en').toLowerCase() === 'en' ? 'en' : 'en';
+  },
 
   // Image search for 1688
   imageSearch1688: async (
@@ -537,14 +547,13 @@ export const productsApi = {
       }
       
       // Default 1688 (and other platforms) search
-      // Map locale codes to country codes for API
-      // 'zh' (language code) should map to 'en' (country code) for Chinese
-      const countryCode = country === 'zh' ? 'en' : country;
-      
+      const effectiveCountry = source === '1688'
+        ? productsApi.normalize1688Country(country)
+        : country;
       const params = new URLSearchParams({
         keyword,
         source,
-        country: countryCode,
+        country: effectiveCountry,
         page: page.toString(),
         pageSize: pageSize.toString(),
         // sellerOpenId,
@@ -700,9 +709,9 @@ export const productsApi = {
     try {
       const token = await getStoredToken();
       
-      // Map locale codes to country codes for API
-      // 'zh' (language code) should map to 'en' (country code) for Chinese
-      const countryCode = country === 'zh' ? 'en' : country;
+      const countryCode = platform === '1688'
+        ? productsApi.normalize1688Country(country)
+        : (country === 'zh' ? 'en' : country);
       
       // Build query parameters (outMemberId is required)
       const params = new URLSearchParams({
@@ -715,7 +724,9 @@ export const productsApi = {
       // Required endpoint format:
       // /products/1688/recommendations?country=ko&outMemberId=...
       const url = `${API_BASE_URL}/products/1688/recommendations?${params.toString()}`;
-      console.log('🔍 [Recommendations] 실제 요청 URL:', url);
+      if (__DEV__) {
+        console.log('🔍 [Recommendations] 실제 요청 URL:', url);
+      }
 
       const signatureHeaders = await buildSignatureHeaders('GET', url);
 
@@ -1391,7 +1402,9 @@ export const productsApi = {
           language,
         });
         const taobaoUrl = `${API_BASE_URL}/products/taobao-global/product/get?${taobaoParams.toString()}`;
-        console.log('📦 [Taobao Product Detail] 실제 요청 URL:', taobaoUrl);
+        if (__DEV__) {
+          console.log('📦 [Taobao Product Detail] 실제 요청 URL:', taobaoUrl);
+        }
         const signatureHeaders = await buildSignatureHeaders('GET', taobaoUrl);
         const taobaoResponse = await axios.get(taobaoUrl, {
           headers: {
@@ -1533,27 +1546,63 @@ export const productsApi = {
       }
 
       // Default 1688 (and other platforms) product detail
-      const language =
-        country === 'ko' ? 'ko' :
-        country === 'zh' ? 'zh' :
-        'en';
+      // NOTE: 1688 detail endpoint has proven unstable with non-English lang
+      // after i18n rollout; keep lang=en for 1688 and localize on client.
+      const language = source === '1688'
+        ? 'en'
+        : (
+          country === 'ko' ? 'ko' :
+          country === 'zh' ? 'zh' :
+          'en'
+        );
+      const effectiveCountry = source === '1688'
+        ? productsApi.normalize1688Country(country)
+        : country;
       const params = new URLSearchParams({
         productId,
         source,
-        country,
+        country: effectiveCountry,
         lang: language,
       });
 
-      const url = `${API_BASE_URL}/products/detail?${params.toString()}`;
-      const signatureHeaders = await buildSignatureHeaders('GET', url);
-      console.log('📦 [Product Detail] 실제 요청 URL:', url);
-      const response = await axios.get(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          ...signatureHeaders,
-        },
-      });
+      const requestDetail = async (lang: string) => {
+        const requestParams = new URLSearchParams({
+          productId,
+          source,
+          country: effectiveCountry,
+          lang,
+        });
+        const requestUrl = `${API_BASE_URL}/products/detail?${requestParams.toString()}`;
+        const signatureHeaders = await buildSignatureHeaders('GET', requestUrl);
+        if (__DEV__) {
+          console.log('📦 [Product Detail] 실제 요청 URL:', requestUrl);
+        }
+        return axios.get(requestUrl, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            ...signatureHeaders,
+          },
+        });
+      };
+
+      let response;
+      try {
+        response = await requestDetail(language);
+      } catch (firstError: any) {
+        const shouldRetryWithEnglish =
+          source === '1688' &&
+          language !== 'en' &&
+          (firstError?.response?.status >= 500 || !firstError?.response);
+
+        if (!shouldRetryWithEnglish) throw firstError;
+
+        console.warn(
+          '[productsApi.getProductDetail] retrying with lang=en after failure:',
+          firstError?.response?.status || firstError?.message,
+        );
+        response = await requestDetail('en');
+      }
       
       // Check if response data exists
       if (!response.data || !response.data.data || !response.data.data.product) {
@@ -2120,7 +2169,7 @@ export const productsApi = {
         sellerOpenId,
         beginPage: (params?.beginPage || 1).toString(),
         pageSize: (params?.pageSize || 20).toString(),
-        country: params?.country || 'en',
+        country: productsApi.normalize1688Country(params?.country || 'en'),
         ...(params?.sort && { sort: params.sort }),
         ...(params?.keyword && { keyword: params.keyword }),
         ...(params?.priceStart && { priceStart: params.priceStart.toString() }),

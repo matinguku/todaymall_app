@@ -92,6 +92,8 @@ export interface CreateOrderDirectPurchaseRequest {
   depositAmountKRW?: number;
   /** Same purpose as CreateOrderRequest.liveCode — see that field's docs. */
   liveCode?: string;
+  /** Optional buyer memo for the whole order (checkout / payment screen). */
+  notes?: string;
 }
 
 export interface OrderResponse {

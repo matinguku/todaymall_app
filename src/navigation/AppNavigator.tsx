@@ -485,7 +485,14 @@ const RootNavigator = () => {
       {/* Onboarding removed - skip directly to main screens */}
       <>
         <RootStack.Screen name="Main" component={MainTabNavigator} />
-        <RootStack.Screen name="Auth" component={AuthNavigator} />
+        <RootStack.Screen
+          name="Auth"
+          component={AuthNavigator}
+          options={{
+            presentation: 'modal',
+            headerShown: false,
+          }}
+        />
         <RootStack.Screen
           name="QrLoginConfirm"
           component={QrLoginConfirmScreen}

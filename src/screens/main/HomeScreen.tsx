@@ -95,6 +95,14 @@ function getUniqueRandomIndices(length: number, count: number): number[] {
   return arr.slice(0, n);
 }
 
+/** 1688 / new-in list item → id passed to ProductDetail (offer / external / catalog id). */
+function resolveHomePromoProductDetailId(p: any): string | null {
+  if (!p || typeof p !== 'object') return null;
+  const cand = p.offerId ?? p.externalId ?? p.id;
+  if (cand == null || cand === '') return null;
+  return String(cand);
+}
+
 type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Main'>;
 
 // Banner marquee: constant-speed water-like flow (same speed regardless of text length)
@@ -601,9 +609,9 @@ const AutoLiveChannelSection = React.memo(({
                         style={{ alignItems: 'center', width: promoEqualImageSize }}
                         onPress={() => {
                           const pid = card.externalIds?.[idx];
-                          if (card.ids?.[idx] && pid != null) {
+                          if (pid != null && String(pid).length > 0) {
                             navigation.navigate('ProductDetail', {
-                              productId: pid,
+                              productId: String(pid),
                               source: selectedPlatform || '1688',
                               country:
                                 locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en',
@@ -669,9 +677,9 @@ const AutoLiveChannelSection = React.memo(({
                           activeOpacity={0.7}
                           onPress={() => {
                             const pid = card.externalIds?.[idx];
-                            if (card.ids?.[idx] && pid != null) {
+                            if (pid != null && String(pid).length > 0) {
                               navigation.navigate('ProductDetail', {
-                                productId: pid,
+                                productId: String(pid),
                                 source: selectedPlatform || '1688',
                                 country: locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en',
                               });
@@ -695,9 +703,9 @@ const AutoLiveChannelSection = React.memo(({
                   activeOpacity={0.7}
                   onPress={() => {
                     const pid = card.externalIds?.[2];
-                    if (card.ids?.[2] && pid != null) {
+                    if (pid != null && String(pid).length > 0) {
                       navigation.navigate('ProductDetail', {
-                        productId: pid,
+                        productId: String(pid),
                         source: selectedPlatform || '1688',
                         country: locale === 'zh' ? 'zh' : locale === 'ko' ? 'ko' : 'en',
                       });
@@ -733,7 +741,7 @@ const AutoLiveChannelSection = React.memo(({
   );
 });
 
-const HomeScreen: React.FC = () => {
+const HomeScreenContent: React.FC = () => {
   const navigation = useNavigation<HomeScreenNavigationProp>();
   const { screenWidth: dynScreenWidth, contentWidth: dynContentWidth, isTablet, isLandscape, moreToLoveColumns, gridCardWidth: dynGridCardWidth } = useResponsive();
   // True only on tablet held in landscape — used to switch the three
@@ -955,6 +963,7 @@ const HomeScreen: React.FC = () => {
   const isRecommendationsRefreshingRef = useRef(false); // Prevent loading during refresh
   const currentRecommendationsPageRef = useRef<number>(1); // Track current page for callbacks
   const isLoadingMoreRecommendationsRef = useRef(false); // Prevent multiple simultaneous loads
+  const outMemberId = user?.id?.toString() || 'dferg0001';
   
   // Default categories state
   const [defaultCategories, setDefaultCategories] = useState<any[]>([]);
@@ -1027,10 +1036,10 @@ const HomeScreen: React.FC = () => {
               rating: 0, 
               reviewCount: 0, 
               isVerified: false, 
-              followersCount: 0, 
-              description: '', 
-              location: '', 
-              joinedDate: new Date() 
+              followersCount: 0,
+              description: '',
+              location: '',
+              joinedDate: new Date().toISOString()
             },
             rating: 0,
             reviewCount: 0,
@@ -1041,8 +1050,8 @@ const HomeScreen: React.FC = () => {
             isNew: false,
             isFeatured: false,
             isOnSale: discount > 0,
-            createdAt: new Date(),
-            updatedAt: new Date(),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
             orderCount: item.monthSold || 0,
             repurchaseRate: item.repurchaseRate || '',
           };
@@ -1105,7 +1114,6 @@ const HomeScreen: React.FC = () => {
         // with the current page.
         if (hasMore) {
           const nextPage = currentPage + 1;
-          const outMemberId = user?.id?.toString() || 'dferg0001';
           prefetchRecommendations(
             locale,
             outMemberId,
@@ -1135,7 +1143,14 @@ const HomeScreen: React.FC = () => {
       isLoadingMoreRecommendationsRef.current = false;
       const currentPage = currentRecommendationsPageRef.current;
       if (currentPage === 1) {
-        setRecommendationsProducts([]);
+        // Keep previously rendered products when a transient page-1 request fails.
+        // This prevents a failed fallback/default-member request from erasing
+        // already loaded valid product cards.
+        if (recommendationsProducts.length === 0) {
+          setRecommendationsProducts([]);
+          setRecommendationsHasMore(false);
+        }
+        return;
       }
       setRecommendationsHasMore(false);
     },
@@ -1156,7 +1171,6 @@ const HomeScreen: React.FC = () => {
     
     if (recommendationsOffset > 1 && fetchRecommendationsRef.current && recommendationsHasMore) {
       isLoadingMoreRecommendationsRef.current = true;
-      const outMemberId = user?.id?.toString() || 'dferg0001';
       const platform = '1688'; // Always use 1688 for More to Love products
       currentRecommendationsPageRef.current = recommendationsOffset;
       fetchRecommendationsRef.current(locale, outMemberId, recommendationsOffset, PAGINATION.FEED_MORE_PAGE_SIZE, platform)
@@ -1222,10 +1236,23 @@ const HomeScreen: React.FC = () => {
       }
     },
     onError: (error) => {
+      const msg = typeof error === 'string' ? error : '';
       if (__DEV__) {
         console.log('fetchNewInProducts onError:', error);
       }
-      showToast(error || t('home.failedToLoadNewProducts'), 'error');
+      const lower = msg.toLowerCase();
+      const isLikelyOffline =
+        lower.includes('network error') ||
+        lower.includes('connection') ||
+        lower.includes('unable to resolve') ||
+        lower.includes('resolve host') ||
+        lower.includes('enotfound') ||
+        lower.includes('failed to connect') ||
+        lower.includes('timeout') ||
+        lower.includes('network request failed');
+      if (!isLikelyOffline) {
+        showToast(msg || t('home.failedToLoadNewProducts'), 'error');
+      }
     },
   });
 
@@ -1385,7 +1412,6 @@ const HomeScreen: React.FC = () => {
   const lastRecommendationsFetchRef = useRef<string | null>(null);
   useEffect(() => {
     if (locale && fetchRecommendationsRef.current) {
-      const outMemberId = user?.id?.toString() || 'dferg0001';
       const platform = '1688'; // Always use 1688 for More to Love products
       const fetchKey = `${locale}-${outMemberId}-${platform}`;
       
@@ -1457,7 +1483,6 @@ const HomeScreen: React.FC = () => {
 
     // Reload recommendations first page
     if (fetchRecommendationsRef.current && locale) {
-      const outMemberId = user?.id?.toString() || 'dferg0001';
       const platform = '1688'; // Always use 1688 for More to Love products
       currentRecommendationsPageRef.current = 1;
       await fetchRecommendationsRef.current(locale, outMemberId, 1, PAGINATION.FEED_INITIAL_PAGE_SIZE, platform);
@@ -1829,10 +1854,10 @@ const HomeScreen: React.FC = () => {
                     rating: 0, 
                     reviewCount: 0, 
                     isVerified: false, 
-                    followersCount: 0, 
-                    description: '', 
-                    location: '', 
-                    joinedDate: new Date() 
+                    followersCount: 0,
+                    description: '',
+                    location: '',
+                    joinedDate: new Date().toISOString()
                   },
                   rating: product.rating || 0,
                   reviewCount: product.ratingCount || 0,
@@ -1843,8 +1868,8 @@ const HomeScreen: React.FC = () => {
                   isNew: true,
                   isFeatured: false,
                   isOnSale: discount > 0,
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
                   orderCount: product.orderCount || 0,
                 };
                 
@@ -1945,63 +1970,59 @@ const HomeScreen: React.FC = () => {
 
   const homeGridPx = IMAGE_CONFIG.HOME_GRID_IMAGE_PIXEL;
 
-  // Promo cards data (Flash Sale: newIn 2,3,4 + Points: newIn 5,6,7)
-  const liveChannelPromoCards = [
-    {
-      id: 'flash-sale',
-      title: t('home.flashSale'),
-      backgroundColor: '#88DBFF',
-      price: `₩${newInProducts?.[4]?.price ?? 0}`,
-      // Per-image prices so the landscape-tablet promo card can show a
-      // price under EACH of its three product thumbnails (matching the
-      // ids/images/externalIds index order: 2, 3, 4).
-      prices: [
-        `₩${newInProducts?.[2]?.price ?? 0}`,
-        `₩${newInProducts?.[3]?.price ?? 0}`,
-        `₩${newInProducts?.[4]?.price ?? 0}`,
-      ],
-      images: [
-        getAlibabaThumbnailImageUri(newInProducts?.[2], homeGridPx)
-          ? { uri: getAlibabaThumbnailImageUri(newInProducts[2], homeGridPx)! }
-          : require('../../assets/images/deal1.png'),
-        getAlibabaThumbnailImageUri(newInProducts?.[3], homeGridPx)
-          ? { uri: getAlibabaThumbnailImageUri(newInProducts[3], homeGridPx)! }
-          : require('../../assets/images/deal2.png'),
-        getAlibabaThumbnailImageUri(newInProducts?.[4], homeGridPx)
-          ? { uri: getAlibabaThumbnailImageUri(newInProducts[4], homeGridPx)! }
-          : require('../../assets/images/deal3.png'),
-      ],
-      ids: [newInProducts?.[2]?._id, newInProducts?.[3]?._id, newInProducts?.[4]?._id],
-      externalIds: [newInProducts?.[2]?.externalId, newInProducts?.[3]?.externalId, newInProducts?.[4]?.externalId],
-    },
-    {
-      id: 'points',
-      title: t('home.points'),
-      backgroundColor: '#FFF27D',
-      price: `₩${newInProducts?.[7]?.price ?? 0}`,
-      prices: [
-        `₩${newInProducts?.[5]?.price ?? 0}`,
-        `₩${newInProducts?.[6]?.price ?? 0}`,
-        `₩${newInProducts?.[7]?.price ?? 0}`,
-      ],
-      images: [
-        getAlibabaThumbnailImageUri(newInProducts?.[5], homeGridPx)
-          ? { uri: getAlibabaThumbnailImageUri(newInProducts[5], homeGridPx)! }
-          : require('../../assets/images/deal1.png'),
-        getAlibabaThumbnailImageUri(newInProducts?.[6], homeGridPx)
-          ? { uri: getAlibabaThumbnailImageUri(newInProducts[6], homeGridPx)! }
-          : require('../../assets/images/deal2.png'),
-        getAlibabaThumbnailImageUri(newInProducts?.[7], homeGridPx)
-          ? { uri: getAlibabaThumbnailImageUri(newInProducts[7], homeGridPx)! }
-          : require('../../assets/images/deal3.png'),
-      ],
-      ids: [newInProducts?.[5]?._id, newInProducts?.[6]?._id, newInProducts?.[7]?._id],
-      externalIds: [newInProducts?.[5]?.externalId, newInProducts?.[6]?.externalId, newInProducts?.[7]?.externalId],
-    },
-  ];
+  // Promo cards: first 3 / next 3 picks from the same shuffled index pool as New In
+  // (no fixed indices 2–7 — those broke when the list was short or empty).
+  const liveChannelPromoCards = useMemo(() => {
+    type Slot = {
+      image: { uri: string } | null;
+      priceLabel: string;
+      detailId: string | null;
+      mongoId: string | undefined;
+    };
+    const buildSlot = (productIndex: number | undefined): Slot => {
+      if (
+        productIndex == null ||
+        productIndex < 0 ||
+        !Array.isArray(newInProducts) ||
+        !newInProducts[productIndex]
+      ) {
+        return { image: null, priceLabel: '', detailId: null, mongoId: undefined };
+      }
+      const p = newInProducts[productIndex];
+      const uri = getAlibabaThumbnailImageUri(p, homeGridPx);
+      const priceNum = typeof p.price === 'number' ? p.price : Number(p?.price) || 0;
+      return {
+        image: uri ? { uri } : null,
+        priceLabel: formatPriceKRW(priceNum),
+        detailId: resolveHomePromoProductDetailId(p),
+        mongoId: p._id,
+      };
+    };
+    const ix = newInRandomIndices;
+    const flashSlots = [buildSlot(ix[0]), buildSlot(ix[1]), buildSlot(ix[2])];
+    const pointsSlots = [buildSlot(ix[3]), buildSlot(ix[4]), buildSlot(ix[5])];
+    const mk = (
+      id: 'flash-sale' | 'points',
+      title: string,
+      backgroundColor: string,
+      slots: Slot[],
+    ) => ({
+      id,
+      title,
+      backgroundColor,
+      price: slots[2]?.priceLabel ?? '',
+      prices: slots.map((s) => s.priceLabel),
+      images: slots.map((s) => s.image),
+      ids: slots.map((s) => s.mongoId),
+      externalIds: slots.map((s) => s.detailId),
+    });
+    return [
+      mk('flash-sale', t('home.flashSale'), '#88DBFF', flashSlots),
+      mk('points', t('home.points'), '#FFF27D', pointsSlots),
+    ];
+  }, [newInProducts, newInRandomIndices, homeGridPx, locale]);
 
   const renderLiveChannelSection = () => {
-    console.log('liveChannelPromoCards', liveChannelPromoCards);
     // Landscape-tablet: slot the brand carousel into the middle so the row
     // becomes [Live Channel | Brand Carousel | Flash-Sale + Point]. The
     // standalone brand-carousel render in the main return is skipped in
@@ -2174,7 +2195,7 @@ const HomeScreen: React.FC = () => {
         id: item.seller?.id || '',
         name: item.seller?.nickname || '',
         avatar: item.seller?.picUrl || '',
-        rating: 0, reviewCount: 0, isVerified: false, followersCount: 0, description: '', location: '', joinedDate: new Date(),
+        rating: 0, reviewCount: 0, isVerified: false, followersCount: 0, description: '', location: '', joinedDate: new Date().toISOString(),
       },
       rating: item.reviewScore || 0,
       reviewCount: item.reviewNumbers || 0,
@@ -2184,8 +2205,8 @@ const HomeScreen: React.FC = () => {
       isNew: false,
       isFeatured: false,
       isOnSale: false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
   }, [locale]);
 
@@ -2543,7 +2564,7 @@ const HomeScreen: React.FC = () => {
                 followersCount: 0,
                 description: '',
                 location: '',
-                joinedDate: new Date()
+                joinedDate: new Date().toISOString()
               },
               rating: product.rating || 0,
               reviewCount: product.ratingCount || 0,
@@ -2554,8 +2575,8 @@ const HomeScreen: React.FC = () => {
               isNew: true,
               isFeatured: false,
               isOnSale: false,
-              createdAt: new Date(),
-              updatedAt: new Date(),
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
               orderCount: 0,
             };
             
@@ -2949,6 +2970,8 @@ const HomeScreen: React.FC = () => {
     </SafeAreaView>
   );
 };
+
+const HomeScreen: React.FC = () => <HomeScreenContent />;
 
 const styles = StyleSheet.create({
   container: {

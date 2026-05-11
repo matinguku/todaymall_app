@@ -24,6 +24,7 @@ import SearchIcon from '../../../assets/icons/SearchIcon';
 import SensorsIcon from '../../../assets/icons/SensorsIcon';
 import ArrowDropDownIcon from '../../../assets/icons/ArrowDropDownIcon';
 import { formatPriceKRW } from '../../../utils/i18nHelpers';
+import { getLiveSellerListingProductMeta } from '../../../utils/liveSellerProductListingMeta';
 
 const CARD_GAP = SPACING.smmd;
 const CARD_WIDTH = (SCREEN_WIDTH - SPACING.md * 2 - CARD_GAP) / 2;
@@ -280,6 +281,8 @@ const LiveSellerSearchScreen: React.FC = () => {
           if (isNaN(d.getTime())) return '';
           return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         })();
+        const { listProductCode, listProductItemNumber, listProductCost } =
+          getLiveSellerListingProductMeta(it);
         out.push({
           id: String(id),
           externalId: String(id),
@@ -298,6 +301,9 @@ const LiveSellerSearchScreen: React.FC = () => {
           sellerId,
           sellerName,
           source: 'live-commerce',
+          listProductCode,
+          listProductItemNumber,
+          listProductCost,
         });
       });
     });
@@ -409,10 +415,25 @@ const LiveSellerSearchScreen: React.FC = () => {
             <Text style={styles.productOriginalPrice}>{formatPriceKRW(originalPrice)}</Text>
           )}
           <Text style={styles.productTitle} numberOfLines={2}>{title}</Text>
+          {!!item.listProductCode && (
+            <Text style={styles.productListingDetail} numberOfLines={1}>
+              {t('product.productCode')}: {item.listProductCode}
+            </Text>
+          )}
+          {!!item.listProductItemNumber && (
+            <Text style={styles.productListingDetail} numberOfLines={1}>
+              {t('product.productItemNumber')}: {item.listProductItemNumber}
+            </Text>
+          )}
+          {item.listProductCost != null && (
+            <Text style={styles.productListingDetail} numberOfLines={1}>
+              {t('product.productCost')}: {formatPriceKRW(item.listProductCost)}
+            </Text>
+          )}
         </View>
       </TouchableOpacity>
     );
-  }, [navigation]);
+  }, [navigation, t]);
 
   const productKeyExtractor = useCallback((item: any, index: number) =>
     item.id || item.externalId || `live-product-${index}`, []);
@@ -611,6 +632,18 @@ const LiveSellerSearchScreen: React.FC = () => {
               </View>
             </View>
 
+            {/* Date dropdown — below search row; opens modal. Hidden when no dates. */}
+            {dateGroups.length > 1 && (
+              <TouchableOpacity
+                style={styles.dateDropdown}
+                activeOpacity={0.8}
+                onPress={() => setShowDateDropdown(true)}
+              >
+                <Text style={styles.dateDropdownText}>{formatDateLabel(selectedDate)}</Text>
+                <ArrowDropDownIcon width={18} height={18} color={COLORS.text.primary} />
+              </TouchableOpacity>
+            )}
+
             {/* Filter Tabs */}
             <View style={styles.filterTabsContainer}>
               <TouchableOpacity
@@ -638,18 +671,6 @@ const LiveSellerSearchScreen: React.FC = () => {
                 </Text>
               </TouchableOpacity>
             </View>
-
-            {/* Date dropdown trigger — opens modal. Hidden when no dates. */}
-            {dateGroups.length > 1 && (
-              <TouchableOpacity
-                style={styles.dateDropdown}
-                activeOpacity={0.8}
-                onPress={() => setShowDateDropdown(true)}
-              >
-                <Text style={styles.dateDropdownText}>{formatDateLabel(selectedDate)}</Text>
-                <ArrowDropDownIcon width={18} height={18} color={COLORS.text.primary} />
-              </TouchableOpacity>
-            )}
 
             {/* Product grid */}
             {isLoading ? (
@@ -1288,6 +1309,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
     color: COLORS.text.primary,
+    marginTop: 2,
+  },
+  productListingDetail: {
+    fontSize: 10,
+    color: COLORS.text.secondary,
     marginTop: 2,
   },
 });

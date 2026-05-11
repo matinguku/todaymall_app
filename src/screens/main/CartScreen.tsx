@@ -438,7 +438,7 @@ const CartScreen: React.FC = () => {
               followersCount: 0, 
               description: '', 
               location: '', 
-              joinedDate: new Date() 
+              joinedDate: new Date().toISOString()
             },
             rating: 0,
             reviewCount: 0,
@@ -449,8 +449,8 @@ const CartScreen: React.FC = () => {
             isNew: false,
             isFeatured: false,
             isOnSale: discount > 0,
-            createdAt: new Date(),
-            updatedAt: new Date(),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
             orderCount: item.monthSold || 0,
             repurchaseRate: item.repurchaseRate || '',
           };

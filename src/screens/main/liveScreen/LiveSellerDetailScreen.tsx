@@ -31,11 +31,15 @@ import SearchIcon from '../../../assets/icons/SearchIcon';
 import SensorsIcon from '../../../assets/icons/SensorsIcon';
 import ArrowDropDownIcon from '../../../assets/icons/ArrowDropDownIcon';
 import { formatPriceKRW } from '../../../utils/i18nHelpers';
+import { getLiveSellerListingProductMeta } from '../../../utils/liveSellerProductListingMeta';
 
 const { width } = Dimensions.get('window');
-const PRODUCT_GAP = 6;
-const PRODUCT_COLUMN_COUNT = 3;
+/** Horizontal + vertical gutter between product cards (2-column grid). */
+const PRODUCT_GAP = 10;
+const PRODUCT_COLUMN_COUNT = 2;
 const PRODUCT_CARD_WIDTH = (width - SPACING.md * 2 - PRODUCT_GAP * (PRODUCT_COLUMN_COUNT - 1)) / PRODUCT_COLUMN_COUNT;
+/** Image height vs card width — slightly shorter than 3-up so two-column cards stay balanced. */
+const PRODUCT_IMAGE_ASPECT = 1.28;
 
 type FilterTab = 'bestMatch' | 'sales' | 'newArrivals';
 
@@ -297,6 +301,9 @@ const LiveSellerDetailScreen: React.FC = () => {
             return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
           })();
 
+          const { listProductCode, listProductItemNumber, listProductCost } =
+            getLiveSellerListingProductMeta(item);
+
           return {
             id: item.productId || item.product?.id || item.id || '',
             externalId: item.productId || item.product?.id || item.id || '',
@@ -357,6 +364,9 @@ const LiveSellerDetailScreen: React.FC = () => {
             liveDate: liveDateKey,
             liveDateRaw: liveDateRaw ? String(liveDateRaw) : '',
             raw: item,
+            listProductCode,
+            listProductItemNumber,
+            listProductCost,
           };
          
             
@@ -644,38 +654,8 @@ const LiveSellerDetailScreen: React.FC = () => {
         </View>
       </View>
 
-      {/* Filter Tabs */}
-      <View style={styles.filterTabsContainer}>
-        <TouchableOpacity
-          style={[styles.filterTab, activeFilter === 'bestMatch' && styles.filterTabActive]}
-          onPress={() => setActiveFilter('bestMatch')}
-        >
-          <Text style={[styles.filterTabText, activeFilter === 'bestMatch' && styles.filterTabTextActive]}>
-            {t('live.bestMatch')}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterTab, activeFilter === 'sales' && styles.filterTabActive]}
-          onPress={() => setActiveFilter('sales')}
-        >
-          <Text style={[styles.filterTabText, activeFilter === 'sales' && styles.filterTabTextActive]}>
-            {t('live.sales')}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterTab, activeFilter === 'newArrivals' && styles.filterTabActive]}
-          onPress={() => setActiveFilter('newArrivals')}
-        >
-          <Text style={[styles.filterTabText, activeFilter === 'newArrivals' && styles.filterTabTextActive]}>
-            {t('live.newArrivals')}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Date classifier — entire row is tappable; toggles an inline
-          dropdown anchored directly below the button so the choices
-          appear in place. Hidden when no product carries a date so the
-          layout stays clean. */}
+      {/* Date classifier — directly under search row; toggles a dropdown
+          anchored below the button. Hidden when no product carries a date. */}
       {dateGroups.length > 1 && (
         <View
           ref={(r) => { dateTriggerRef.current = r; }}
@@ -706,6 +686,34 @@ const LiveSellerDetailScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Filter Tabs */}
+      <View style={styles.filterTabsContainer}>
+        <TouchableOpacity
+          style={[styles.filterTab, activeFilter === 'bestMatch' && styles.filterTabActive]}
+          onPress={() => setActiveFilter('bestMatch')}
+        >
+          <Text style={[styles.filterTabText, activeFilter === 'bestMatch' && styles.filterTabTextActive]}>
+            {t('live.bestMatch')}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.filterTab, activeFilter === 'sales' && styles.filterTabActive]}
+          onPress={() => setActiveFilter('sales')}
+        >
+          <Text style={[styles.filterTabText, activeFilter === 'sales' && styles.filterTabTextActive]}>
+            {t('live.sales')}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.filterTab, activeFilter === 'newArrivals' && styles.filterTabActive]}
+          onPress={() => setActiveFilter('newArrivals')}
+        >
+          <Text style={[styles.filterTabText, activeFilter === 'newArrivals' && styles.filterTabTextActive]}>
+            {t('live.newArrivals')}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
@@ -721,19 +729,6 @@ const LiveSellerDetailScreen: React.FC = () => {
     // stock. `stockCount === 0` is the canonical signal — it's the
     // sum of `amountOnSale` across every SKU (see the mapping above).
     const dimImage = item.inStock === false;
-    // Diagnostic: print every SKU's amountOnSale alongside the final
-    // stockCount so you can verify the source values per product.
-    const skuAmountOnSale = Array.isArray(item.raw?.product?.productSkuInfos)
-      ? item.raw.product.productSkuInfos.map((s: any) => s?.amountOnSale)
-      : null;
-    console.log('[LiveSellerDetail] amountOnSale', {
-      title: title?.slice?.(0, 24),
-      skuAmountOnSale,        // e.g. [0] or [5, 0, 3]
-      stockCount: item.stockCount,
-      inStock: item.inStock,
-      dimImage,
-    });
-    
 
     return (
       <TouchableOpacity
@@ -754,7 +749,7 @@ const LiveSellerDetailScreen: React.FC = () => {
       >
         <Image
           source={{ uri: imageUri || `https://via.placeholder.com/${IMAGE_CONFIG.PRODUCT_DISPLAY_PIXEL}.png?text=Product` }}
-          style={[styles.productImage, dimImage && { opacity: 0.5 }]}
+          style={[styles.productImage, { height: PRODUCT_CARD_WIDTH * PRODUCT_IMAGE_ASPECT }, dimImage && { opacity: 0.5 }]}
           resizeMode="cover"
         />
         <View style={styles.productInfoContainer}>
@@ -767,6 +762,21 @@ const LiveSellerDetailScreen: React.FC = () => {
             </Text>
           )}
           <Text style={styles.productTitle} numberOfLines={2}>{title}</Text>
+          {!!item.listProductCode && (
+            <Text style={styles.productListingDetail} numberOfLines={1}>
+              {t('product.productCode')}: {item.listProductCode}
+            </Text>
+          )}
+          {!!item.listProductItemNumber && (
+            <Text style={styles.productListingDetail} numberOfLines={1}>
+              {t('product.productItemNumber')}: {item.listProductItemNumber}
+            </Text>
+          )}
+          {item.listProductCost != null && (
+            <Text style={styles.productListingDetail} numberOfLines={1}>
+              {t('product.productCost')}: {formatPriceKRW(item.listProductCost)}
+            </Text>
+          )}
           <Text style={styles.productMeta}>
             {reviewCount > 0 ? t('product.reviewsCount').replace('{count}', reviewCount.toString()) : ''}
             {reviewCount > 0 && soldCount > 0 ? ' · ' : ''}
@@ -775,7 +785,7 @@ const LiveSellerDetailScreen: React.FC = () => {
         </View>
       </TouchableOpacity>
     );
-  }, [country, navigation]);
+  }, [country, navigation, t]);
 
   const renderFooter = useCallback(() => {
     if (!loadingMore) return null;
@@ -857,7 +867,7 @@ const LiveSellerDetailScreen: React.FC = () => {
           data={filteredProducts}
           renderItem={renderProduct}
           keyExtractor={productKeyExtractor}
-          numColumns={3}
+          numColumns={2}
           columnWrapperStyle={styles.productsRow}
           ListHeaderComponent={renderListHeader}
           ListFooterComponent={renderFooter}
@@ -1018,7 +1028,10 @@ const styles = StyleSheet.create({
   dateDropdownContainer: {
     position: 'relative',
     marginHorizontal: SPACING.md,
-    marginTop: SPACING.sm,
+    // Reduce vertical gap between the search row and "All dates".
+    marginTop: SPACING.xs,
+    // Increase gap between the date trigger and the filter tabs.
+    marginBottom: SPACING.smmd,
     zIndex: 20,
   },
   dateDropdown: {
@@ -1291,7 +1304,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.xs,
     paddingHorizontal: SPACING.md,
-    marginBottom: SPACING.smmd,
+    // Slightly tighter to balance with the date trigger row.
+    marginBottom: SPACING.sm,
     zIndex: 10,
   },
   searchInputWrap: {
@@ -1332,46 +1346,54 @@ const styles = StyleSheet.create({
 
   // ─── Product Grid ───────────────────────────────────────
   productsRow: {
+    flexDirection: 'row',
     paddingHorizontal: SPACING.md,
     gap: PRODUCT_GAP,
-    marginBottom: PRODUCT_GAP,
+    marginBottom: PRODUCT_GAP + 2,
   },
   productCard: {
     width: PRODUCT_CARD_WIDTH,
     backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.md,
+    borderRadius: BORDER_RADIUS.lg,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#0000000A',
   },
   productImage: {
     width: '100%',
-    height: PRODUCT_CARD_WIDTH * 1.5,
     backgroundColor: COLORS.gray[200],
     borderRadius: BORDER_RADIUS.md,
   },
   productInfoContainer: {
-    paddingHorizontal: SPACING.xs,
-    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
   },
   productPrice: {
-    fontSize: FONTS.sizes.sm,
+    fontSize: FONTS.sizes.md,
     fontWeight: '800',
     color: COLORS.red,
   },
   productOriginalPrice: {
-    fontSize: 11,
+    fontSize: FONTS.sizes.xs,
     color: COLORS.text.secondary,
     textDecorationLine: 'line-through' as const,
   },
   productTitle: {
-    fontSize: 11,
-    fontWeight: '500',
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '600',
     color: COLORS.text.primary,
+    marginTop: SPACING.xs / 2,
+    lineHeight: 18,
+  },
+  productListingDetail: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.text.secondary,
     marginTop: 2,
   },
   productMeta: {
-    fontSize: 11,
+    fontSize: FONTS.sizes.xs,
     color: COLORS.text.secondary,
-    marginTop: 2,
+    marginTop: SPACING.xs / 2,
   },
 
   // ─── Footer / Empty / Loading ───────────────────────────

@@ -62,7 +62,7 @@ const SellerDetailScreen: React.FC = () => {
       fetchSellerProducts(sellerId, {
         page: 1,
         pageSize: 20,
-        country: locale === 'zh' ? 'en' : locale,
+        country: locale,
         source,
       });
     }
@@ -75,7 +75,7 @@ const SellerDetailScreen: React.FC = () => {
       fetchSellerProducts(sellerId, {
         page: nextPage,
         pageSize: 20,
-        country: locale === 'zh' ? 'en' : locale,
+        country: locale,
         source,
       });
     }

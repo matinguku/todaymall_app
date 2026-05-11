@@ -614,7 +614,7 @@ export const inquiryApi = {
         };
       }
 
-      const url = `${API_BASE_URL}/v1/inquiries/orders`;
+      const url = `${API_BASE_URL}/inquiries/orders`;
       const signatureHeaders = await buildSignatureHeaders('GET', url);
       const response = await fetch(url, {
         method: 'GET',
@@ -678,7 +678,7 @@ export const inquiryApi = {
         };
       }
 
-      const url = `${API_BASE_URL}/v1/inquiries/order/${orderId}/detail`;
+      const url = `${API_BASE_URL}/inquiries/order/${orderId}/detail`;
       const signatureHeaders = await buildSignatureHeaders('GET', url);
       const response = await fetch(url, {
         method: 'GET',

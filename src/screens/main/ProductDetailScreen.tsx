@@ -72,6 +72,74 @@ import SearchImageIcon from '../../assets/icons/SearchImageIcon';
 const { width } = Dimensions.get('window');
 const IMAGE_HEIGHT = 400;
 
+/**
+ * Suppliers often emit the same dimension under different labels (e.g.
+ * `컬러` vs `색상` vs `颜色`), which created multiple PDP rows that all
+ * read as "color". Collapse those headers to one internal key.
+ */
+function canonicalVariationTypeKey(typeName: string): string {
+  const raw = (typeName || '').trim();
+  if (!raw) return raw;
+  const lower = raw.toLowerCase();
+
+  const colorExact = new Set([
+    'color',
+    'colour',
+    '颜色',
+    '色彩',
+    '色',
+    '색상',
+    '색깔',
+    '컬러',
+    '主色',
+    '配色',
+  ]);
+  if (colorExact.has(lower) || colorExact.has(raw)) return 'color';
+  if (/컬러|색상|색깔|颜色|色彩/.test(raw)) return 'color';
+
+  const sizeExact = new Set(['size', '尺码', '尺寸', '사이즈', '크기']);
+  if (sizeExact.has(lower) || sizeExact.has(raw)) return 'size';
+  if (/尺码|尺寸|사이즈|크기/.test(raw)) return 'size';
+
+  return raw;
+}
+
+function parseVariantNameSegments(variantName: string): Array<{ typeKey: string; value: string }> {
+  const out: Array<{ typeKey: string; value: string }> = [];
+  variantName.split('/').forEach((part) => {
+    const p = part.trim();
+    const colonIndex = p.indexOf(':');
+    if (colonIndex === -1) return;
+    const typeName = p.substring(0, colonIndex).trim();
+    const value = p.substring(colonIndex + 1).trim();
+    if (!typeName || !value) return;
+    out.push({ typeKey: canonicalVariationTypeKey(typeName), value });
+  });
+  return out;
+}
+
+/** True when a raw variant `name` string encodes every selected dimension. */
+function rawVariantNameMatchesSelections(variantName: string, selections: Record<string, string>): boolean {
+  if (!variantName || Object.keys(selections).length === 0) return false;
+  const segments = parseVariantNameSegments(variantName);
+  return Object.entries(selections).every(([stateKey, selectedVal]) => {
+    const canon = stateKey.toLowerCase();
+    return segments.some(
+      (s) =>
+        s.typeKey.toLowerCase() === canon &&
+        String(s.value).toLowerCase() === String(selectedVal).toLowerCase(),
+    );
+  });
+}
+
+function skuAttributeRowMatches(attr: any, canonicalKey: string, selectedValue: string): boolean {
+  const rawAttr = String(attr?.attributeNameTrans || attr?.attributeName || '').trim();
+  if (!rawAttr) return false;
+  if (canonicalVariationTypeKey(rawAttr).toLowerCase() !== canonicalKey.toLowerCase()) return false;
+  const v = String(attr?.valueTrans || attr?.value || '').trim();
+  return v.toLowerCase() === String(selectedValue).toLowerCase();
+}
+
 const ProductDetailScreen: React.FC = () => {
   const { width: dynWidth, height: dynHeight } = useWindowDimensions();
   const pdpIsTablet = Math.min(dynWidth, dynHeight) >= 600;
@@ -130,8 +198,8 @@ const ProductDetailScreen: React.FC = () => {
   const [liveSellerInfo, setLiveSellerInfo] = useState<any>(null);
 
   // Post-login auto-add-to-cart flow.
-  // When a logged-out user taps "Add to Cart" we navigate to Login with
-  // autoAddToCart=true. When the login succeeds and we return to this
+  // When a logged-out user taps "Add to Cart" we open Auth → Signup (modal)
+  // with autoAddToCart=true. When auth succeeds and we return to this
   // screen, we render a loading view INSTEAD of the regular product detail
   // UI so the user doesn't see the product page flash between Login and
   // Cart — they perceive a direct Login → Cart transition.
@@ -143,7 +211,40 @@ const ProductDetailScreen: React.FC = () => {
   // Single-fire guard for the auto-trigger useEffect below. Declared here
   // (above the addToCart hook) so the hook's onError closure can reset it.
   const autoAddTriggeredRef = useRef(false);
+  // Same dual-guard pattern as `autoBuyNowOnMountRef` — avoids firing add-to-cart
+  // from a stale restored `autoAddToCart` param unless this screen also saw the
+  // intent (including returning from Auth onto an already-mounted PDP).
+  const autoAddToCartOnMountRef = useRef<boolean>(
+    Boolean((route.params as any)?.autoAddToCart),
+  );
   const autoBuyTriggeredRef = useRef(false);
+  // Snapshot the auto-buy intent at mount. Without this snapshot, a stale
+  // `autoBuyNow: true` left in restored navigation state (e.g. after a
+  // navigation persistence round-trip, or after a Login flow that didn't
+  // fully clear its params) would fire Buy Now the next time the user
+  // simply opens any product card. Auto-Buy is meant for the
+  // Login→ProductDetail return path only; we capture it once and the rest
+  // of the effect requires both this snapshot AND the live route param.
+  const autoBuyNowOnMountRef = useRef<boolean>(
+    Boolean((route.params as any)?.autoBuyNow),
+  );
+
+  // When returning from Auth (modal) with `autoBuyNow` in params, the screen
+  // may already be mounted — refresh the mount snapshot so post-login Buy Now
+  // still runs once.
+  useEffect(() => {
+    if ((route.params as any)?.autoBuyNow) {
+      autoBuyNowOnMountRef.current = true;
+      autoBuyTriggeredRef.current = false;
+    }
+  }, [(route.params as any)?.autoBuyNow]);
+
+  useEffect(() => {
+    if ((route.params as any)?.autoAddToCart) {
+      autoAddToCartOnMountRef.current = true;
+      autoAddTriggeredRef.current = false;
+    }
+  }, [(route.params as any)?.autoAddToCart]);
 
   // Scroll-based header animation
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -361,7 +462,13 @@ const ProductDetailScreen: React.FC = () => {
   const { mutate: checkoutDirectPurchase, isLoading: isAddingToCartForBuyNow } = useCheckoutDirectPurchaseMutation({
     onSuccess: (data) => {
       if (!data.selectedItems || data.selectedItems.length === 0) {
-        showToast(t('product.failedToProceed'), 'error');
+        // Backend dropped every item from the direct-purchase request —
+        // typically because the product (or its SKU) was unlisted by
+        // the seller between the user opening the page and tapping Buy
+        // Now. Surface an "unavailable" toast and stay on the product
+        // detail page; do NOT navigate to Payment or back to the seller
+        // page on this error.
+        showToast(t('product.outOfStock'), 'warning');
         return;
       }
       const paymentItems = data.selectedItems.map((item: any) => ({
@@ -426,7 +533,7 @@ const ProductDetailScreen: React.FC = () => {
 
     const isLiked = isProductLiked(product);
     const source = (product as any).source || sourceRef.current || selectedPlatform || '1688';
-    const country = locale === 'zh' ? 'en' : locale;
+    const country = locale;
 
     if (isLiked) {
       // Remove from wishlist - optimistic update (removes from state and AsyncStorage immediately)
@@ -571,7 +678,14 @@ const ProductDetailScreen: React.FC = () => {
     if (raw === 'live-commerce' || raw === 'companymall' || raw === 'myCompany' || raw?.toLowerCase() === 'mycompany') return 'ownmall';
     return raw;
   }, [routeSource, selectedPlatform]);
-  const country = useMemo(() => routeCountry || (locale === 'zh' ? 'en' : locale), [routeCountry, locale]);
+  const country = useMemo(() => routeCountry || locale, [routeCountry, locale]);
+  // i18n rollout changed several list mappers to populate `id` with values
+  // that aren't always the 1688 offerId. Always prefer explicit `offerId`
+  // when opening detail; fall back to route `productId`.
+  const resolvedRouteProductId = useMemo(
+    () => offerId?.toString?.() || productId?.toString?.() || '',
+    [offerId, productId],
+  );
   
   // Live stats data - defined before useEffect that uses it
   const liveStats = [
@@ -604,7 +718,7 @@ const ProductDetailScreen: React.FC = () => {
           category: item.category || { id: '', name: '', icon: '', image: '', subcategories: [] },
           subcategory: item.subcategory || { id: '', name: '', icon: '', image: '', subcategories: [] },
           brand: item.brand || '',
-          seller: item.seller || { id: '', name: '', avatar: '', rating: 0, reviewCount: 0, isVerified: false, followersCount: 0, description: '', location: '', joinedDate: new Date() },
+          seller: item.seller || { id: '', name: '', avatar: '', rating: 0, reviewCount: 0, isVerified: false, followersCount: 0, description: '', location: '', joinedDate: new Date().toISOString() },
           rating: item.rating || 0,
           reviewCount: item.reviewCount || 0,
           rating_count: item.rating_count || 0,
@@ -614,8 +728,12 @@ const ProductDetailScreen: React.FC = () => {
           isNew: item.isNew || false,
           isFeatured: item.isFeatured || false,
           isOnSale: item.isOnSale || false,
-          createdAt: item.createdAt || new Date(),
-          updatedAt: item.updatedAt || new Date(),
+          createdAt: typeof item.createdAt === 'string'
+            ? item.createdAt
+            : (item.createdAt instanceof Date ? item.createdAt.toISOString() : new Date().toISOString()),
+          updatedAt: typeof item.updatedAt === 'string'
+            ? item.updatedAt
+            : (item.updatedAt instanceof Date ? item.updatedAt.toISOString() : new Date().toISOString()),
           orderCount: item.orderCount || 0,
           repurchaseRate: item.repurchaseRate || '',
           source: item.source || 'taobao',
@@ -672,7 +790,7 @@ const ProductDetailScreen: React.FC = () => {
             followersCount: 0,
             description: '',
             location: '',
-            joinedDate: new Date(),
+            joinedDate: new Date().toISOString(),
           },
           rating: 0,
           reviewCount: 0,
@@ -683,8 +801,8 @@ const ProductDetailScreen: React.FC = () => {
           isNew: false,
           isFeatured: false,
           isOnSale: false,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
           orderCount: 0,
           repurchaseRate: '',
           mainVideo: '',
@@ -838,7 +956,7 @@ const ProductDetailScreen: React.FC = () => {
             followersCount: 0,
             description: '',
             location: '',
-            joinedDate: new Date(),
+            joinedDate: new Date().toISOString(),
           },
           rating: 0,
           reviewCount: 0,
@@ -852,8 +970,8 @@ const ProductDetailScreen: React.FC = () => {
           isNew: false,
           isFeatured: false,
           isOnSale: false,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
           orderCount: 0,
           repurchaseRate: '',
           // Additional fields to align with 1688 mapping
@@ -875,7 +993,7 @@ const ProductDetailScreen: React.FC = () => {
         setProduct(mappedProduct);
         setDetailFetched(true);
 
-        const currentProductId = productId?.toString() || offerId?.toString() || '';
+        const currentProductId = resolvedRouteProductId;
         if (currentProductId) {
           hasFetchedProductRef.current = currentProductId;
         }
@@ -943,7 +1061,7 @@ const ProductDetailScreen: React.FC = () => {
             followersCount: 0,
             description: '',
             location: apiProduct.productShippingInfo?.sendGoodsAddressText || '',
-            joinedDate: new Date(),
+            joinedDate: new Date().toISOString(),
           },
           rating: parseFloat(apiProduct.tradeScore || 0),
           reviewCount: parseInt(apiProduct.soldOut || '0', 10),
@@ -956,8 +1074,10 @@ const ProductDetailScreen: React.FC = () => {
           isNew: false,
           isFeatured: false,
           isOnSale: false,
-          createdAt: apiProduct.createDate ? new Date(apiProduct.createDate) : new Date(),
-          updatedAt: new Date(),
+          createdAt: apiProduct.createDate
+            ? new Date(apiProduct.createDate).toISOString()
+            : new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
           orderCount: parseInt(apiProduct.soldOut || '0', 10),
           repurchaseRate: apiProduct.sellerDataInfo?.repeatPurchasePercent || '',
           // Additional fields from API
@@ -988,7 +1108,7 @@ const ProductDetailScreen: React.FC = () => {
         setProduct(mappedProduct);
         setDetailFetched(true);
         // Mark this productId as fetched
-        const currentProductId = productId?.toString() || offerId?.toString() || '';
+        const currentProductId = resolvedRouteProductId;
         if (currentProductId) {
           hasFetchedProductRef.current = currentProductId;
         }
@@ -1052,7 +1172,7 @@ const ProductDetailScreen: React.FC = () => {
   // of the fields when the network resolves. If we don't, the empty
   // background covers the brief wait until detail arrives.
   useEffect(() => {
-    const currentProductId = productId?.toString() || offerId?.toString() || '';
+    const currentProductId = resolvedRouteProductId;
     if (!currentProductId) return;
 
     // Don't refetch the same productId twice (e.g. from re-render churn).
@@ -1064,7 +1184,7 @@ const ProductDetailScreen: React.FC = () => {
     const fetchCountry = countryRef.current;
     fetchProductDetail(currentProductId, fetchSource, fetchCountry);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productId, offerId, initialProductData, routeSource, routeCountry]);
+  }, [resolvedRouteProductId, initialProductData, routeSource, routeCountry]);
   
   // Fetch wishlist count when product is loaded
   useEffect(() => {
@@ -1162,7 +1282,7 @@ const ProductDetailScreen: React.FC = () => {
             followersCount: 0,
             description: '',
             location: '',
-            joinedDate: new Date(),
+            joinedDate: new Date().toISOString(),
           },
           rating: item.reviewScore || 0,
           reviewCount: item.reviewNumbers || 0,
@@ -1173,8 +1293,8 @@ const ProductDetailScreen: React.FC = () => {
           isNew: false,
           isFeatured: false,
           isOnSale: false,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
           orderCount: item.itemsSold || 0,
           repurchaseRate: '',
           mainVideo: '',
@@ -1401,13 +1521,15 @@ const ProductDetailScreen: React.FC = () => {
           const value = part.substring(colonIndex + 1).trim();
           
           if (!typeName || !value) return;
-          
+
+          const groupKey = canonicalVariationTypeKey(typeName);
+
           // Initialize map for this variation type if it doesn't exist
-          if (!variationTypesMap.has(typeName)) {
-            variationTypesMap.set(typeName, new Map());
+          if (!variationTypesMap.has(groupKey)) {
+            variationTypesMap.set(groupKey, new Map());
           }
-          
-          const optionsMap = variationTypesMap.get(typeName)!;
+
+          const optionsMap = variationTypesMap.get(groupKey)!;
           
           // Only add if value doesn't exist (remove duplicates)
           if (!optionsMap.has(value)) {
@@ -1424,14 +1546,14 @@ const ProductDetailScreen: React.FC = () => {
     // Convert map to array format
     const variationTypes: Array<{ name: string; options: Array<{ value: string; image?: string; [key: string]: any }> }> = [];
     
-    variationTypesMap.forEach((optionsMap, typeName) => {
+    variationTypesMap.forEach((optionsMap, groupKey) => {
       // Options are already filtered at the variant level above
       // Just convert to array and add to variationTypes
       const options = Array.from(optionsMap.values());
-      
+
       if (options.length > 0) {
         variationTypes.push({
-          name: typeName,
+          name: groupKey,
           options: options,
         });
       }
@@ -1486,17 +1608,19 @@ const ProductDetailScreen: React.FC = () => {
     const rawVariants = ((product as any)?.rawVariants || []) as any[];
     let selectedVariant: any = null;
     if (rawVariants.length > 0) {
+      const selectionMap: Record<string, string> = {};
+      variationTypes.forEach((variationType) => {
+        const typeName = variationType.name.toLowerCase();
+        const selectedValue =
+          selectedVariations[typeName] ||
+          (typeName === 'color' ? selectedColor : null) ||
+          (typeName === 'size' ? selectedSize : null);
+        if (selectedValue) selectionMap[typeName] = String(selectedValue);
+      });
       selectedVariant = rawVariants.find((variant: any) => {
         const variantName = variant.name || '';
-        return variationTypes.every((variationType) => {
-          const typeName = variationType.name.toLowerCase();
-          const selectedValue =
-            selectedVariations[typeName] ||
-            (typeName === 'color' ? selectedColor : null) ||
-            (typeName === 'size' ? selectedSize : null);
-          if (!selectedValue) return false;
-          return variantName.toLowerCase().includes(String(selectedValue).toLowerCase());
-        });
+        if (!variantName) return false;
+        return rawVariantNameMatchesSelections(variantName, selectionMap);
       });
     }
 
@@ -1513,14 +1637,9 @@ const ProductDetailScreen: React.FC = () => {
       selectedSku = skuInfos.find((sku: any) => {
         const attrs = sku.skuAttributes || [];
         return Object.entries(selectedVariations).every(([typeName, selectedValue]) => {
-          return attrs.some((attr: any) => {
-            const attrName = (attr.attributeNameTrans || attr.attributeName || '').toLowerCase();
-            const attrValue = (attr.valueTrans || attr.value || '').toLowerCase();
-            return (
-              attrName.includes(typeName.toLowerCase()) &&
-              attrValue === String(selectedValue).toLowerCase()
-            );
-          });
+          return attrs.some((attr: any) =>
+            skuAttributeRowMatches(attr, typeName, String(selectedValue)),
+          );
         });
       });
     }
@@ -1580,7 +1699,7 @@ const ProductDetailScreen: React.FC = () => {
     }
 
     return true; // All variations are selected
-  }, [detailFetched, getVariationTypes, selectedColor, selectedSize, selectedStockInfo.stockCount, selectedStockInfo.inStock]);
+  }, [detailFetched, getVariationTypes, selectedColor, selectedSize, selectedVariations, selectedStockInfo.stockCount, selectedStockInfo.inStock]);
 
   // Get selected variation price - MUST be before early return
   const getSelectedVariationPrice = useMemo(() => {
@@ -1620,11 +1739,7 @@ const ProductDetailScreen: React.FC = () => {
         selectedVariant = rawVariants.find((variant: any) => {
           const variantName = variant.name || '';
           if (!variantName) return false;
-          
-          return Object.entries(selectedVariations).every(([variationName, selectedValue]) => {
-            const searchPattern = `${variationName}: ${selectedValue}`;
-            return variantName.toLowerCase().includes(searchPattern.toLowerCase());
-          });
+          return rawVariantNameMatchesSelections(variantName, selectedVariations);
         });
       }
       
@@ -1648,13 +1763,11 @@ const ProductDetailScreen: React.FC = () => {
         if (!selectedSku && Object.keys(selectedVariations).length > 0) {
           selectedSku = productSkuInfos.find((sku: any) => {
             const skuAttributes = sku.skuAttributes || [];
-            return Object.entries(selectedVariations).every(([variationName, selectedValue]) => {
-              return skuAttributes.some((attr: any) => {
-                const attrName = (attr.attributeNameTrans || attr.attributeName || '').toLowerCase();
-                const attrValue = attr.valueTrans || attr.value || '';
-                return attrName === variationName.toLowerCase() && attrValue === selectedValue;
-              });
-            });
+            return Object.entries(selectedVariations).every(([variationName, selectedValue]) =>
+              skuAttributes.some((attr: any) =>
+                skuAttributeRowMatches(attr, variationName, String(selectedValue)),
+              ),
+            );
           });
         }
       }
@@ -1782,20 +1895,16 @@ const ProductDetailScreen: React.FC = () => {
   const handleAddToCartRef = useRef<() => void>(() => {});
   const handleBuyNowRef = useRef<() => void>(() => {});
 
-  // Auto-execute add-to-cart when the user returns from the login screen
-  // after being prompted by the unauthenticated branch in handleAddToCart.
-  // The login screen navigates back to ProductDetail with
-  // `autoAddToCart: true` in route.params; once the user is authenticated
-  // and the detail data / variation selections are ready, we re-fire
-  // handleAddToCart (via the ref above) so the user lands on the Cart
-  // screen without tapping the button again.
+  // Auto-execute add-to-cart when the user returns from Auth after being
+  // prompted from handleAddToCart. Same snapshot + live-param guard as Buy Now.
   useEffect(() => {
-    const arrivedFromLogin =
-      (route.params as any)?.autoAddToCart || isAutoCartFlow;
+    const arrivedFromAuth =
+      autoAddToCartOnMountRef.current &&
+      Boolean((route.params as any)?.autoAddToCart);
 
     if (
       !autoAddTriggeredRef.current &&
-      arrivedFromLogin &&
+      arrivedFromAuth &&
       isAuthenticated &&
       detailFetched &&
       product &&
@@ -1808,7 +1917,6 @@ const ProductDetailScreen: React.FC = () => {
     }
   }, [
     (route.params as any)?.autoAddToCart,
-    isAutoCartFlow,
     isAuthenticated,
     detailFetched,
     product,
@@ -1820,7 +1928,13 @@ const ProductDetailScreen: React.FC = () => {
   // flow so the user is taken directly to the purchase page without
   // tapping Buy Now again.
   useEffect(() => {
-    const arrivedFromAuth = Boolean((route.params as any)?.autoBuyNow);
+    // Require BOTH the mount-time snapshot AND the current route param
+    // to be set. The snapshot guards against stale params from restored
+    // navigation state; the live param guards against the snapshot
+    // surviving a screen reuse. Without both, opening a product card
+    // could spontaneously POST /cart/checkout/direct-purchase on mount.
+    const arrivedFromAuth =
+      autoBuyNowOnMountRef.current && Boolean((route.params as any)?.autoBuyNow);
 
     if (
       !autoBuyTriggeredRef.current &&
@@ -1864,21 +1978,21 @@ const ProductDetailScreen: React.FC = () => {
 
   const handleAddToCart = async () => {
     if (!isAuthenticated) {
-      // Navigate to login page with return navigation info. The
-      // `autoAddToCart` flag tells the post-login useEffect below to
-      // re-execute this handler automatically once the user is
-      // authenticated and the detail data is ready, so the user lands
-      // on the Cart screen without having to tap "Add to Cart" again.
+      // Same flow as Buy Now: Signup modal, full returnParams, post-auth
+      // auto-add via `autoAddToCart` + useEffect above.
+      const returnParams = {
+        productId: (productId || offerId)?.toString?.() ?? String(productId || offerId || ''),
+        offerId: offerId?.toString?.(),
+        source: routeSource || sourceRef.current,
+        country: routeCountry || countryRef.current,
+        productData: product,
+        autoAddToCart: true,
+      };
       navigation.navigate('Auth', {
-        screen: 'Login',
+        screen: 'Signup',
         params: {
           returnTo: 'ProductDetail',
-          returnParams: {
-            productId: productId || offerId,
-            offerId: offerId,
-            productData: product,
-            autoAddToCart: true,
-          },
+          returnParams,
         },
       } as never);
       return;
@@ -1933,14 +2047,7 @@ const ProductDetailScreen: React.FC = () => {
           selectedVariant = rawVariants.find((variant: any) => {
             const variantName = variant.name || '';
             if (!variantName) return false;
-            
-            // Check if all selected variations match this variant's name
-            return Object.entries(selectedVariations).every(([variationName, selectedValue]) => {
-              // Check if variant name contains the selected value
-              // Format: "variationName: selectedValue"
-              const searchPattern = `${variationName}: ${selectedValue}`;
-              return variantName.toLowerCase().includes(searchPattern.toLowerCase());
-            });
+            return rawVariantNameMatchesSelections(variantName, selectedVariations);
           });
         }
         
@@ -1973,14 +2080,11 @@ const ProductDetailScreen: React.FC = () => {
         if (!selectedSku && Object.keys(selectedVariations).length > 0) {
           selectedSku = productSkuInfos.find((sku: any) => {
             const skuAttributes = sku.skuAttributes || [];
-            // Check if all selected variations match this SKU
-            return Object.entries(selectedVariations).every(([variationName, selectedValue]) => {
-              return skuAttributes.some((attr: any) => {
-                const attrName = (attr.attributeNameTrans || attr.attributeName || '').toLowerCase();
-                const attrValue = attr.valueTrans || attr.value || '';
-                return attrName === variationName.toLowerCase() && attrValue === selectedValue;
-              });
-            });
+            return Object.entries(selectedVariations).every(([variationName, selectedValue]) =>
+              skuAttributes.some((attr: any) =>
+                skuAttributeRowMatches(attr, variationName, String(selectedValue)),
+              ),
+            );
           });
         }
         
@@ -2110,10 +2214,7 @@ const ProductDetailScreen: React.FC = () => {
           selectedVariant = rawVariants.find((variant: any) => {
             const variantName = variant.name || '';
             if (!variantName) return false;
-            return Object.entries(selectedVariations).every(([variationName, selectedValue]) => {
-              const searchPattern = `${variationName}: ${selectedValue}`;
-              return variantName.toLowerCase().includes(searchPattern.toLowerCase());
-            });
+            return rawVariantNameMatchesSelections(variantName, selectedVariations);
           });
         }
         if (!selectedVariant && rawVariants.length > 0) {
@@ -2140,13 +2241,11 @@ const ProductDetailScreen: React.FC = () => {
         if (!selectedSku && Object.keys(selectedVariations).length > 0) {
           selectedSku = productSkuInfos.find((sku: any) => {
             const skuAttributes = sku.skuAttributes || [];
-            return Object.entries(selectedVariations).every(([variationName, selectedValue]) => {
-              return skuAttributes.some((attr: any) => {
-                const attrName = (attr.attributeNameTrans || attr.attributeName || '').toLowerCase();
-                const attrValue = attr.valueTrans || attr.value || '';
-                return attrName === variationName.toLowerCase() && attrValue === selectedValue;
-              });
-            });
+            return Object.entries(selectedVariations).every(([variationName, selectedValue]) =>
+              skuAttributes.some((attr: any) =>
+                skuAttributeRowMatches(attr, variationName, String(selectedValue)),
+              ),
+            );
           });
         }
         
@@ -2287,9 +2386,20 @@ const ProductDetailScreen: React.FC = () => {
     extrapolate: 'clamp',
   });
 
+  // Header sits on top of the image (absolute overlay), so we must
+  // size it using safe-area insets (varies by device/notch). Some
+  // devices render a larger status bar area than the emulator.
+  const isTabletLandscapeHeaderMode = pdpIsTablet && pdpIsLandscape;
+  const headerPaddingTop = isTabletLandscapeHeaderMode
+    ? insets.top
+    : Math.max(insets.top, SPACING.md);
+
   const renderHeader = () => {
     const searchBarOpacity = scrollY.interpolate({
-      inputRange: [HEADER_SCROLL_THRESHOLD * 0.5, HEADER_SCROLL_THRESHOLD],
+      // Delay the search bar fade-in so it appears when the header
+      // background is mostly opaque (prevents an unsightly partial
+      // overlap while scrolling).
+      inputRange: [HEADER_SCROLL_THRESHOLD * 0.7, HEADER_SCROLL_THRESHOLD],
       outputRange: [0, 1],
       extrapolate: 'clamp',
     });
@@ -2300,7 +2410,17 @@ const ProductDetailScreen: React.FC = () => {
     });
 
     return (
-      <Animated.View style={[styles.header, { backgroundColor: headerBg }]}>
+      <Animated.View
+        style={[
+          styles.header,
+          {
+            backgroundColor: headerBg,
+            paddingTop: headerPaddingTop,
+            // Keep header content above the absolute background strip.
+            zIndex: 2,
+          },
+        ]}
+      >
         {/* <StatusBar backgroundColor={headerBg}/> */}
         <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.headerButton} onPress={() => navigation.goBack()}>
           <ArrowBackIcon width={12} height={20} color={COLORS.text.primary} />
@@ -2828,15 +2948,7 @@ const ProductDetailScreen: React.FC = () => {
                 <TouchableOpacity
                   key={optIndex}
                   style={styles.colorOption}
-                  onPress={() => {
-                    console.log('[ProductDetail] color option tapped', {
-                      optIndex,
-                      value: option.value,
-                      image: option.image,
-                      isSelected,
-                    });
-                    handleSelect(option.value);
-                  }}
+                  onPress={() => handleSelect(option.value)}
                 >
 
                   {option.image && (
@@ -3381,7 +3493,26 @@ const ProductDetailScreen: React.FC = () => {
             style={styles.cameraButton}
             onPress={() => {
               if (route.params?.source === 'live-commerce' || route.params?.source === 'live') {
-                navigation.navigate('FollowedStore');
+                const liveSellerId = (product as any)?.ownerSellerId || product?.seller?.id || '';
+                const liveSellerName =
+                  liveSellerInfo?.userName ||
+                  liveSellerInfo?.nickname ||
+                  liveSellerInfo?.sellerName ||
+                  product?.metadata?.original1688Data?.companyName ||
+                  product?.seller?.name ||
+                  '';
+
+                if (liveSellerId) {
+                  navigation.navigate('LiveSellerDetail', {
+                    sellerId: liveSellerId,
+                    sellerName: liveSellerName,
+                    source: 'ownmall',
+                  });
+                } else {
+                  // Fallback: if we can't resolve the seller id from the product payload,
+                  // keep the prior behavior.
+                  navigation.navigate('FollowedStore' as never);
+                }
                 return;
               }
               const sellerId = product.seller?.id || (product as any).sellerOpenId || '';
@@ -3453,20 +3584,22 @@ const ProductDetailScreen: React.FC = () => {
               pulseStock();
               if (isAddingToCartForBuyNow) return;
               if (!isAuthenticated) {
-                // Navigate to login page with return navigation info. The
-                // autoBuyNow flag tells the post-auth useEffect to re-fire
-                // Buy Now once the user is authenticated and the product is
-                // ready, so they land directly on the purchase page.
+                // Logged-out members and guests both land on Signup (modal over
+                // PDP). Login remains reachable from Signup. Same returnParams +
+                // autoBuyNow so after auth we return here and run Buy once.
+                const returnParams = {
+                  productId: (productId || offerId)?.toString?.() ?? String(productId || offerId || ''),
+                  offerId: offerId?.toString?.(),
+                  source: routeSource || sourceRef.current,
+                  country: routeCountry || countryRef.current,
+                  productData: product,
+                  autoBuyNow: true,
+                };
                 navigation.navigate('Auth', {
-                  screen: 'Login',
+                  screen: 'Signup',
                   params: {
                     returnTo: 'ProductDetail',
-                    returnParams: {
-                      productId: productId || offerId,
-                      offerId: offerId,
-                      productData: product,
-                      autoBuyNow: true,
-                    },
+                    returnParams,
                   },
                 } as never);
                 return;
@@ -3475,7 +3608,14 @@ const ProductDetailScreen: React.FC = () => {
               if (!canAddToCart) {
                 const variationTypes = getVariationTypes();
                 if (variationTypes.length > 0) {
+                  // Variations exist but not all are picked yet.
                   showToast(t('product.pleaseSelectOptions'), 'warning');
+                } else {
+                  // No variations to pick — the block is stock/listing
+                  // related (out-of-stock or seller-unlisted). Surface
+                  // an explicit "unavailable" toast and stay on this
+                  // page rather than navigating away.
+                  showToast(t('product.outOfStock'), 'warning');
                 }
                 return;
               }
@@ -3556,7 +3696,7 @@ const ProductDetailScreen: React.FC = () => {
 
   // Post-login auto-add-to-cart flow: render a loading view INSTEAD of the
   // product detail UI so the user perceives the transition as
-  // Login → (brief loader) → Cart, without seeing the product page flash
+  // Auth → (brief loader) → cart success, without seeing the product page flash
   // in between. The auto-trigger useEffect above fires the addToCart API;
   // on success it navigates to Cart (which unmounts this screen); on error
   // the mutation's onError resets isAutoCartFlow so the user falls back to
@@ -3593,15 +3733,12 @@ const ProductDetailScreen: React.FC = () => {
             top: 0,
             left: 0,
             right: 0,
-            // Phones/portrait need the extra 29pt to cover the header area on top of the
-            // safe-area inset; tablets in landscape have no notch and the inset alone
-            // already overshoots — drop the padding so the header strip stays tight.
-            height:
-              Math.min(dynWidth, dynHeight) >= 600 && dynWidth > dynHeight
-                ? insets.bottom - 8
-                : insets.bottom + 29,
+            // Height must match the overlaid header so the background
+            // doesn't cover/underlap the system status bar area.
+            height: headerPaddingTop ,
             backgroundColor: headerBg,
-            zIndex: 1,
+            // Let the real header content render above this strip.
+            zIndex: 0,
           }}
         />
         

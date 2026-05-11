@@ -18,7 +18,22 @@ import { LinearGradient } from 'react-native-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import { COLORS, FONTS, SPACING, SCREEN_HEIGHT, STORAGE_KEYS, BORDER_RADIUS, PAGINATION, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
+import {
+  COLORS,
+  FONTS,
+  SPACING,
+  SCREEN_HEIGHT,
+  STORAGE_KEYS,
+  BORDER_RADIUS,
+  PAGINATION,
+  BACK_NAVIGATION_HIT_SLOP,
+} from '../../../constants';
+import {
+  computeMyOrdersDashboardCounts,
+  MY_ORDERS_INTERNATIONAL_SHIPPING_STATUSES,
+  MY_ORDERS_PAYMENT_COMPLETED_STATUSES,
+  MY_ORDERS_WAREHOUSE_STATUSES,
+} from '../../../constants/myOrdersDashboard';
 import { RootStackParamList, Product } from '../../../types';
 import { useAuth } from '../../../context/AuthContext';
 import { useAppSelector } from '../../../store/hooks';
@@ -219,117 +234,6 @@ async function getWishlistFallbackCountFromStorage(): Promise<number> {
   }
 }
 
-// Mapping from order.progressStatus → ProfileScreen "내 주문" card buckets.
-// Server-side `viewFilterCounts` is unreliable (uses an older filter taxonomy
-// that doesn't cover all current progressStatus values), so we aggregate
-// client-side from the orders array. Unmapped statuses are ignored.
-type ProfileOrderBucket =
-  | 'unpaid'
-  | 'to_be_shipped'
-  | 'shipped'
-  | 'processed'
-  | 'shipping_delay'
-  | 'error'
-  | 'refunds'
-  | 'problemProducts';
-
-// Each Profile bucket reflects the orders the user sees inside the
-// matching BuyList view. Buckets with their own dedicated badge in the
-// "내 주문" card (problemProducts / shipping_delay / error / refunds) are
-// listed individually so they don't double-count under the broader
-// group bucket above them.
-const PROGRESS_STATUS_TO_PROFILE_BUCKET: Record<string, ProfileOrderBucket> = {
-  // 구매결제대기 — purchase agency group (excluding BUYING_PROBLEM which
-  // has its own 문제상품 badge).
-  BUY_PAY_WAIT: 'unpaid',
-  BUY_PAY_DONE: 'unpaid',
-  BUYING_MANUAL: 'unpaid',
-  BUYING_FINANCIAL_SETTLEMENT: 'unpaid',
-  BUY_FINAL_DONE: 'unpaid',
-
-  // 문제상품
-  BUYING_PROBLEM: 'problemProducts',
-
-  // 출고결제대기 — warehouse group (excluding DELIVERY_EXCEPTION which
-  // has its own 현지배송지연 badge).
-  WH_ARRIVE_EXPECTED: 'to_be_shipped',
-  WH_IN_EXPECTED: 'to_be_shipped',
-  WH_IN_PROGRESS: 'to_be_shipped',
-  WH_IN_DONE: 'to_be_shipped',
-  WH_PICK_DONE: 'to_be_shipped',
-  WH_PAY_WAIT: 'to_be_shipped',
-  WH_PAY_DONE: 'to_be_shipped',
-  WH_SHIPPED: 'to_be_shipped',
-
-  // 현지배송지연
-  DELIVERY_EXCEPTION: 'shipping_delay',
-
-  // 국제운송중
-  INTERNATIONAL_SHIPPING: 'shipped',
-
-  // 리뷰대기 — delivered / awaiting review
-  INTERNATIONAL_SHIPPED: 'processed',
-  ORDER_RECEIVED: 'processed',
-
-  // 오류입고
-  ERR_IN: 'error',
-  NO_ORDER_INFO: 'error',
-
-  // 반품/환불
-  USER_REFUND_REQ: 'refunds',
-  USER_REFUND_COMPLETED: 'refunds',
-};
-
-const EMPTY_ORDER_COUNTS: Record<ProfileOrderBucket, number> = {
-  unpaid: 0,
-  to_be_shipped: 0,
-  shipped: 0,
-  processed: 0,
-  shipping_delay: 0,
-  error: 0,
-  refunds: 0,
-  problemProducts: 0,
-};
-
-function computeProfileOrderCounts(orders: unknown): Record<ProfileOrderBucket, number> {
-  const counts: Record<ProfileOrderBucket, number> = { ...EMPTY_ORDER_COUNTS };
-  if (!Array.isArray(orders)) {
-    console.log('[ProfileCounts] orders is not an array:', typeof orders, orders === null ? 'null' : '');
-    return counts;
-  }
-
-  console.log('[ProfileCounts] aggregating', orders.length, 'orders');
-
-  // Bucket each order via its progressStatus. Orders without a
-  // recognized status whose paymentStatus is 'unpaid' still fall into
-  // the unpaid bucket so the badge matches BuyList's "Pay" button rule.
-  for (const order of orders) {
-    const o = order as any;
-    const ps: string | undefined = o?.progressStatus;
-    const paymentStatus: string | undefined = o?.paymentStatus;
-
-    console.log('[ProfileCounts] order', {
-      progressStatus: ps,
-      paymentStatus,
-      orderStatus: o?.orderStatus,
-      shippingStatus: o?.shippingStatus,
-      warehouseStatus: o?.warehouseStatus,
-      hasItems: Array.isArray(o?.items) ? o.items.length : 0,
-    });
-
-    let bucket: ProfileOrderBucket | undefined = ps
-      ? PROGRESS_STATUS_TO_PROFILE_BUCKET[ps]
-      : undefined;
-    if (!bucket && paymentStatus === 'unpaid') {
-      bucket = 'unpaid';
-    }
-    if (bucket) counts[bucket] += 1;
-  }
-
-  console.log('[ProfileCounts] result:', counts);
-  return counts;
-}
-
 const ProfileScreen: React.FC = () => {
   const navigation = useNavigation<ProfileScreenNavigationProp>();
   const { width: pWinWidth, height: pWinHeight } = useWindowDimensions();
@@ -347,21 +251,16 @@ const ProfileScreen: React.FC = () => {
   const [notificationCount, setNotificationCount] = useState(0); // Local state for notification count (from REST API)
   const { notes: broadcastNotes } = useNotes(); // Get broadcast notes count
   const { unreadCount: generalInquiryUnreadCount } = useGeneralInquiry(); // Get general inquiry unread count
-  const [orderCounts, setOrderCounts] = useState({
-    unpaid: 0,
-    to_be_shipped: 0,
-    shipped: 0,
-    processed: 0,
-    shipping_delay: 0,  
-    error: 0,
-    refunds: 0,
-    problemProducts: 0,
-  }); // Order counts from API
+  /** My Orders card + sidebar refund badge (from same orders fetch). */
+  const [myOrderDashCounts, setMyOrderDashCounts] = useState(
+    computeMyOrdersDashboardCounts([]),
+  );
   const [tabletSection, setTabletSection] = useState('overview');
   // When the user taps "All" in the My Orders card on tablet,
   // render the BuyList screen inside the dashboard panel.
   const [embeddedOrdersOpen, setEmbeddedOrdersOpen] = useState(false);
-  const [embeddedOrdersInitialTab, setEmbeddedOrdersInitialTab] = useState<string>('purchase_agency');
+  const [embeddedOrdersInitialTab, setEmbeddedOrdersInitialTab] = useState<string>('all');
+  const [embeddedOrdersStatusWhitelist, setEmbeddedOrdersStatusWhitelist] = useState<string[] | null>(null);
   const [embeddedCouponPointOpen, setEmbeddedCouponPointOpen] = useState(false);
   const [embeddedCouponPointTab, setEmbeddedCouponPointTab] = useState<'coupon' | 'point'>('coupon');
   const [settingsExpanded, setSettingsExpanded] = useState(false);
@@ -380,7 +279,10 @@ const ProfileScreen: React.FC = () => {
   useEffect(() => {
     if (!embeddedOrdersOpen) return;
     if (tabletSection === 'orders') return;
-    const id = setTimeout(() => setEmbeddedOrdersOpen(false), 80);
+    const id = setTimeout(() => {
+      setEmbeddedOrdersStatusWhitelist(null);
+      setEmbeddedOrdersOpen(false);
+    }, 80);
     return () => clearTimeout(id);
   }, [tabletSection, embeddedOrdersOpen]);
 
@@ -398,6 +300,7 @@ const ProfileScreen: React.FC = () => {
 
   /** Tablet landscape: collapse overlay panels (orders / coupon tabs opened from dashboard). */
   const closeTabletOverlayPanels = useCallback(() => {
+    setEmbeddedOrdersStatusWhitelist(null);
     setEmbeddedOrdersOpen(false);
     setEmbeddedCouponPointOpen(false);
   }, []);
@@ -437,7 +340,7 @@ const ProfileScreen: React.FC = () => {
           sampleProgressStatuses: sampleStatuses,
         });
       }
-      setOrderCounts(computeProfileOrderCounts(data.orders));
+      setMyOrderDashCounts(computeMyOrdersDashboardCounts(data.orders));
     },
   });
 
@@ -506,7 +409,6 @@ const ProfileScreen: React.FC = () => {
       fetchUnreadCounts();
 
       // Get order counts from API
-      console.log('[ProfileCounts] calling getOrders');
       getOrders({ page: 1, pageSize: 100 });
 
       // Set wishlist and viewed counts from API
@@ -599,6 +501,26 @@ const ProfileScreen: React.FC = () => {
     return text;
   };
 
+  /** Open BuyList (stack or tablet embedded) with optional progressStatus whitelist. */
+  const openMyOrdersBuyList = useCallback(
+    (statusWhitelist: readonly string[] | null | undefined) => {
+      const wl = statusWhitelist?.length ? [...statusWhitelist] : undefined;
+      if (pIsTabletLandscape) {
+        setTabletSection('orders');
+        setEmbeddedOrdersInitialTab('all');
+        setEmbeddedOrdersStatusWhitelist(wl ?? null);
+        setEmbeddedOrdersOpen(true);
+        return;
+      }
+      if (wl) {
+        (navigation as any).navigate('BuyList', { initialTab: 'all', statusWhitelist: wl });
+      } else {
+        (navigation as any).navigate('BuyList', { initialTab: 'all' });
+      }
+    },
+    [navigation, pIsTabletLandscape],
+  );
+
   // Map language codes to flag emojis
   const getLanguageFlag = (locale: string) => {
     const flags: { [key: string]: string } = {
@@ -684,10 +606,10 @@ const ProfileScreen: React.FC = () => {
               rating: 0, 
               reviewCount: 0, 
               isVerified: false, 
-              followersCount: 0, 
-              description: '', 
-              location: '', 
-              joinedDate: new Date() 
+              followersCount: 0,
+              description: '',
+              location: '',
+              joinedDate: new Date().toISOString()
             },
             rating: 0,
             reviewCount: 0,
@@ -698,8 +620,8 @@ const ProfileScreen: React.FC = () => {
             isNew: false,
             isFeatured: false,
             isOnSale: discount > 0,
-            createdAt: new Date(),
-            updatedAt: new Date(),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
             orderCount: item.monthSold || 0,
             repurchaseRate: item.repurchaseRate || '',
           };
@@ -1049,134 +971,41 @@ const ProfileScreen: React.FC = () => {
     return (
       <View style={styles.menuContainer}>
         <View style={styles.myOrder}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.myOrderHeader}
-            onPress={() => {
-              if (pIsTabletLandscape) {
-                setTabletSection('orders');
-                setEmbeddedOrdersInitialTab('purchase_agency');
-                setEmbeddedOrdersOpen(true);
-              } else {
-                navigation.navigate('BuyList', { initialTab: 'purchase_agency' });
-              }
-            }}
+            onPress={() => openMyOrdersBuyList(null)}
           >
-            <Text style={styles.myOrderHeaderText}>{t('profile.myOrders')}{">"}</Text>
-            <Text style={styles.myOrderHeaderTextSub}>{t('profile.viewAll')}{' >'}</Text>
+            <Text style={styles.myOrderHeaderText}>{t('profile.myOrders')}{'>'}</Text>
           </TouchableOpacity>
           <View style={styles.myOrderContent}>
-            <TouchableOpacity 
-              style={styles.myOrderItem}
-              onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'purchase_agency' })}
+            <TouchableOpacity
+              style={[styles.myOrderItem, styles.myOrderItemFour]}
+              onPress={() => openMyOrdersBuyList(MY_ORDERS_PAYMENT_COMPLETED_STATUSES)}
             >
-              {/* <NotificationBadge
-                customIcon={<ToPayIcon width={24} height={24} color={COLORS.black} />}
-                count={orderCounts.unpaid}
-                badgeColor={COLORS.red}
-                onPress={() => navigation.navigate('BuyList', { initialTab: 'waiting' })}
-                showCount={true}
-              /> */}
-              <Text style={styles.myOrderItemCount}>{orderCounts.unpaid}</Text>
-              <Text style={styles.myOrderItemText}>{t('profile.toPay')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.myOrderItem}
-              onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'warehouse' })}
-            >
-              {/* <ToShipIcon width={24} height={24} color={COLORS.black} /> */}
-              {/* <NotificationBadge
-                customIcon={<ToShipIcon width={24} height={24} color={COLORS.black} />}
-                count={0}
-                badgeColor={COLORS.red}
-                onPress={() => navigation.navigate('BuyList', { initialTab: 'progressing' })}
-                showCount={true}
-              /> */}
-              <Text style={styles.myOrderItemCount}>{orderCounts.to_be_shipped}</Text>
-              <Text style={styles.myOrderItemText}>{t('profile.toShip')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.myOrderItem}
-              onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'international_shipping' })}
-            >
-              {/* <DeliveryIcon width={24} height={24} color={COLORS.black} /> */}
-              {/* <NotificationBadge
-                customIcon={<DeliveryIcon width={24} height={24} color={COLORS.black} />}
-                count={0}
-                badgeColor={COLORS.red}
-                onPress={() => navigation.navigate('BuyList', { initialTab: 'progressing' })}
-                showCount={true}
-              /> */}
-              <Text style={styles.myOrderItemCount}>{orderCounts.shipped}</Text>
-              <Text style={styles.myOrderItemText}>{t('profile.shipped')}</Text>
+              <Text style={styles.myOrderItemCount}>{myOrderDashCounts.paymentCompleted}</Text>
+              <Text style={styles.myOrderItemText}>{t('profile.paymentCompletedCard')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.myOrderItem}
-              onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'warehouse' })}
+              style={[styles.myOrderItem, styles.myOrderItemFour]}
+              onPress={() => openMyOrdersBuyList(MY_ORDERS_WAREHOUSE_STATUSES)}
             >
-              <Text style={styles.myOrderItemCount}>{orderCounts.shipping_delay}</Text>
-              <Text style={styles.myOrderItemText}>{t('profile.toShippingDelay')}</Text>
-            </TouchableOpacity>
-            {/* <TouchableOpacity 
-              style={styles.myOrderItem}
-              onPress={() => navigation.navigate('BuyList', { initialTab: 'waiting' })}
-            >
-              <UndoIcon width={24} height={24} color={COLORS.black} />
-              <Text style={styles.myOrderItemText}>{t('profile.returns')}</Text>
-            </TouchableOpacity> */}
-          </View>
-          <View style={styles.myOrderContent}>
-            <TouchableOpacity 
-              style={styles.myOrderItem}
-              onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'international_shipping' })}
-            >
-              {/* <NotificationBadge
-                customIcon={<ToPayIcon width={24} height={24} color={COLORS.black} />}
-                count={0}
-                badgeColor={COLORS.red}
-                onPress={() => navigation.navigate('BuyList', { initialTab: 'waiting' })}
-                showCount={true}
-              /> */}
-              <Text style={styles.myOrderItemCount}>{orderCounts.processed}</Text>
-              <Text style={styles.myOrderItemText}>{t('profile.toReview')}</Text>
+              <Text style={styles.myOrderItemCount}>{myOrderDashCounts.awaitingShipmentPayment}</Text>
+              <Text style={styles.myOrderItemText}>{t('profile.awaitingShipmentPaymentCard')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.myOrderItem}
-              onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'purchase_agency' })}
+              style={[styles.myOrderItem, styles.myOrderItemFour]}
+              onPress={() => openMyOrdersBuyList(MY_ORDERS_INTERNATIONAL_SHIPPING_STATUSES)}
             >
-              <Text style={styles.myOrderItemCount}>{orderCounts.problemProducts}</Text>
-              <Text style={styles.myOrderItemText}>{t('profile.toProblem')}</Text>
+              <Text style={styles.myOrderItemCount}>{myOrderDashCounts.internationalShipping}</Text>
+              <Text style={styles.myOrderItemText}>{t('profile.internationalShippingCard')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.myOrderItem}
-              onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'error' })}
+              style={[styles.myOrderItem, styles.myOrderItemFour]}
+              onPress={() => openMyOrdersBuyList(null)}
             >
-              <Text style={styles.myOrderItemCount}>{orderCounts.error}</Text>
-              <Text style={styles.myOrderItemText}>{t('profile.toErrorIn')}</Text>
+              <Text style={styles.myOrderItemCount}>{myOrderDashCounts.viewAll}</Text>
+              <Text style={styles.myOrderItemText}>{t('profile.viewAllOrdersCard')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.myOrderItem}
-              onPress={() => (navigation as any).navigate('BuyList', { initialTab: 'error' })}
-            >
-              {/* <ToMessageIcon width={24} height={24} color={COLORS.black} /> */}
-              {/* <NotificationBadge
-                customIcon={<ReviewIcon width={24} height={24} color={COLORS.black} />}
-                count={0}
-                badgeColor={COLORS.red}
-                onPress={() => {
-                  // navigation.navigate('CustomerService');
-                }}
-                showCount={true}
-              /> */}
-              <Text style={styles.myOrderItemCount}>{orderCounts.refunds}</Text>
-              <Text style={styles.myOrderItemText}>{t('profile.toRefunds')}</Text>
-            </TouchableOpacity>
-            {/* <TouchableOpacity 
-              style={styles.myOrderItem}
-              onPress={() => navigation.navigate('BuyList', { initialTab: 'waiting' })}
-            >
-              <UndoIcon width={24} height={24} color={COLORS.black} />
-              <Text style={styles.myOrderItemText}>{t('profile.returns')}</Text>
-            </TouchableOpacity> */}
           </View>
         </View>
         <View style={[styles.myOrder, { paddingTop: 0}]}>
@@ -1351,7 +1180,7 @@ const ProfileScreen: React.FC = () => {
   };
 
   const renderQuickAccessSection = () => {
-    const expressCount = orderCounts.shipped;
+    const expressCount = myOrderDashCounts.internationalInTransit;
     const cards = [
       expressCount > 0 && (
         <TouchableOpacity
@@ -1511,7 +1340,7 @@ const ProfileScreen: React.FC = () => {
       { key: 'viewed', label: t('profile.viewed') || '조회한 상품', badge: viewedCount || undefined },
       { key: 'billing', label: t('profile.deposit') || '내 청구서',},
       { key: 'feedback', label: t('profile.suggestion') || '피드백', badge: feedbackBadge || undefined },
-      { key: 'returns', label: t('profile.toRefunds') || '반품/환불', badge: orderCounts.refunds || undefined },
+      { key: 'returns', label: t('profile.toRefunds') || '반품/환불', badge: myOrderDashCounts.refunds || undefined },
       { key: 'settings', label: '계정 설정',  },
     ];
 
@@ -1563,7 +1392,9 @@ const ProfileScreen: React.FC = () => {
                   setIntroductionExpanded(false);
                   setEmbeddedSettingsPage(null);
                   if (item.key === 'orders') {
-                    setEmbeddedOrdersInitialTab('purchase_agency');
+                    setTabletSection('orders');
+                    setEmbeddedOrdersInitialTab('all');
+                    setEmbeddedOrdersStatusWhitelist(null);
                     setEmbeddedOrdersOpen(true);
                     setEmbeddedCouponPointOpen(false);
                   } else if (item.key === 'coupon_point') {
@@ -1796,103 +1627,36 @@ const ProfileScreen: React.FC = () => {
               <>
                 <View style={styles.myOrderContent}>
                   <TouchableOpacity
-                    style={styles.myOrderItem}
-                    onPress={() => {
-                      setTabletSection('orders');
-                      setEmbeddedOrdersInitialTab('purchase_agency');
-                      setEmbeddedOrdersOpen(true);
-                    }}
+                    style={[styles.myOrderItem, styles.myOrderItemFour]}
+                    onPress={() => openMyOrdersBuyList(MY_ORDERS_PAYMENT_COMPLETED_STATUSES)}
                   >
-                    <Text style={styles.myOrderItemCount}>{orderCounts.unpaid}</Text>
-                    <Text style={styles.myOrderItemText}>{t('profile.toPay')}</Text>
+                    <Text style={styles.myOrderItemCount}>{myOrderDashCounts.paymentCompleted}</Text>
+                    <Text style={styles.myOrderItemText}>{t('profile.paymentCompletedCard')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.myOrderItem}
-                    onPress={() => {
-                      setTabletSection('orders');
-                      setEmbeddedOrdersInitialTab('warehouse');
-                      setEmbeddedOrdersOpen(true);
-                    }}
+                    style={[styles.myOrderItem, styles.myOrderItemFour]}
+                    onPress={() => openMyOrdersBuyList(MY_ORDERS_WAREHOUSE_STATUSES)}
                   >
-                    <Text style={styles.myOrderItemCount}>{orderCounts.to_be_shipped}</Text>
-                    <Text style={styles.myOrderItemText}>{t('profile.toShip')}</Text>
+                    <Text style={styles.myOrderItemCount}>{myOrderDashCounts.awaitingShipmentPayment}</Text>
+                    <Text style={styles.myOrderItemText}>{t('profile.awaitingShipmentPaymentCard')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.myOrderItem}
-                    onPress={() => {
-                      setTabletSection('orders');
-                      setEmbeddedOrdersInitialTab('international_shipping');
-                      setEmbeddedOrdersOpen(true);
-                    }}
+                    style={[styles.myOrderItem, styles.myOrderItemFour]}
+                    onPress={() => openMyOrdersBuyList(MY_ORDERS_INTERNATIONAL_SHIPPING_STATUSES)}
                   >
-                    <Text style={styles.myOrderItemCount}>{orderCounts.shipped}</Text>
-                    <Text style={styles.myOrderItemText}>{t('profile.shipped')}</Text>
+                    <Text style={styles.myOrderItemCount}>{myOrderDashCounts.internationalShipping}</Text>
+                    <Text style={styles.myOrderItemText}>{t('profile.internationalShippingCard')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.myOrderItem}
-                    onPress={() => {
-                      setTabletSection('orders');
-                      setEmbeddedOrdersInitialTab('international_shipping');
-                      setEmbeddedOrdersOpen(true);
-                    }}
+                    style={[styles.myOrderItem, styles.myOrderItemFour]}
+                    onPress={() => openMyOrdersBuyList(null)}
                   >
-                    <Text style={styles.myOrderItemCount}>{orderCounts.shipping_delay}</Text>
-                    <Text style={styles.myOrderItemText}>{t('profile.toShippingDelay')}</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.myOrderContent}>
-                  <TouchableOpacity
-                    style={styles.myOrderItem}
-                    onPress={() => {
-                      setTabletSection('orders');
-                      setEmbeddedOrdersInitialTab('international_shipping');
-                      setEmbeddedOrdersOpen(true);
-                    }}
-                  >
-                    <Text style={styles.myOrderItemCount}>{orderCounts.processed}</Text>
-                    <Text style={styles.myOrderItemText}>{t('profile.toReview')}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.myOrderItem}
-                    onPress={() => {
-                      setTabletSection('orders');
-                      setEmbeddedOrdersInitialTab('purchase_agency');
-                      setEmbeddedOrdersOpen(true);
-                    }}
-                  >
-                    <Text style={styles.myOrderItemCount}>{orderCounts.problemProducts}</Text>
-                    <Text style={styles.myOrderItemText}>{t('profile.toProblem')}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.myOrderItem}
-                    onPress={() => {
-                      setTabletSection('orders');
-                      setEmbeddedOrdersInitialTab('refunds');
-                      setEmbeddedOrdersOpen(true);
-                    }}
-                  >
-                    <Text style={styles.myOrderItemCount}>{orderCounts.error}</Text>
-                    <Text style={styles.myOrderItemText}>{t('profile.toErrorIn')}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.myOrderItem}
-                    onPress={() => {
-                      setTabletSection('orders');
-                      setEmbeddedOrdersInitialTab('error');
-                      setEmbeddedOrdersOpen(true);
-                    }}
-                  >
-                    <Text style={styles.myOrderItemCount}>{orderCounts.refunds}</Text>
-                    <Text style={styles.myOrderItemText}>{t('profile.toRefunds')}</Text>
+                    <Text style={styles.myOrderItemCount}>{myOrderDashCounts.viewAll}</Text>
+                    <Text style={styles.myOrderItemText}>{t('profile.viewAllOrdersCard')}</Text>
                   </TouchableOpacity>
                 </View>
               </>,
               t('profile.myOrders'),
-              () => {
-                setTabletSection('orders');
-                setEmbeddedOrdersInitialTab('purchase_agency');
-                setEmbeddedOrdersOpen(true);
-              }
             )}
           </View>
         );
@@ -1989,7 +1753,11 @@ const ProfileScreen: React.FC = () => {
               <BuyListScreen
                 embedded
                 initialTabOverride={embeddedOrdersInitialTab}
-                onEmbeddedBack={() => setEmbeddedOrdersOpen(false)}
+                statusWhitelistOverride={embeddedOrdersStatusWhitelist ?? undefined}
+                onEmbeddedBack={() => {
+                  setEmbeddedOrdersStatusWhitelist(null);
+                  setEmbeddedOrdersOpen(false);
+                }}
               />
             </View>
           ) : embeddedCouponPointOpen ? (
@@ -2563,7 +2331,7 @@ const styles = StyleSheet.create({
   myOrderHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     paddingBottom: SPACING.md,
     // borderBottomWidth: 1,
     // borderBottomColor: COLORS.gray[100],
@@ -2572,11 +2340,6 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.sm,
     color: COLORS.text.primary,
     fontWeight: '700',
-  },
-  myOrderHeaderTextSub: {
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.text.secondary,
-    fontWeight: '400',
   },
   myOrderContent: {
     flexDirection: 'row',
@@ -2591,6 +2354,12 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     width: 65,
     minHeight: 70,
+  },
+  myOrderItemFour: {
+    flex: 1,
+    width: undefined,
+    minWidth: 0,
+    paddingHorizontal: SPACING.xs,
   },
   myOrderItemCount: {
     fontSize: FONTS.sizes.xl,

@@ -39,6 +39,8 @@ import { orderApi } from '../../../../services/orderApi';
 import { depositApi } from '../../../../services/depositApi';
 import type { BillgateResult } from '../../../../lib/billgate/types';
 
+const ORDER_MEMO_MAX_LENGTH = 200;
+
 interface PaymentScreenParams {
   items: Array<{
     id: string;
@@ -145,7 +147,7 @@ const PaymentScreen: React.FC = () => {
   const [selectedTransportType, setSelectedTransportType] = useState<string>('air');
   const [selectedDeliveryMethod, setSelectedDeliveryMethod] = useState<string>('general');
   const [selectedAddress, setSelectedAddress] = useState<Address | null>(null);
-  const [orderMemos, setOrderMemos] = useState<Record<string, string>>({});
+  const [orderMemo, setOrderMemo] = useState('');
   const [productNotes, setProductNotes] = useState<Record<string, string>>({});
   const [pointsInput, setPointsInput] = useState<string>('');
   const [useCoupon, setUseCoupon] = useState(false);
@@ -244,14 +246,6 @@ const PaymentScreen: React.FC = () => {
     }, [user, selectedAddress])
   );
 
-
-  // Helper function to update memo for specific product
-  const updateOrderMemo = (productId: string, memo: string) => {
-    setOrderMemos(prev => ({
-      ...prev,
-      [productId]: memo
-    }));
-  };
 
   // Helper function to update note for specific product
   const updateProductNote = (productId: string, note: string) => {
@@ -619,20 +613,6 @@ const PaymentScreen: React.FC = () => {
                   </TouchableOpacity>
                   )}
 
-                  {/* Order Memo for this product */}
-                  {false && (
-                  <View style={styles.memoSection}>
-                    <Text style={styles.sectionTitle}>Order Memo</Text>
-                    <TextInput
-                      style={styles.memoInput}
-                      placeholder="Please make memo for this order"
-                      placeholderTextColor={COLORS.gray[400]}
-                      value={orderMemos[item.id] || ''}
-                      onChangeText={(text) => updateOrderMemo(item.id, text)}
-                      multiline
-                    />
-                  </View>
-                  )}
                 </View>
               ))}
             </View>
@@ -642,7 +622,26 @@ const PaymentScreen: React.FC = () => {
     );
   };
 
-
+  const renderOrderMemo = () => (
+    <View style={styles.orderMemoSection}>
+      <Text style={styles.orderMemoTitle}>{t('payment.orderMemo')}</Text>
+      <TextInput
+        style={styles.orderMemoInput}
+        placeholder={t('payment.orderMemoPlaceholder')}
+        placeholderTextColor={COLORS.text.secondary}
+        value={orderMemo}
+        onChangeText={(text) => setOrderMemo(text.slice(0, ORDER_MEMO_MAX_LENGTH))}
+        multiline
+        maxLength={ORDER_MEMO_MAX_LENGTH}
+        textAlignVertical="top"
+      />
+      <Text style={styles.orderMemoCounter}>
+        {t('payment.orderMemoCharCount')
+          .replace('{current}', String(orderMemo.length))
+          .replace('{max}', String(ORDER_MEMO_MAX_LENGTH))}
+      </Text>
+    </View>
+  );
 
   const renderPaymentMethods = () => {
     // Prefer the freshly fetched balance over the (potentially stale)
@@ -1306,13 +1305,15 @@ const PaymentScreen: React.FC = () => {
 
         return acc;
       }, {} as Record<string, { notes?: string; designatedShooting?: any[] }>);
-      const allNotes = items
+      const productLineNotes = items
         .map(item => {
           const note = productNotes[item.id];
           return note ? `${safeText(item.name)}: ${note}` : '';
         })
         .filter(note => note)
         .join('\n');
+      const memoTrimmed = orderMemo.trim().slice(0, ORDER_MEMO_MAX_LENGTH);
+      const combinedNotes = [productLineNotes, memoTrimmed].filter(Boolean).join('\n\n');
 
       const orderRequest = {
         cartItems,
@@ -1328,7 +1329,7 @@ const PaymentScreen: React.FC = () => {
         flow: 'general' as const,
         paymentMethod,
         addressId: selectedAddress.id,
-        ...(allNotes && { notes: allNotes }),
+        ...(combinedNotes && { notes: combinedNotes }),
         pointsToUse: enteredPoints > 0 ? enteredPoints : 0,
         ...(paymentMethod === 'bank' && { memberName: memberName.trim() }),
         ...(paymentMethod === 'billgate' && billgateServiceCode && { serviceCode: billgateServiceCode }),
@@ -1349,6 +1350,7 @@ const PaymentScreen: React.FC = () => {
       (sum, it) => sum + (Array.isArray(it.designatedShooting) ? it.designatedShooting.length : 0),
       0
     );
+    const memoTrimmedDirect = orderMemo.trim().slice(0, ORDER_MEMO_MAX_LENGTH);
     const directRequest = {
       items: directPurchaseItems,
       designatedShootingImageCount: designatedShootingCount || undefined,
@@ -1361,6 +1363,7 @@ const PaymentScreen: React.FC = () => {
       depositAmountKRW: 0,
       pointsToUse: enteredPoints > 0 ? enteredPoints : 0,
       netExpectedTotalKRW: Math.round(finalTotal),
+      ...(memoTrimmedDirect ? { notes: memoTrimmedDirect } : {}),
 
       ...(couponUsageId && { userCouponUsageId: couponUsageId }),
       ...(shippingCouponUsageId && {
@@ -1463,6 +1466,7 @@ const PaymentScreen: React.FC = () => {
       >
         {renderAddress()}
         {renderOrderItems()}
+        {renderOrderMemo()}
         {renderTransferMethod()}
         {renderPriceBreakdown()}
         {renderPaymentMethods()}
@@ -2185,6 +2189,40 @@ const styles = StyleSheet.create({
     color: COLORS.text.primary,
     minHeight: 60,
     textAlignVertical: 'top',
+  },
+  orderMemoSection: {
+    marginHorizontal: SPACING.md,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.sm,
+    padding: SPACING.md,
+    backgroundColor: COLORS.gray[50],
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.gray[100],
+  },
+  orderMemoTitle: {
+    fontSize: FONTS.sizes.md,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+    marginBottom: SPACING.sm,
+  },
+  orderMemoInput: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.smmd,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.primary,
+    minHeight: 100,
+    maxHeight: 160,
+  },
+  orderMemoCounter: {
+    alignSelf: 'flex-end',
+    marginTop: SPACING.xs,
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.text.secondary,
   },
   addressSection: {
     paddingHorizontal: SPACING.md,

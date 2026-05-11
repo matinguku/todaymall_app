@@ -537,9 +537,9 @@ const ProductDiscoveryScreen: React.FC = () => {
               reviewCount: 0, 
               isVerified: false, 
               followersCount: 0, 
-              description: '', 
-              location: '', 
-              joinedDate: new Date() 
+              description: '',
+              location: '',
+              joinedDate: new Date().toISOString()
             },
             rating: item.rating || 0,
             reviewCount: item.sales || 0,
@@ -550,8 +550,8 @@ const ProductDiscoveryScreen: React.FC = () => {
             isNew: false,
             isFeatured: false,
             isOnSale: discount > 0,
-            createdAt: new Date(item.createDate || new Date()),
-            updatedAt: new Date(item.modifyDate || new Date()),
+            createdAt: new Date(item.createDate || new Date()).toISOString(),
+            updatedAt: new Date(item.modifyDate || new Date()).toISOString(),
             orderCount: item.sales || 0,
             repurchaseRate: item.repurchaseRate || '',
           };

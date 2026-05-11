@@ -272,6 +272,11 @@ interface BuyListScreenProps {
    */
   initialTabOverride?: string;
   /**
+   * Embedded-only: filter orders to these `progressStatus` values (Profile
+   * "My Orders" shortcuts). Cleared when the user picks a different tab chip.
+   */
+  statusWhitelistOverride?: string[] | null;
+  /**
    * Render without SafeAreaView so the screen can be embedded inside another
    * panel (e.g. tablet dashboard).
    */
@@ -280,7 +285,12 @@ interface BuyListScreenProps {
   onEmbeddedBack?: () => void;
 }
 
-const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embedded, onEmbeddedBack }) => {
+const BuyListScreen: React.FC<BuyListScreenProps> = ({
+  initialTabOverride,
+  statusWhitelistOverride,
+  embedded,
+  onEmbeddedBack,
+}) => {
   const navigation = useNavigation<BuyListScreenNavigationProp>();
   const { width: screenWidth } = useWindowDimensions();
   const route = useRoute<BuyListScreenRouteProp>();
@@ -300,7 +310,33 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
   const [selectedStatusGroup, setSelectedStatusGroup] = useState<Order['statusGroup'] | null>(null);
   const [expandedStatusGroup, setExpandedStatusGroup] = useState<Order['statusGroup'] | null>(null);
   const [selectedProgressStatus, setSelectedProgressStatus] = useState<string | null>(null);
-  
+  /** Deep-link / Profile card: restrict list to these progressStatus values. */
+  const [statusWhitelistFilter, setStatusWhitelistFilter] = useState<string[] | null>(null);
+
+  const clearStatusWhitelistFilter = useCallback(() => {
+    setStatusWhitelistFilter(null);
+  }, []);
+
+  // Route / embedded: apply progressStatus whitelist (Profile "My Orders" shortcuts).
+  useEffect(() => {
+    if (embedded && Array.isArray(statusWhitelistOverride) && statusWhitelistOverride.length > 0) {
+      setStatusWhitelistFilter([...statusWhitelistOverride]);
+      setActiveTab('all');
+      setSelectedProgressStatus(null);
+      return;
+    }
+    const w = route.params?.statusWhitelist;
+    if (Array.isArray(w) && w.length > 0) {
+      setStatusWhitelistFilter([...w]);
+      setActiveTab('all');
+      setSelectedProgressStatus(null);
+    } else if (!embedded) {
+      setStatusWhitelistFilter(null);
+    } else if (embedded && (!statusWhitelistOverride || statusWhitelistOverride.length === 0)) {
+      setStatusWhitelistFilter(null);
+    }
+  }, [embedded, statusWhitelistOverride, route.params?.statusWhitelist]);
+
   // Update active tab when route params change
   useEffect(() => {
     if (initialTabOverride) {
@@ -747,7 +783,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
               followersCount: 0,
               description: '',
               location: '',
-              joinedDate: new Date(),
+              joinedDate: new Date().toISOString(),
             },
             rating: 0,
             rating_count: 0,
@@ -758,8 +794,8 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
             isNew: false,
             isFeatured: false,
             isOnSale: discount > 0,
-            createdAt: new Date(),
-            updatedAt: new Date(),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
             orderCount: item.monthSold || 0,
             repurchaseRate: item.repurchaseRate || '',
             source: selectedPlatform,
@@ -1560,17 +1596,22 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
       // with no items and would render as bare order-number cards. Drop
       // any order that has nothing to display in the list.
       let result = orders.filter(order => Array.isArray(order.items) && order.items.length > 0);
-      // Filter by active tab (status group key)
-      if (activeTab !== 'all') {
-        result = result.filter(order => order.statusGroup === activeTab);
-      }
-      // Further filter by selected progress status
-      if (selectedProgressStatus) {
-        result = result.filter(order => order.progressStatus === selectedProgressStatus);
+      if (statusWhitelistFilter && statusWhitelistFilter.length > 0) {
+        const allow = new Set(statusWhitelistFilter);
+        result = result.filter(order => allow.has(order.progressStatus));
+      } else {
+        // Filter by active tab (status group key)
+        if (activeTab !== 'all') {
+          result = result.filter(order => order.statusGroup === activeTab);
+        }
+        // Further filter by selected progress status
+        if (selectedProgressStatus) {
+          result = result.filter(order => order.progressStatus === selectedProgressStatus);
+        }
       }
       return result;
     },
-    [activeTab, orders, selectedProgressStatus],
+    [activeTab, orders, selectedProgressStatus, statusWhitelistFilter],
   );
 
   const groupedOrdersForCategory = useMemo(() => {
@@ -1653,7 +1694,11 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow1Content}>
             <TouchableOpacity
               style={[styles.filterChip, activeTab === 'all' && styles.filterChipActive]}
-              onPress={() => { setActiveTab('all'); setSelectedProgressStatus(null); }}
+              onPress={() => {
+                clearStatusWhitelistFilter();
+                setActiveTab('all');
+                setSelectedProgressStatus(null);
+              }}
             >
               <Text style={[styles.filterChipText, activeTab === 'all' && styles.filterChipTextActive]}>
                 {t('profile.viewAll') || 'All'}
@@ -1664,6 +1709,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
                 key={group.key}
                 style={[styles.filterChip, activeTab === group.key && styles.filterChipActive]}
                 onPress={() => {
+                  clearStatusWhitelistFilter();
                   if (activeTab === group.key) {
                     // Already on this tab — toggle dropdown
                     setExpandedStatusGroup(prev => prev === group.key ? null : group.key);
@@ -1704,7 +1750,11 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({ initialTabOverride, embed
                   <TouchableOpacity
                     key={ps}
                     style={[styles.groupDropdownItem, selectedProgressStatus === ps && styles.groupDropdownItemActive]}
-                    onPress={() => { setSelectedProgressStatus(ps); setExpandedStatusGroup(null); }}
+                    onPress={() => {
+                    clearStatusWhitelistFilter();
+                    setSelectedProgressStatus(ps);
+                    setExpandedStatusGroup(null);
+                  }}
                   >
                     <Text style={[styles.groupDropdownText, selectedProgressStatus === ps && styles.groupDropdownTextActive]}>
                       {t(meta?.translationKey || ps)} ({count})

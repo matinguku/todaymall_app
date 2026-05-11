@@ -102,7 +102,7 @@ const SellerProfileScreen: React.FC = () => {
 
     const isLiked = isProductLiked(product);
     const productSource = product.source || source || '1688';
-    const productCountry = locale === 'zh' ? 'en' : locale;
+    const productCountry = locale;
 
     if (isLiked) {
       await removeExternalId(externalId);

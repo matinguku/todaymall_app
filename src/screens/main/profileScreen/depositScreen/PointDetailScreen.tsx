@@ -14,7 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import { COLORS, FONTS, SPACING } from '../../../../constants';
 import { useAppSelector } from '../../../../store/hooks';
 import { getTranslation } from '../../../../utils/i18nHelpers';
-import { voucherApi, PointTransaction } from '../../../../services/voucherApi';
+import { voucherApi } from '../../../../services/voucherApi';
 import { useToast } from '../../../../context/ToastContext';
 
 type CouponMainTab = 'coupon' | 'point';
@@ -31,7 +31,6 @@ const PointDetailScreen: React.FC<PointDetailScreenProps> = ({ embedded = false,
   const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
   const [loading, setLoading] = useState(true);
   const [pointBalance, setPointBalance] = useState(0);
-  const [transactions, setTransactions] = useState<PointTransaction[]>([]);
 
   const t = useMemo(
     () => (key: string, params?: Record<string, string | number>) => {
@@ -57,7 +56,6 @@ const PointDetailScreen: React.FC<PointDetailScreenProps> = ({ embedded = false,
       
       if (response.success && response.data) {
         setPointBalance(response.data.points.balance);
-        setTransactions(response.data.points.recentTransactions);
       } else {
         showToast(response.message || t('home.failedToLoadPoints'), 'error');
       }
@@ -66,13 +64,6 @@ const PointDetailScreen: React.FC<PointDetailScreenProps> = ({ embedded = false,
     } finally {
       setLoading(false);
     }
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const ld = locale === 'en' || locale === 'ko' || locale === 'zh' ? locale : 'ko';
-    const loc = ld === 'zh' ? 'zh-CN' : ld === 'ko' ? 'ko-KR' : 'en-US';
-    return date.toLocaleDateString(loc, { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const Container = embedded ? View : SafeAreaView;
@@ -179,27 +170,6 @@ const PointDetailScreen: React.FC<PointDetailScreenProps> = ({ embedded = false,
             <View style={styles.emptyState}>
               <Icon name="wallet-outline" size={80} color="#CCC" />
               <Text style={styles.emptyText}>{t('home.noPointsAvailable')}</Text>
-            </View>
-          )}
-
-          {/* Recent Transactions */}
-          {transactions.length > 0 && (
-            <View style={styles.transactionsSection}>
-              <Text style={styles.sectionTitle}>{t('home.pointRecentTransactions')}</Text>
-              {transactions.map((transaction) => (
-                <View key={transaction.id} style={styles.transactionCard}>
-                  <View style={styles.transactionInfo}>
-                    <Text style={styles.transactionDescription}>{transaction.description}</Text>
-                    <Text style={styles.transactionDate}>{formatDate(transaction.date)}</Text>
-                  </View>
-                  <Text style={[
-                    styles.transactionAmount,
-                    transaction.type === 'earn' ? styles.earnAmount : styles.spendAmount
-                  ]}>
-                    {transaction.type === 'earn' ? '+' : '-'}{transaction.amount}
-                  </Text>
-                </View>
-              ))}
             </View>
           )}
         </View>
@@ -383,50 +353,6 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.md,
     fontWeight: '700',
     color: COLORS.white,
-  },
-  transactionsSection: {
-    marginTop: SPACING.lg,
-    paddingHorizontal: SPACING.lg,
-  },
-  sectionTitle: {
-    fontSize: FONTS.sizes.md,
-    fontWeight: '700',
-    color: COLORS.text.primary,
-    marginBottom: SPACING.md,
-  },
-  transactionCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  transactionInfo: {
-    flex: 1,
-  },
-  transactionDescription: {
-    fontSize: FONTS.sizes.sm,
-    fontWeight: '600',
-    color: COLORS.text.primary,
-    marginBottom: SPACING.xs / 2,
-  },
-  transactionDate: {
-    fontSize: FONTS.sizes.xs,
-    color: COLORS.text.secondary,
-  },
-  transactionAmount: {
-    fontSize: FONTS.sizes.lg,
-    fontWeight: '700',
-  },
-  earnAmount: {
-    color: '#4CAF50',
-  },
-  spendAmount: {
-    color: '#FF5500',
   },
 });
 

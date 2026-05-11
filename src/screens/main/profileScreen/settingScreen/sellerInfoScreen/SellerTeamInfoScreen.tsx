@@ -164,9 +164,7 @@ const SellerTeamInfo: React.FC<SellerTeamInfoProps> = ({ embedded = false, onEmb
         <View style={styles.listContainer}>
           <Text style={styles.sectionTitle}>{t('sellerInfo.team.sectionTitle')}</Text>
           {error ? <Text style={styles.errorText}>{localizeSellerError(error)}</Text> : null}
-          {!isLoading && !error && sellerData.length === 0 ? (
-            <Text style={styles.infoText}>{t('sellerInfo.noData') || 'No direct team data.'}</Text>
-          ) : null}
+          {/* No-data placeholder intentionally hidden to avoid blinking/placeholder flicker. */}
 
           {sellerData.map((seller) => {
             const isOpen = selectedId === seller.sellerId;

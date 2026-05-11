@@ -21,7 +21,7 @@ import ArrowBackIcon from '../../assets/icons/ArrowBackIcon';
 import ArrowDownIcon from '../../assets/icons/ArrowDownIcon';
 import { Button, TextInput } from '../../components';
 import LinearGradient from 'react-native-linear-gradient';
-import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute, CommonActions } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { useLoginMutation, useSocialLoginMutation } from '../../hooks/useAuthMutations';
@@ -95,7 +95,7 @@ const LoginScreen: React.FC = () => {
     return flags[locale] || '🇺🇸';
   };
   
-  const { mutate: login, isLoading, isError, error, isSuccess, data } = useLoginMutation({
+  const { mutate: login, isLoading, isError, error } = useLoginMutation({
     onSuccess: (data) => {
       console.log('🔵 LOGIN SUCCESS:', data);
       if (data && data.user) {
@@ -131,7 +131,9 @@ const LoginScreen: React.FC = () => {
         showToast(data.message || t('auth.login.success') || 'Login successful', 'success');
         // Navigate back to the previous page, or to returnTo param, or fall back to Main
         if (returnTo) {
-          (navigation as any).navigate(returnTo, returnParams);
+          navigation.dispatch(
+            CommonActions.navigate({ name: returnTo, params: returnParams } as any),
+          );
         } else if (navigation.canGoBack()) {
           navigation.goBack();
         } else {
@@ -239,7 +241,9 @@ const LoginScreen: React.FC = () => {
       if (isFirstSocialLogin) {
         openReferralCodeScreen();
       } else if (returnTo) {
-        (navigation as any).navigate(returnTo, returnParams);
+        navigation.dispatch(
+          CommonActions.navigate({ name: returnTo, params: returnParams } as any),
+        );
       } else if (navigation.canGoBack()) {
         navigation.goBack();
       } else {
@@ -321,29 +325,6 @@ const LoginScreen: React.FC = () => {
     { code: '+65', flag: '🇸🇬', name: 'Singapore' },
     { code: '+852', flag: '🇭🇰', name: 'Hong Kong' },
   ];
-
-  // Watch for login success and navigate accordingly
-  useEffect(() => {
-    if (isSuccess && data) {
-      // If we have a returnTo param, navigate back to that screen
-      if (returnTo) {
-        Promise.resolve().then(() => {
-          // Navigate back to the previous screen (ProductDetail)
-          if (navigation.canGoBack()) {
-            navigation.goBack();
-          } else {
-            // Fallback: navigate to ProductDetail with params
-            (navigation as any).navigate(returnTo, returnParams);
-          }
-        });
-      } else {
-        // Navigate to main app (default behavior)
-        Promise.resolve().then(() => {
-          navigation.navigate('Main' as never);
-        });
-      }
-    }
-  }, [isSuccess, data, navigation, returnTo, returnParams]);
 
   const validateForm = () => {
     const newErrors: { [key: string]: string } = {};

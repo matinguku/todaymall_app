@@ -31,7 +31,7 @@ import { useAddToCartMutation } from '../../hooks/useAddToCartMutation';
 import { useWishlistStatus } from '../../hooks/useWishlistStatus';
 import { useToast } from '../../context/ToastContext';
 import { translations } from '../../i18n/translations';
-import { getLocalizedText } from '../../utils/i18nHelpers';
+import { getLocalizedText, formatKRWDirect } from '../../utils/i18nHelpers';
 
 const { width } = Dimensions.get('window');
 
@@ -182,12 +182,16 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false, onEmb
       category: { id: '', name: '', icon: '', image: '', subcategories: [] },
       subcategory: '',
       brand: '',
-      seller: { id: item.storeId ?? '', name: storeNameStr, avatar: '', rating: 0, reviewCount: 0, isVerified: false, followersCount: 0, description: '', location: '', joinedDate: new Date() },
+      seller: { id: item.storeId ?? '', name: storeNameStr, avatar: '', rating: 0, reviewCount: 0, isVerified: false, followersCount: 0, description: '', location: '', joinedDate: new Date().toISOString() },
       rating: 0, reviewCount: 0, rating_count: 0,
       inStock: !item.isLowStock, stockCount: 0, tags: [],
       isNew: false, isFeatured: false, isOnSale: item.isDiscounted ?? false,
-      createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
-      updatedAt: item.updatedAt ? new Date(item.updatedAt) : new Date(),
+      createdAt: item.createdAt
+        ? new Date(item.createdAt).toISOString()
+        : new Date().toISOString(),
+      updatedAt: item.updatedAt
+        ? new Date(item.updatedAt).toISOString()
+        : new Date().toISOString(),
       orderCount: 0,
       source: item.source || nested.source || '1688',
       purchased: item.purchased, isDiscounted: item.isDiscounted,
@@ -805,7 +809,7 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ embedded = false, onEmb
                 {item.name || item.title}
               </Text>
             </TouchableOpacity>
-            <Text style={styles.productPrice}>₩{item.price?.toFixed(2) || '0.00'}</Text>
+            <Text style={styles.productPrice}>{formatKRWDirect(item.price || 0)}</Text>
           </View>
         </View>
         
