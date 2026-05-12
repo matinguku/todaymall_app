@@ -1977,9 +1977,9 @@ const ProductDetailScreen: React.FC = () => {
   };
 
   const handleAddToCart = async () => {
-    if (!isAuthenticated) {
-      // Same flow as Buy Now: Signup modal, full returnParams, post-auth
-      // auto-add via `autoAddToCart` + useEffect above.
+      if (!isAuthenticated) {
+      // Login modal so returning members can continue; new users can open
+      // 회원가입 (registration) from Login. Same returnParams + autoAddToCart.
       const returnParams = {
         productId: (productId || offerId)?.toString?.() ?? String(productId || offerId || ''),
         offerId: offerId?.toString?.(),
@@ -1989,7 +1989,7 @@ const ProductDetailScreen: React.FC = () => {
         autoAddToCart: true,
       };
       navigation.navigate('Auth', {
-        screen: 'Signup',
+        screen: 'Login',
         params: {
           returnTo: 'ProductDetail',
           returnParams,
@@ -3584,9 +3584,8 @@ const ProductDetailScreen: React.FC = () => {
               pulseStock();
               if (isAddingToCartForBuyNow) return;
               if (!isAuthenticated) {
-                // Logged-out members and guests both land on Signup (modal over
-                // PDP). Login remains reachable from Signup. Same returnParams +
-                // autoBuyNow so after auth we return here and run Buy once.
+                // Login first for checkout; new accounts use 회원가입 (registration)
+                // from Login. Same returnParams + autoBuyNow after auth.
                 const returnParams = {
                   productId: (productId || offerId)?.toString?.() ?? String(productId || offerId || ''),
                   offerId: offerId?.toString?.(),
@@ -3596,7 +3595,7 @@ const ProductDetailScreen: React.FC = () => {
                   autoBuyNow: true,
                 };
                 navigation.navigate('Auth', {
-                  screen: 'Signup',
+                  screen: 'Login',
                   params: {
                     returnTo: 'ProductDetail',
                     returnParams,
