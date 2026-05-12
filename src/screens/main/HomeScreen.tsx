@@ -414,11 +414,17 @@ const AutoLiveChannelSection = React.memo(({
     ? Math.floor(contentW * 0.17)
     : Math.max(contentW - liveCardW - SPACING.sm, 160);
 
+  // Flash-sale & points product thumbnails: sizes are derived from the card
+  // width then scaled — StyleSheet `promoCardSmallImage` width/height are
+  // overridden by inline `{ width/height: promoSmallImageSize }` etc., so
+  // scaling must happen on these computed values.
+  const LIVE_PROMO_PRODUCT_IMAGE_SCALE = 1.2;
+
   // For the 3-column landscape layout, each promo card lays its 3 product
   // images out in a single row of equal squares. Computed from the promo
   // card's own width minus inner padding and the two gaps between the
   // three images.
-  const promoEqualImageSize = hasMiddle
+  const promoEqualImageSizeBase = hasMiddle
     ? Math.max(
         32,
         Math.floor(
@@ -426,7 +432,7 @@ const AutoLiveChannelSection = React.memo(({
         ),
       )
     : 0;
-  const promoBigImageSize = isTabletLandscape
+  const promoBigImageSizeBase = isTabletLandscape
     ? // Landscape tablet: bigger range so the price-tag image actually
       // fills the card. Cap at 360 to keep aspect ratio sensible on
       // ultra-wide displays.
@@ -434,7 +440,7 @@ const AutoLiveChannelSection = React.memo(({
     : isTablet
       ? Math.max(140, Math.min(Math.floor(promoCardWidth * 0.45), 200))
       : 85;
-  const promoSmallImageSize = isTabletLandscape
+  const promoSmallImageSizeBase = isTabletLandscape
     ? // Landscape tablet: bigger small images too so the top-row pair
       // matches the new big-image scale.
       Math.max(
@@ -454,6 +460,16 @@ const AutoLiveChannelSection = React.memo(({
           ),
         )
       : 44;
+
+  const promoEqualImageSize = hasMiddle
+    ? Math.round(promoEqualImageSizeBase * LIVE_PROMO_PRODUCT_IMAGE_SCALE)
+    : 0;
+  const promoBigImageSize = Math.round(
+    promoBigImageSizeBase * LIVE_PROMO_PRODUCT_IMAGE_SCALE,
+  );
+  const promoSmallImageSize = Math.round(
+    promoSmallImageSizeBase * LIVE_PROMO_PRODUCT_IMAGE_SCALE,
+  );
 
   useEffect(() => {
     if (liveChannelImages.length <= 1) {
@@ -594,10 +610,11 @@ const AutoLiveChannelSection = React.memo(({
                 <View
                   style={{
                     flexDirection: 'row',
-                    justifyContent: 'space-between',
+                    justifyContent: 'space-evenly',
                     alignItems: 'flex-start',
                     marginTop: SPACING.xs,
                     flex: 1,
+                    gap: SPACING.xs,
                   }}
                 >
                   {[0, 1, 2].map((idx) => {
@@ -703,7 +720,7 @@ const AutoLiveChannelSection = React.memo(({
                   </View>
                 </View>
                 <TouchableOpacity
-                  style={[styles.promoCardPriceTag, { marginLeft: 'auto', marginRight: SPACING.sm, marginTop: SPACING.sm }]}
+                  style={[styles.promoCardPriceTag, styles.promoCardPriceTagSide]}
                   activeOpacity={0.7}
                   onPress={() => {
                     const pid = card.externalIds?.[2];
@@ -2888,9 +2905,11 @@ const HomeScreenContent: React.FC = () => {
           {/* {renderTrendingProducts()} */}
           {/* {renderPopularCategories()} */}
           {/* {renderPromoCards()} */}
-          {showHeavyContent && renderTodaysDeals()}
-          {/* {renderNewInCards()} */}
-          {showHeavyContent && renderMoreToLove()}
+          <View style={styles.homeBodyWhiteFromTodaysDeals}>
+            {showHeavyContent && renderTodaysDeals()}
+            {/* {renderNewInCards()} */}
+            {showHeavyContent && renderMoreToLove()}
+          </View>
         </View>
       </Animated.ScrollView>
       
@@ -2963,7 +2982,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 650, // Shorter gradient coverage
+    height: 650,
     zIndex: 0,
   },
   gradientFill: {
@@ -2982,15 +3001,18 @@ const styles = StyleSheet.create({
   fixedTopBars: {
     backgroundColor: 'transparent',
     zIndex: 10,
-    // marginBottom: -80,
   },
   headerPlaceholder: {
     backgroundColor: COLORS.white,
   },
   contentWrapper: {
     backgroundColor: 'transparent',
-    // minHeight: '100%',
     marginBottom: 150,
+  },
+  /** Scroll body from Today's Deals downward: solid white over the page gradient. */
+  homeBodyWhiteFromTodaysDeals: {
+    width: '100%',
+    backgroundColor: COLORS.white,
   },
   loadingContainer: {
     flex: 1,
@@ -3961,26 +3983,31 @@ const styles = StyleSheet.create({
   },
   promoCardTopRowContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
     marginBottom: SPACING.xs,
     width: '100%',
+    paddingHorizontal: SPACING.sm,
+    paddingTop: SPACING.xs,
   },
   promoCardTopRowIcon: {
     flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     gap: SPACING.xs,
-    marginBottom: SPACING.xs,
-    width: '50%',
+    flex: 1,
+    minWidth: 0,
     paddingTop: SPACING.sm,
-    paddingLeft: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
   },
   promoCardTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
     marginBottom: SPACING.smmd,
+    alignSelf: 'stretch',
+    width: '100%',
   },
   promoCardIcon: {
     fontSize: FONTS.sizes.xs,
@@ -3990,12 +4017,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.black,
     flex: 1,
+    flexShrink: 1,
   },
   promoCardImages: {
     flexDirection: 'row',
-    gap: SPACING.xs,
+    justifyContent: 'center',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    gap: SPACING.sm,
     marginBottom: SPACING.xs,
-    flex: 1,
+    width: '100%',
+    paddingHorizontal: SPACING.xs,
   },
   promoCardSmallImage: {
     width: 44,
@@ -4005,6 +4037,13 @@ const styles = StyleSheet.create({
   promoCardPriceTag: {
     borderRadius: BORDER_RADIUS.sm,
     overflow: 'hidden',
+  },
+  promoCardPriceTagSide: {
+    marginLeft: SPACING.xs,
+    marginRight: SPACING.xs,
+    marginTop: SPACING.sm,
+    flexShrink: 0,
+    alignSelf: 'flex-start',
   },
   promoCardPrice: {
     backgroundColor: COLORS.red,

@@ -222,8 +222,10 @@ const MainTabNavigator = () => {
   const { width: winWidth, height: winHeight } = useWindowDimensions();
   const isTabletDevice = Math.min(winWidth, winHeight) >= 600;
 
-  const baseTabBarHeight = isTabletDevice ? 88 : 70;
-  const basePaddingBottom = isTabletDevice ? 28 : 20;
+  // Keep safe-area inset for the home indicator, but avoid stacking large
+  // extra padding — that pushes icons/labels upward and looks “floating”.
+  const baseTabBarHeight = isTabletDevice ? 66 : 66;
+  const basePaddingBottom = isTabletDevice ? 14 : 6;
   const tabBarHeight = baseTabBarHeight + insets.bottom;
   const paddingBottom = basePaddingBottom + insets.bottom;
   
@@ -388,9 +390,9 @@ const MainTabNavigator = () => {
         tabBarLabelPosition: 'below-icon',
         tabBarItemStyle: {
           flexDirection: 'column',
-          justifyContent: 'center',
+          justifyContent: 'flex-end',
           alignItems: 'center',
-          paddingVertical: 4,
+          paddingVertical: 2,
         },
         tabBarIconStyle: {
           marginTop: 0,
@@ -402,7 +404,7 @@ const MainTabNavigator = () => {
           borderTopWidth: 1,
           height: tabBarHeight,
           paddingBottom: paddingBottom,
-          paddingTop: 8,
+          paddingTop: 4,
           shadowColor: COLORS.shadow,
           shadowOffset: { width: 0, height: -4 },
           shadowOpacity: 0.1,
@@ -411,7 +413,7 @@ const MainTabNavigator = () => {
         },
         tabBarLabelStyle: {
           fontSize: isTabletDevice ? 14 : 12,
-          marginTop: 4,
+          marginTop: 2,
         },
         headerShown: false,
       })}
@@ -436,7 +438,7 @@ const tabBarStyles = StyleSheet.create({
   liveButtonTouchable: {
     alignItems: 'center',
     justifyContent: 'flex-end',
-    marginBottom: 4,
+    marginBottom: 1,
   },
 });
 
