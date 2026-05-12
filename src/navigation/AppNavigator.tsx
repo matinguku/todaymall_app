@@ -4,7 +4,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Text, View, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Defs, RadialGradient as SvgRadialGradient, Stop, Rect } from 'react-native-svg';
+import Svg, { Defs, RadialGradient as SvgRadialGradient, LinearGradient as SvgLinearGradient, Stop, Circle as SvgCircle } from 'react-native-svg';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { useSplashGate } from '../hooks/useSplashGate';
@@ -344,6 +344,14 @@ const MainTabNavigator = () => {
                       justifyContent: 'center',
                     }}
                   >
+                    {/* Live-tab circle matches the design SVG:
+                        - 0.1-opacity radial fill (#FF0000 → #FFEFE2 → white,
+                          top-anchored) so the button reads as a soft tint
+                          rather than a solid disk.
+                        - 1px linear-gradient stroke (#FF0000 → #FFE6FE →
+                          white) running top to bottom.
+                        The label below the circle and the globe glyph
+                        (LanguageIcon, black) are drawn outside this Svg. */}
                     <Svg
                       width={LIVE_BUTTON_SIZE}
                       height={LIVE_BUTTON_SIZE}
@@ -351,21 +359,40 @@ const MainTabNavigator = () => {
                       pointerEvents="none"
                     >
                       <Defs>
-                        <SvgRadialGradient id="liveTabGradient" cx="50%" cy="0%" rx="100%" ry="100%">
+                        <SvgRadialGradient
+                          id="liveTabFill"
+                          cx="50%"
+                          cy="0%"
+                          rx="100%"
+                          ry="100%"
+                        >
                           <Stop offset="0%" stopColor="#FF0000" />
                           <Stop offset="65.38%" stopColor="#FFEFE2" />
                           <Stop offset="87.98%" stopColor="#FFFFFF" />
                         </SvgRadialGradient>
+                        <SvgLinearGradient
+                          id="liveTabStroke"
+                          x1="50%"
+                          y1="0%"
+                          x2="50%"
+                          y2="100%"
+                        >
+                          <Stop offset="0%" stopColor="#FF0000" />
+                          <Stop offset="33.65%" stopColor="#FFE6FE" />
+                          <Stop offset="74.52%" stopColor="#FFFFFF" />
+                        </SvgLinearGradient>
                       </Defs>
-                      <Rect
-                        x={0}
-                        y={0}
-                        width={LIVE_BUTTON_SIZE}
-                        height={LIVE_BUTTON_SIZE}
-                        fill="url(#liveTabGradient)"
+                      <SvgCircle
+                        cx={LIVE_BUTTON_SIZE / 2}
+                        cy={LIVE_BUTTON_SIZE / 2}
+                        r={LIVE_BUTTON_SIZE / 2 - 0.5}
+                        fill="url(#liveTabFill)"
+                        fillOpacity={0.1}
+                        stroke="url(#liveTabStroke)"
+                        strokeWidth={1}
                       />
                     </Svg>
-                    <SensorsIcon width={LIVE_ICON_SIZE} height={LIVE_ICON_SIZE} color={COLORS.white} />
+                    <SensorsIcon width={LIVE_ICON_SIZE} height={LIVE_ICON_SIZE} color={COLORS.black} />
                   </View>
                   <Text
                     style={{

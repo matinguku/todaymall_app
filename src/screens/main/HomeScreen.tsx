@@ -17,6 +17,7 @@ import {
   PermissionsAndroid,
   useWindowDimensions,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { launchCamera, launchImageLibrary, MediaType, ImagePickerResponse, CameraOptions, ImageLibraryOptions } from 'react-native-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -27,7 +28,7 @@ import { requestCameraPermission, requestPhotoLibraryPermission } from '../../ut
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import Svg, { Defs, RadialGradient as SvgRadialGradient, Stop, Rect, Mask, Circle } from 'react-native-svg';
+import Svg, { Defs, RadialGradient as SvgRadialGradient, Stop, Rect, Mask, Circle, Path as SvgPath } from 'react-native-svg';
 
 // Create animated icon component
 const AnimatedIcon = Animated.createAnimatedComponent(Icon);
@@ -81,8 +82,11 @@ const GRID_CARD_WIDTH = (width - SPACING.md * 2 - SPACING.md) / 2;
 const LIVE_CHANNEL_CARD_WIDTH = 163;
 
 /** Inactive category baton fill: ~15% alpha of brand red (half of prior ~30% — hex 26 ≈ 14.9%). */
-const CATEGORY_BATON_INACTIVE_RED = 'rgba(241, 171, 50, 0.75)';
-const CATEGORY_BATON_INACTIVE_GRADIENT_TOP = 'rgba(245, 231, 220, 0.84)';
+// Inactive category baton fill — solid #FF8041 with a faint dark border,
+// matching the design SVG. Both gradient stops use the same color so the
+// LinearGradient renders as a flat fill without restructuring the JSX.
+const CATEGORY_BATON_INACTIVE_RED = '#FF8041';
+const CATEGORY_BATON_INACTIVE_GRADIENT_TOP = '#FF8041';
 
 /**
  * Returns an array of `count` unique random indices in range [0, length).
@@ -1213,9 +1217,110 @@ const HomeScreenContent: React.FC = () => {
   const scrollY = useRef(new Animated.Value(0)).current;
   const SCROLL_THRESHOLD = 5; // Very fast animated color change
 
+  /** Search-row visibility driven by scroll *direction*, not scroll *position*.
+   *  0 = fully visible (initial state), 1 = fully hidden. The scroll listener
+   *  flips this between 0/1 as soon as the user changes direction past
+   *  DIRECTION_THRESHOLD pixels, so scrolling down hides the search row and
+   *  scrolling up brings it back regardless of how far down the page we are.
+   *  We keep the collapsed offset (SEARCH_ROW_CLIP_HEIGHT) and the compact
+   *  icon swap-in identical to the previous implementation so the visual
+   *  behavior matches; only the trigger has changed. */
+  // SearchButton's container has minHeight: 40. We pad by 4px (was 14)
+  // so the clip hugs the button — the previous 54px left a ~14px void
+  // between the search bar and the category row.
+  const SEARCH_ROW_CLIP_HEIGHT = 44;
+  const searchHidden = useRef(new Animated.Value(0)).current;
+  // Track the last scrolled Y and the *accumulated* same-direction travel
+  // since the last direction change. We only flip the search-row state
+  // after the user has moved ~ACCUMULATED_FLIP_DISTANCE pixels in one
+  // direction, which filters out per-frame jitter and the small position
+  // shifts caused by the layout animation itself (marginBottom changes
+  // reflow the ScrollView, which can nudge the scroll offset and feed
+  // back into the listener as a tiny opposite-direction delta).
+  const lastScrollYRef = useRef(0);
+  const accumulatedTravelRef = useRef(0); // signed; sign indicates direction
+  const searchHiddenStateRef = useRef(false); // mirror of the Animated value
+  const ACCUMULATED_FLIP_DISTANCE = 28; // pixels of sustained travel
+  const PER_FRAME_NOISE_FLOOR = 1.5; // ignore sub-pixel/feedback deltas
+  // Don't hide the search row when the user is still near the very top —
+  // hiding from y=0 would jitter on bounce scrolls and feels wrong UX.
+  const HIDE_ENGAGE_OFFSET = 12;
+  const homeCollapseTranslate = searchHidden.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -SEARCH_ROW_CLIP_HEIGHT],
+    extrapolate: 'clamp',
+  });
+  const compactSearchIconOpacity = searchHidden.interpolate({
+    inputRange: [0.12, 0.88],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+  const expandedSearchOpacity = searchHidden.interpolate({
+    inputRange: [0, 0.55],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
   // State for scroll to top button
   const [showScrollToTop, setShowScrollToTop] = useState(false);
   const scrollToTopOpacity = useRef(new Animated.Value(0)).current;
+
+  // Floating KAKAO/TALK chat baton (bottom-right). Two labels cross-fade
+  // every KAKAO_TALK_SWAP_MS so the bubble alternates between "KAKAO" and
+  // "TALK". Driven by a single Animated.Value that toggles between 0 and 1
+  // — opacity of the two text layers interpolates inversely. Native driver
+  // so it's cheap to run on a timer.
+  const KAKAO_TALK_SWAP_MS = 1500;
+  const KAKAO_TALK_FADE_MS = 320;
+  // Dimensions: design SVG is 34 × 39; rendered at 1.5× per request.
+  const KAKAO_TALK_W = 34 * 1.5;
+  const KAKAO_TALK_H = 39 * 1.5;
+  const kakaoTalkPhase = useRef(new Animated.Value(0)).current;
+  const kakaoLabelOpacity = kakaoTalkPhase.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0],
+  });
+  const talkLabelOpacity = kakaoTalkPhase.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  useEffect(() => {
+    let phase = 0;
+    const interval = setInterval(() => {
+      phase = phase === 0 ? 1 : 0;
+      Animated.timing(kakaoTalkPhase, {
+        toValue: phase,
+        duration: KAKAO_TALK_FADE_MS,
+        useNativeDriver: true,
+      }).start();
+    }, KAKAO_TALK_SWAP_MS);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const openKakaoTalk = useCallback(async () => {
+    // Try the KakaoTalk app's plusfriend deep link first. If the app isn't
+    // installed (or the URL scheme isn't whitelisted on iOS), fall back to
+    // the web channel page so the user still lands somewhere useful.
+    // Replace the channel id below with the real TodayMall KakaoTalk
+    // channel when it's provisioned.
+    const channelId = '_todaymall';
+    const nativeUrl = `kakaoplus://plusfriend/home/${channelId}`;
+    const webUrl = `https://pf.kakao.com/${channelId}`;
+    try {
+      const canOpen = await Linking.canOpenURL(nativeUrl);
+      if (canOpen) {
+        await Linking.openURL(nativeUrl);
+        return;
+      }
+    } catch {
+      // ignore and fall through to the web URL
+    }
+    try {
+      await Linking.openURL(webUrl);
+    } catch {
+      // swallow — the user will just see no-op rather than an error toast.
+    }
+  }, []);
   
   // State for new "New In" products
   const [newInProducts, setNewInProducts] = useState<any[]>([]);
@@ -1680,7 +1785,26 @@ const HomeScreenContent: React.FC = () => {
               <Text style={styles.logoTitle}>{t('home.logo')}</Text>
               <Text style={styles.logoText}>{t('home.logoText')}</Text>
             </View>
-            <View style={styles.headerIcons}>
+            <View style={[styles.headerIcons, styles.headerIconsCluster]}>
+              <Animated.View
+                pointerEvents="box-none"
+                style={[
+                  styles.headerCompactSearchSlot,
+                  {
+                    opacity: compactSearchIconOpacity,
+                  },
+                ]}
+              >
+                <TouchableOpacity
+                  style={styles.headerCompactSearchBtn}
+                  onPress={() => navigation.navigate('Search' as never)}
+                  activeOpacity={0.75}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('category.searchPlaceholder')}
+                >
+                  <Icon name="search" size={22} color={COLORS.white} />
+                </TouchableOpacity>
+              </Animated.View>
               <LanguageButton />
             </View>
             {/* <View style={styles.headerIcons}>
@@ -1694,17 +1818,26 @@ const HomeScreenContent: React.FC = () => {
               />
             </View> */}
           </View>
-          {/* Search Button Row */}
-          <View ref={searchButtonContainerRef} style={styles.searchButtonContainer}>
-            <SearchButton
-              placeholder={t('category.searchPlaceholder') || 'Search products...'}
-              onPress={() => navigation.navigate('Search' as never)}
-              onCameraPress={handleImageSearch}
-              onCategoryPress={openHomeCategoryModal}
-              style={styles.searchButtonStyle}
-              isHomepage={true}
-            />
-          </View>
+          {/* Full-width search — slides away as user scrolls down; compact icon appears by language */}
+          <Animated.View style={[styles.searchRowOuterClip, { height: SEARCH_ROW_CLIP_HEIGHT }]}>
+            <Animated.View
+              style={{
+                opacity: expandedSearchOpacity,
+                transform: [{ translateY: homeCollapseTranslate }],
+              }}
+            >
+              <View ref={searchButtonContainerRef} style={styles.searchButtonContainer}>
+                <SearchButton
+                  placeholder={t('category.searchPlaceholder') || 'Search products...'}
+                  onPress={() => navigation.navigate('Search' as never)}
+                  onCameraPress={handleImageSearch}
+                  onCategoryPress={openHomeCategoryModal}
+                  style={styles.searchButtonStyle}
+                  isHomepage={true}
+                />
+              </View>
+            </Animated.View>
+          </Animated.View>
         </View>
       </View>
     );
@@ -1752,12 +1885,15 @@ const HomeScreenContent: React.FC = () => {
               >
                 {isTodaySelected ? (
                   <LinearGradient
-                    colors={['#FFFEF5', COLORS.yellow]}
+                    // Active baton fill per design SVG: solid #FFFF00. Both
+                    // gradient stops are the same color so the LinearGradient
+                    // renders flat without restructuring the JSX.
+                    colors={['#FFFF00', '#FFFF00']}
                     start={{ x: 0.5, y: 0 }}
                     end={{ x: 0.5, y: 1 }}
                     style={styles.categoryItemActiveGradient}
                   >
-                    <SellIcon width={16} height={16} color={COLORS.red} />
+                    <SellIcon width={16} height={16} color="#FF5500" />
                     <Text
                       style={[
                         styles.categoryText,
@@ -1811,7 +1947,10 @@ const HomeScreenContent: React.FC = () => {
               >
                 {isActive ? (
                   <LinearGradient
-                    colors={['#FFFEF5', COLORS.yellow]}
+                    // Active baton fill per design SVG: solid #FFFF00. Both
+                    // gradient stops are the same color so the LinearGradient
+                    // renders flat without restructuring the JSX.
+                    colors={['#FFFF00', '#FFFF00']}
                     start={{ x: 0.5, y: 0 }}
                     end={{ x: 0.5, y: 1 }}
                     style={styles.categoryItemActiveGradient}
@@ -2819,6 +2958,69 @@ const HomeScreenContent: React.FC = () => {
         } else if (scrollPosition <= SCROLL_THRESHOLD && isScrolled) {
           setIsScrolled(false);
         }
+
+        // Direction-based search-row visibility, driven by *accumulated*
+        // same-direction travel. We only flip the state once the user has
+        // moved ACCUMULATED_FLIP_DISTANCE in a single direction, which
+        // filters out per-frame jitter and the small feedback nudges the
+        // layout animation can introduce (animating marginBottom reflows
+        // the ScrollView, which can shift the scroll offset by ~1-2px and
+        // previously triggered an opposite-direction flip).
+        const prevY = lastScrollYRef.current;
+        const delta = scrollPosition - prevY;
+        lastScrollYRef.current = scrollPosition;
+        const nearTop = scrollPosition <= HIDE_ENGAGE_OFFSET;
+
+        // useNativeDriver is false because `homeCollapseTranslate` drives
+        // both a transform AND a layout-affecting `marginBottom`; the
+        // native driver only handles transform/opacity. 180ms keeps the
+        // JS driver snappy enough on lower-end devices.
+        if (nearTop) {
+          accumulatedTravelRef.current = 0;
+          if (searchHiddenStateRef.current) {
+            searchHiddenStateRef.current = false;
+            Animated.timing(searchHidden, {
+              toValue: 0,
+              duration: 180,
+              useNativeDriver: false,
+            }).start();
+          }
+        } else if (Math.abs(delta) >= PER_FRAME_NOISE_FLOOR) {
+          // Reset the accumulator whenever the user changes direction so
+          // we always require a fresh ACCUMULATED_FLIP_DISTANCE of travel
+          // in the new direction before flipping.
+          if (
+            (delta > 0 && accumulatedTravelRef.current < 0) ||
+            (delta < 0 && accumulatedTravelRef.current > 0)
+          ) {
+            accumulatedTravelRef.current = 0;
+          }
+          accumulatedTravelRef.current += delta;
+
+          if (
+            accumulatedTravelRef.current >= ACCUMULATED_FLIP_DISTANCE &&
+            !searchHiddenStateRef.current
+          ) {
+            searchHiddenStateRef.current = true;
+            accumulatedTravelRef.current = 0;
+            Animated.timing(searchHidden, {
+              toValue: 1,
+              duration: 180,
+              useNativeDriver: false,
+            }).start();
+          } else if (
+            accumulatedTravelRef.current <= -ACCUMULATED_FLIP_DISTANCE &&
+            searchHiddenStateRef.current
+          ) {
+            searchHiddenStateRef.current = false;
+            accumulatedTravelRef.current = 0;
+            Animated.timing(searchHidden, {
+              toValue: 0,
+              duration: 180,
+              useNativeDriver: false,
+            }).start();
+          }
+        }
         
         // Trigger the next page well before the user actually reaches the
         // bottom (~one viewport ahead) so the swap to the new items feels
@@ -2869,14 +3071,30 @@ const HomeScreenContent: React.FC = () => {
         style={styles.gradientBackgroundFixed}
         pointerEvents="none"
       />
-      <View style={styles.fixedTopBars}>
+      {/* Negative marginBottom shrinks the fixed-top-bars block in lockstep
+          with the search-row collapse, so the ScrollView below claims the
+          54px that was occupied by the search row. The inner Animated.View
+          still slides the categories/banners up by the same amount so they
+          stay glued to the header. Both transforms are driven by the same
+          `homeCollapseTranslate` value (0 → -SEARCH_ROW_CLIP_HEIGHT) so the
+          visual block and the layout space animate together. */}
+      <Animated.View
+        style={[
+          styles.fixedTopBars,
+          { marginBottom: homeCollapseTranslate },
+        ]}
+      >
         {renderHeader()}
-        <View>
+        <Animated.View
+          style={{
+            transform: [{ translateY: homeCollapseTranslate }],
+          }}
+        >
           {renderCategories()}
           {renderBanners()}
-        </View>
+        </Animated.View>
         {/* {renderCategoryTabs()} */}
-      </View>
+      </Animated.View>
       
       <Animated.ScrollView
         ref={scrollViewRef}
@@ -2930,6 +3148,41 @@ const HomeScreenContent: React.FC = () => {
           </TouchableOpacity>
         </Animated.View>
       )}
+
+      {/* Floating KAKAO/TALK chat baton — bottom-right, above the tab bar.
+          A chat-bubble shape (drawn via Svg/Path to match the design) with
+          two stacked Text layers that cross-fade every KAKAO_TALK_SWAP_MS.
+          Sits beside the scroll-to-top button so they don't overlap. */}
+      <TouchableOpacity
+        onPress={openKakaoTalk}
+        activeOpacity={0.85}
+        style={styles.kakaoTalkButton}
+      >
+        <Svg
+          width={KAKAO_TALK_W}
+          height={KAKAO_TALK_H}
+          viewBox="0 0 34 39"
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        >
+          <SvgPath
+            d="M17 0C26.3888 0 34 7.61116 34 17C34 24.0692 29.6847 30.1298 23.5449 32.6934L12.4805 38.835L12.8555 33.4893C5.47003 31.6388 0 24.9591 0 17C0 7.61116 7.61116 0 17 0Z"
+            fill="#000"
+          />
+        </Svg>
+        <View style={styles.kakaoTalkLabelStack} pointerEvents="none">
+          <Animated.Text
+            style={[styles.kakaoTalkLabel, { opacity: kakaoLabelOpacity }]}
+          >
+            KAKAO
+          </Animated.Text>
+          <Animated.Text
+            style={[styles.kakaoTalkLabel, { opacity: talkLabelOpacity }]}
+          >
+            TALK
+          </Animated.Text>
+        </View>
+      </TouchableOpacity>
       
       <ImagePickerModal
         visible={imagePickerModalVisible}
@@ -2994,7 +3247,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   scrollContent: {
-    paddingTop: 10,
+    paddingTop: 5,
     paddingBottom: 10,
     backgroundColor: 'transparent',
   },
@@ -3078,6 +3331,28 @@ const styles = StyleSheet.create({
     // so without this the button would sit next to the logo instead of
     // in the right corner.
     marginLeft: 'auto',
+  },
+  headerIconsCluster: {
+    position: 'relative',
+  },
+  headerCompactSearchSlot: {
+    position: 'absolute',
+    right: 36 + SPACING.sm,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    width: 36,
+    alignItems: 'center',
+  },
+  headerCompactSearchBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchRowOuterClip: {
+    overflow: 'hidden',
+    width: '100%',
   },
   headerIcon: {
     padding: SPACING.xs,
@@ -3556,6 +3831,41 @@ const styles = StyleSheet.create({
     bottom: 100,
     zIndex: 999,
   },
+  // KAKAO/TALK floating baton — sits just above the tab bar. The previous
+  // `bottom: 96` left too much air between the bubble and the Account
+  // icon, so it's been reduced to one-fifth of that distance (≈19) to
+  // bring the bubble right up next to the tab row.
+  // Dimensions are 1.5× the design SVG (34 × 39 → 51 × 58.5).
+  kakaoTalkButton: {
+    position: 'absolute',
+    right: SPACING.lg,
+    bottom: 19,
+    width: 34 * 1.5,
+    height: 39 * 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 999,
+  },
+  // Stacks the two text layers on top of each other so they can cross-fade
+  // in place. The label band height matches the bubble's body (the upper
+  // 34 of the original 39 viewBox), scaled 1.5×, so the text sits centered
+  // inside the bubble rather than over the pointed tail.
+  kakaoTalkLabelStack: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 34 * 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  kakaoTalkLabel: {
+    position: 'absolute',
+    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
   scrollToTopTouchable: {
     width: 50,
     height: 50,
@@ -3604,13 +3914,13 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray[100],
   },
   categoriesContainer: {
-    paddingVertical: SPACING.xs,
+    paddingVertical: SPACING.xs / 2,
     // paddingHorizontal: SPACING.md,
     backgroundColor: 'transparent',
   },
   categoriesScrollContent: {
     paddingLeft: SPACING.sm,
-    paddingTop: 6,
+    paddingTop: 3,
     gap: SPACING.sm,
   },
   categoryChipOuter: {
@@ -3627,6 +3937,10 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.md,
     overflow: 'hidden',
     transform: [{ translateY: -4 }],
+    // Border per design SVG: rgba(0,0,0,0.05) stroke around the baton,
+    // matching the inactive baton border.
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.05)',
     shadowColor: 'rgba(0, 0, 0, 0.2)',
     shadowOffset: { width: 0, height: 7 },
     shadowOpacity: 0.32,
@@ -3642,6 +3956,9 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.md,
     overflow: 'hidden',
     transform: [{ translateY: -4 }],
+    // Border per design SVG: rgba(0,0,0,0.05) stroke around the baton.
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.05)',
     shadowColor: 'rgba(0, 0, 0, 0.2)',
     shadowOffset: { width: 0, height: 7 },
     shadowOpacity: 0.32,
@@ -3651,10 +3968,11 @@ const styles = StyleSheet.create({
   categoryText: {
     fontSize: FONTS.sizes.xsm,
     color: COLORS.white,
-    fontWeight: '400',
+    fontWeight: '800',
   },
   categoryTextActive: {
-    color: COLORS.red,
+    // Active baton text color per design SVG (#FF5500).
+    color: '#FF5500',
     fontWeight: '700',
   },
   categoriesLoadingText: {
@@ -3666,7 +3984,7 @@ const styles = StyleSheet.create({
   // banner area shown below categories
   bannerContainer: {
     // width: '90%',
-    marginTop: SPACING.sm,
+    marginTop: SPACING.sm / 2,
     backgroundColor: COLORS.black,
     height: 24,
     marginHorizontal: SPACING.sm,
