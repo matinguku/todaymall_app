@@ -80,6 +80,10 @@ const GRID_CARD_WIDTH = (width - SPACING.md * 2 - SPACING.md) / 2;
 // Live channel (Today's Live Deals) carousel: card width so scroll is per-slide (not full screen)
 const LIVE_CHANNEL_CARD_WIDTH = 163;
 
+/** Inactive category baton fill: ~15% alpha of brand red (half of prior ~30% — hex 26 ≈ 14.9%). */
+const CATEGORY_BATON_INACTIVE_RED = 'rgba(241, 171, 50, 0.75)';
+const CATEGORY_BATON_INACTIVE_GRADIENT_TOP = 'rgba(245, 231, 220, 0.84)';
+
 /**
  * Returns an array of `count` unique random indices in range [0, length).
  * Each index is valid for the given array length; no duplicates within the returned array.
@@ -1192,14 +1196,6 @@ const HomeScreenContent: React.FC = () => {
   const scrollY = useRef(new Animated.Value(0)).current;
   const SCROLL_THRESHOLD = 5; // Very fast animated color change
 
-  /** Categories + banner row below search: hide on scroll down, show on scroll up. */
-  const lastScrollYSubHeaderRef = useRef(0);
-  const isSubHeaderCollapsedRef = useRef(false);
-  const subHeaderExpandAnim = useRef(new Animated.Value(1)).current; // 1 = fully visible
-  /** Max measured height only — avoids interpolate jumping when inner layout shifts. */
-  const subHeaderMeasuredMaxRef = useRef(0);
-  const [subHeaderSectionHeight, setSubHeaderSectionHeight] = useState(0);
-  
   // State for scroll to top button
   const [showScrollToTop, setShowScrollToTop] = useState(false);
   const scrollToTopOpacity = useRef(new Animated.Value(0)).current;
@@ -1716,6 +1712,7 @@ const HomeScreenContent: React.FC = () => {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
+          removeClippedSubviews={false}
           contentContainerStyle={styles.categoriesScrollContent}
         >
           {/* Today's Deals item always shows first and uses active color by default */}
@@ -1724,7 +1721,8 @@ const HomeScreenContent: React.FC = () => {
             return (
               <TouchableOpacity
                 key="todays-deals"
-                style={[styles.categoryItem, isTodaySelected && styles.categoryItemActive]}
+                activeOpacity={0.88}
+                style={styles.categoryChipOuter}
                 onPress={() => {
                   setSelectedCategory('todaysDeals');
                   navigation.navigate('ProductDiscovery', {
@@ -1735,20 +1733,42 @@ const HomeScreenContent: React.FC = () => {
                   });
                 }}
               >
-                <SellIcon
-                  width={16}
-                  height={16}
-                  color={isTodaySelected ? COLORS.red : COLORS.text.primary}
-                />
-                <Text
-                  style={[
-                    styles.categoryText,
-                    isTodaySelected && styles.categoryTextActive,
-                    { marginLeft: SPACING.xs },
-                  ]}
-                >
-                  {t('home.todaysDeals')}
-                </Text>
+                {isTodaySelected ? (
+                  <LinearGradient
+                    colors={['#FFFEF5', COLORS.yellow]}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={styles.categoryItemActiveGradient}
+                  >
+                    <SellIcon width={16} height={16} color={COLORS.red} />
+                    <Text
+                      style={[
+                        styles.categoryText,
+                        styles.categoryTextActive,
+                        { marginLeft: SPACING.xs },
+                      ]}
+                    >
+                      {t('home.todaysDeals')}
+                    </Text>
+                  </LinearGradient>
+                ) : (
+                  <LinearGradient
+                    colors={[CATEGORY_BATON_INACTIVE_GRADIENT_TOP, CATEGORY_BATON_INACTIVE_RED]}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={styles.categoryItemInactiveGradient}
+                  >
+                    <SellIcon width={16} height={16} color={COLORS.white} />
+                    <Text
+                      style={[
+                        styles.categoryText,
+                        { marginLeft: SPACING.xs },
+                      ]}
+                    >
+                      {t('home.todaysDeals')}
+                    </Text>
+                  </LinearGradient>
+                )}
               </TouchableOpacity>
             );
           })()}
@@ -1759,7 +1779,8 @@ const HomeScreenContent: React.FC = () => {
             return (
               <TouchableOpacity
                 key={category._id || category.externalId || `cat-${catIndex}`}
-                style={[styles.categoryItem, isActive && styles.categoryItemActive]}
+                activeOpacity={0.88}
+                style={styles.categoryChipOuter}
                 onPress={() => {
                   setSelectedCategory(categoryName);
                   // Navigate to ProductDiscovery screen with category name as search word
@@ -1771,7 +1792,25 @@ const HomeScreenContent: React.FC = () => {
                   });
                 }}
               >
-                <Text style={[styles.categoryText, isActive && styles.categoryTextActive]}>{categoryName}</Text>
+                {isActive ? (
+                  <LinearGradient
+                    colors={['#FFFEF5', COLORS.yellow]}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={styles.categoryItemActiveGradient}
+                  >
+                    <Text style={[styles.categoryText, styles.categoryTextActive]}>{categoryName}</Text>
+                  </LinearGradient>
+                ) : (
+                  <LinearGradient
+                    colors={[CATEGORY_BATON_INACTIVE_GRADIENT_TOP, CATEGORY_BATON_INACTIVE_RED]}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={styles.categoryItemInactiveGradient}
+                  >
+                    <Text style={styles.categoryText}>{categoryName}</Text>
+                  </LinearGradient>
+                )}
               </TouchableOpacity>
             );
           })}
@@ -2757,41 +2796,6 @@ const HomeScreenContent: React.FC = () => {
         const scrollHeight = contentSize.height;
         const screenHeight = layoutMeasurement.height;
 
-        const y = Math.max(0, scrollPosition);
-        const prevY = lastScrollYSubHeaderRef.current;
-        const dy = y - prevY;
-        lastScrollYSubHeaderRef.current = y;
-
-        // Collapse needs a clearer downward intent; reveal reacts to slight upward scroll.
-        const SUB_HEADER_COLLAPSE_DELTA = 12;
-        const SUB_HEADER_REVEAL_DELTA = 3;
-        const SUB_HEADER_TOP_REVEAL = 12;
-        const runSubHeaderAnim = (toExpanded: boolean) => {
-          subHeaderExpandAnim.stopAnimation();
-          isSubHeaderCollapsedRef.current = !toExpanded;
-          Animated.timing(subHeaderExpandAnim, {
-            toValue: toExpanded ? 1 : 0,
-            duration: toExpanded ? 160 : 200,
-            useNativeDriver: false,
-          }).start();
-        };
-
-        if (subHeaderSectionHeight > 0) {
-          if (y <= SUB_HEADER_TOP_REVEAL) {
-            if (isSubHeaderCollapsedRef.current) {
-              runSubHeaderAnim(true);
-            }
-          } else if (dy > SUB_HEADER_COLLAPSE_DELTA && y > 48) {
-            if (!isSubHeaderCollapsedRef.current) {
-              runSubHeaderAnim(false);
-            }
-          } else if (dy < -SUB_HEADER_REVEAL_DELTA) {
-            if (isSubHeaderCollapsedRef.current) {
-              runSubHeaderAnim(true);
-            }
-          }
-        }
-        
         // Update isScrolled state based on threshold
         if (scrollPosition > SCROLL_THRESHOLD && !isScrolled) {
           setIsScrolled(true);
@@ -2850,34 +2854,10 @@ const HomeScreenContent: React.FC = () => {
       />
       <View style={styles.fixedTopBars}>
         {renderHeader()}
-        <Animated.View
-          style={
-            subHeaderSectionHeight > 0
-              ? {
-                  height: subHeaderExpandAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, subHeaderSectionHeight +1],
-                  }),
-                  overflow: 'hidden',
-                }
-              : styles.subHeaderMeasureWrap
-          }
-        >
-          <View
-            onLayout={(e) => {
-              const h = Math.round(e.nativeEvent.layout.height);
-              if (h <= 0) return;
-              const nextMax = Math.max(subHeaderMeasuredMaxRef.current, h);
-              if (nextMax !== subHeaderMeasuredMaxRef.current || nextMax !== subHeaderSectionHeight) {
-                subHeaderMeasuredMaxRef.current = nextMax;
-                setSubHeaderSectionHeight(nextMax);
-              }
-            }}
-          >
-            {renderCategories()}
-            {renderBanners()}
-          </View>
-        </Animated.View>
+        <View>
+          {renderCategories()}
+          {renderBanners()}
+        </View>
         {/* {renderCategoryTabs()} */}
       </View>
       
@@ -3003,10 +2983,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     zIndex: 10,
     // marginBottom: -80,
-  },
-  /** Until first layout, let categories+banners size naturally for height measurement. */
-  subHeaderMeasureWrap: {
-    overflow: 'hidden',
   },
   headerPlaceholder: {
     backgroundColor: COLORS.white,
@@ -3612,24 +3588,47 @@ const styles = StyleSheet.create({
   },
   categoriesScrollContent: {
     paddingLeft: SPACING.sm,
-    // paddingRight: SPACING.sm,
+    paddingTop: 6,
     gap: SPACING.sm,
   },
-  categoryItem: {
-    backgroundColor: COLORS.gray[100],
+  categoryChipOuter: {
     marginRight: SPACING.sm,
-    flexDirection: 'row', 
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: SPACING.sm,
-    borderRadius: BORDER_RADIUS.full,
+    marginVertical: 2,
+    overflow: 'visible',
   },
-  categoryItemActive: {
-    // backgroundColor: COLORS.red + '20', // light red background for active
+  categoryItemActiveGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    overflow: 'hidden',
+    transform: [{ translateY: -4 }],
+    shadowColor: 'rgba(0, 0, 0, 0.2)',
+    shadowOffset: { width: 0, height: 7 },
+    shadowOpacity: 0.32,
+    shadowRadius: 40,
+    elevation: 9,
+  },
+  categoryItemInactiveGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    overflow: 'hidden',
+    transform: [{ translateY: -4 }],
+    shadowColor: 'rgba(0, 0, 0, 0.2)',
+    shadowOffset: { width: 0, height: 7 },
+    shadowOpacity: 0.32,
+    shadowRadius: 40,
+    elevation: 9,
   },
   categoryText: {
     fontSize: FONTS.sizes.xsm,
-    color: COLORS.text.primary,
+    color: COLORS.white,
     fontWeight: '400',
   },
   categoryTextActive: {
