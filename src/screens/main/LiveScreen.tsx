@@ -562,8 +562,9 @@ const PopularItemCard: React.FC<{ item: any; locale: 'en' | 'ko' | 'zh'; rank?: 
             {title}
           </Text>
           <View style={styles.popularBottomStripPriceRow}>
-            <Text style={styles.popularStripPrice} numberOfLines={1}>{formatPriceKRW(price)}</Text>
+            <View><View><Text style={styles.popularStripPrice} numberOfLines={1}>{formatPriceKRW(price)}</Text></View>
             <Text style={styles.popularStripShopNow} numberOfLines={1}>{t('live.shopNow').replace('{arrow}', '>')}</Text>
+            </View>
           </View>
         </View>
       </View>
