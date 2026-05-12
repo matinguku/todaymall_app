@@ -13,7 +13,7 @@ import Icon from '../../../../components/Icon';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS, FONTS, SPACING } from '../../../../constants';
 import { useAppSelector } from '../../../../store/hooks';
-import { getTranslation } from '../../../../utils/i18nHelpers';
+import { getTranslation, formatKRWDirect, formatPriceKRW } from '../../../../utils/i18nHelpers';
 import { voucherApi } from '../../../../services/voucherApi';
 import { useToast } from '../../../../context/ToastContext';
 
@@ -149,8 +149,15 @@ const PointDetailScreen: React.FC<PointDetailScreenProps> = ({ embedded = false,
             /* Point Voucher Card */
             <View style={styles.voucherCard}>
               <View style={styles.voucherTop}>
-                <Text style={styles.voucherAmount}>¥{pointBalance}</Text>
-                <Text style={styles.voucherCondition}>{t('home.validOnOrdersOver').replace('{amount}', pointBalance.toString())}</Text>
+                <Text style={styles.voucherAmount}>
+                  {formatKRWDirect(Number(pointBalance) || 0)}
+                </Text>
+                <Text style={styles.voucherCondition}>
+                  {t('home.validOnOrdersOver').replace(
+                    '{amount}',
+                    formatPriceKRW(Number(pointBalance) || 0),
+                  )}
+                </Text>
                 <Text style={styles.voucherTitle}>{t('home.curatedNewYearVouchers')}</Text>
               </View>
               

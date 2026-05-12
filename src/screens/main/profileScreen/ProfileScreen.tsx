@@ -45,6 +45,7 @@ import { inquiryApi } from '../../../services/inquiryApi';
 import { wishlistApi } from '../../../services/wishlistApi';
 import { productsApi } from '../../../services/productsApi';
 import { depositApi } from '../../../services/depositApi';
+import { voucherApi, normalizeVoucherWalletData, sumCouponFaceValues } from '../../../services/voucherApi';
 import { NotificationBadge, ProductCard } from '../../../components';
 import { useRecommendationsMutation } from '../../../hooks/useRecommendationsMutation';
 import { useWishlistStatus } from '../../../hooks/useWishlistStatus';
@@ -323,6 +324,8 @@ const ProfileScreen: React.FC = () => {
   const [viewedCount, setViewedCount] = useState(0);
   const [viewedFirstImage, setViewedFirstImage] = useState<string>('');
   const [calculatedDepositBalance, setCalculatedDepositBalance] = useState<number | null>(null);
+  /** Sum of `amount` on Used-tab coupons — matches Σ red face values on CouponScreen (same basis as `formatPriceKRW`). */
+  const [couponUsedFaceValueSum, setCouponUsedFaceValueSum] = useState<number | null>(null);
 
   // Get orders hook for counts — aggregate client-side from `orders` because
   // server-side `viewFilterCounts` doesn't cover all the buckets shown in the
@@ -413,14 +416,18 @@ const ProfileScreen: React.FC = () => {
 
       // Set wishlist and viewed counts from API
       const fetchCounts = async () => {
-        if (!isAuthenticated || isGuest || !user) return;
+        if (!isAuthenticated || isGuest || !user) {
+          setCouponUsedFaceValueSum(null);
+          return;
+        }
         try {
-          const [wishlistRes, viewedRes, depositRes] = await Promise.allSettled([
+          const [wishlistRes, viewedRes, depositRes, voucherRes] = await Promise.allSettled([
             // No params: server returns the full list across sources (1688 +
             // ownmall/live). Filter params would scope the response to 1688.
             wishlistApi.getWishlist(),
             productsApi.getRecentlyViewedProducts(100),
             depositApi.getBalance(),
+            voucherApi.getVoucherWallet(),
           ]);
           let wlCount = 0;
           let wlImage = '';
@@ -461,7 +468,14 @@ const ProfileScreen: React.FC = () => {
               setCalculatedDepositBalance(0);
             }
           }
+          if (voucherRes.status === 'fulfilled' && voucherRes.value?.success && voucherRes.value?.data) {
+            const normalized = normalizeVoucherWalletData(voucherRes.value.data);
+            setCouponUsedFaceValueSum(sumCouponFaceValues(normalized.usedCoupons || []));
+          } else {
+            setCouponUsedFaceValueSum(null);
+          }
         } catch {
+          setCouponUsedFaceValueSum(null);
           // silently fail
         }
       };
@@ -481,6 +495,27 @@ const ProfileScreen: React.FC = () => {
     }
     return 0;
   })();
+
+  /** Account row: total value of Used coupons (Σ red amounts), same ₩ unit as pricing helpers. */
+  const displayCouponAccountValueStr = (): string => {
+    if (couponUsedFaceValueSum !== null) {
+      return formatPriceKRW(couponUsedFaceValueSum);
+    }
+    return formatPriceKRW(0);
+  };
+
+  /** Points balance with same ₩ unit treatment as deposit (`formatDepositBalance`). */
+  const displayPointsBalanceStr = (): string => {
+    const raw = (user as any)?.points ?? 0;
+    const n =
+      typeof raw === 'number'
+        ? raw
+        : typeof raw === 'string'
+          ? parseFloat(raw)
+          : 0;
+    const num = Number.isFinite(n) ? n : 0;
+    return formatDepositBalance(num);
+  };
   
   // Translation function
   const t = (key: string) => {
@@ -923,12 +958,7 @@ const ProfileScreen: React.FC = () => {
           <View style={{flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center'}}>
             <Text style={styles.statLabel}>{t('profile.coupons')}:</Text>
             <Text style={styles.statValue}>
-              {(() => {
-                const coupon = (user as any)?.coupon;
-                if (typeof coupon === 'number') return String(coupon);
-                if (typeof coupon === 'string') return coupon;
-                return '0';
-              })()}
+              {displayCouponAccountValueStr()}
             </Text>
           </View>
         </TouchableOpacity>
@@ -938,17 +968,7 @@ const ProfileScreen: React.FC = () => {
         >
           <View style={{flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center'}}>
             <Text style={styles.statLabel}>{t('profile.points')}:</Text>
-            <Text style={styles.statValue}>
-              {(() => {
-                const points = (user as any)?.points ?? 0;
-                if (typeof points === 'number') return String(points);
-                if (typeof points === 'string') {
-                  const numValue = parseFloat(points);
-                  return isNaN(numValue) ? points : String(numValue);
-                }
-                return '0';
-              })()}
-            </Text>
+            <Text style={styles.statValue}>{displayPointsBalanceStr()}</Text>
           </View>
         </TouchableOpacity>
         {/* <TouchableOpacity 
@@ -1677,7 +1697,7 @@ const ProfileScreen: React.FC = () => {
                 >
                   <CouponIcon width={36} height={36} color={COLORS.red} />
                   <Text style={styles.dashStatValue}>
-                    {(() => { const c = (user as any)?.coupon; return typeof c === 'number' ? String(c) : typeof c === 'string' ? c : '0'; })()}
+                    {displayCouponAccountValueStr()}
                   </Text>
                   <Text style={styles.dashStatLabel}>{t('profile.coupons')}</Text>
                 </TouchableOpacity>
@@ -1691,9 +1711,7 @@ const ProfileScreen: React.FC = () => {
                   }}
                 >
                   <PointIcon width={36} height={36} color={COLORS.red} />
-                  <Text style={styles.dashStatValue}>
-                    {(() => { const p = (user as any)?.points ?? 0; return typeof p === 'number' ? String(p) : typeof p === 'string' ? p : '0'; })()}
-                  </Text>
+                  <Text style={styles.dashStatValue}>{displayPointsBalanceStr()}</Text>
                   <Text style={styles.dashStatLabel}>{t('profile.points')}</Text>
                 </TouchableOpacity>
               </View>,

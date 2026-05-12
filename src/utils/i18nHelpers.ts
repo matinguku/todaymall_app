@@ -1,5 +1,22 @@
 import { translations } from '../i18n/translations';
 
+/** If a translation leaf is a locale map `{ ko, en, zh }`, pick the active language. */
+function pickLocalizedLeaf(value: unknown, loc: 'en' | 'ko' | 'zh'): string | undefined {
+  if (typeof value === 'string' && value.length > 0) return value;
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const o = value as Record<string, unknown>;
+    const hasLocaleKeys =
+      typeof o.ko === 'string' ||
+      typeof o.en === 'string' ||
+      typeof o.zh === 'string';
+    if (hasLocaleKeys) {
+      const raw = o[loc] ?? o.en ?? o.ko ?? o.zh;
+      return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
+    }
+  }
+  return undefined;
+}
+
 // Helper function to get translated text (invalid locale → ko, then en fallback)
 export const getTranslation = (key: string, locale?: 'en' | 'ko' | 'zh') => {
   const keys = key.split('.');
@@ -8,11 +25,11 @@ export const getTranslation = (key: string, locale?: 'en' | 'ko' | 'zh') => {
     for (const k of keys) {
       value = value?.[k];
     }
-    return typeof value === 'string' && value.length > 0 ? value : undefined;
+    return pickLocalizedLeaf(value, loc);
   };
   const loc: 'en' | 'ko' | 'zh' =
     locale === 'en' || locale === 'ko' || locale === 'zh' ? locale : 'ko';
-  return walk(loc) ?? walk('en') ?? key;
+  return walk(loc) ?? walk('en') ?? walk('ko') ?? key;
 };
 
 // Helper function to create translation function for a specific locale

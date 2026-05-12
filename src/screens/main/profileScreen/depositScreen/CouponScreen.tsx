@@ -13,9 +13,15 @@ import Icon from '../../../../components/Icon';
 // import { BackNavTouchableOpacity } from '../../../../components/BackNavTouchable';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS, FONTS, SPACING } from '../../../../constants';
+import { formatPriceKRW } from '../../../../utils/i18nHelpers';
 import { useAppSelector } from '../../../../store/hooks';
 import { translations } from '../../../../i18n/translations';
-import { voucherApi, Coupon } from '../../../../services/voucherApi';
+import {
+  voucherApi,
+  Coupon,
+  normalizeVoucherWalletData,
+  couponUsageStableKey,
+} from '../../../../services/voucherApi';
 import { useToast } from '../../../../context/ToastContext';
 
 type CouponMainTab = 'coupon' | 'point';
@@ -64,10 +70,11 @@ const CouponScreen: React.FC<CouponScreenProps> = ({ embedded = false, onMainTab
       const response = await voucherApi.getVoucherWallet();
       
       if (response.success && response.data) {
+        const normalized = normalizeVoucherWalletData(response.data);
         setCoupons({
-          available: response.data.availableCoupons,
-          used: response.data.usedCoupons,
-          expired: response.data.expiredCoupons,
+          available: normalized.availableCoupons,
+          used: normalized.usedCoupons,
+          expired: normalized.expiredCoupons,
         });
       } else {
         showToast(response.message || t('home.failedToLoadCoupons'), 'error');
@@ -116,9 +123,21 @@ const CouponScreen: React.FC<CouponScreenProps> = ({ embedded = false, onMainTab
 
   const filteredCoupons = coupons[activeTab];
 
+  const tabCounts = {
+    available: coupons.available.length,
+    used: coupons.used.length,
+    expired: coupons.expired.length,
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  /** Same KRW display pipeline as product/deposit pricing (`formatPriceKRW` uses deposit base conversion). */
+  const formatCouponFaceValue = (raw: unknown) => {
+    const n = typeof raw === 'number' ? raw : parseFloat(String(raw ?? ''));
+    return formatPriceKRW(Number.isFinite(n) ? n : 0);
   };
 
   const Container = embedded ? View : SafeAreaView;
@@ -183,7 +202,7 @@ const CouponScreen: React.FC<CouponScreenProps> = ({ embedded = false, onMainTab
               onPress={() => setActiveTab('available')}
             >
               <Text style={[styles.statusTabText, activeTab === 'available' && styles.statusTabTextActive]}>
-                {t('home.unused')} ({coupons.available.length})
+                {t('home.unused')} ({tabCounts.available})
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -191,7 +210,7 @@ const CouponScreen: React.FC<CouponScreenProps> = ({ embedded = false, onMainTab
               onPress={() => setActiveTab('used')}
             >
               <Text style={[styles.statusTabText, activeTab === 'used' && styles.statusTabTextActive]}>
-                {t('home.used')} ({coupons.used.length})
+                {t('home.used')} ({tabCounts.used})
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -199,7 +218,7 @@ const CouponScreen: React.FC<CouponScreenProps> = ({ embedded = false, onMainTab
               onPress={() => setActiveTab('expired')}
             >
               <Text style={[styles.statusTabText, activeTab === 'expired' && styles.statusTabTextActive]}>
-                {t('home.expired')} ({coupons.expired.length})
+                {t('home.expired')} ({tabCounts.expired})
               </Text>
             </TouchableOpacity>
           </View>
@@ -240,15 +259,23 @@ const CouponScreen: React.FC<CouponScreenProps> = ({ embedded = false, onMainTab
             </View>
           ) : (
             <View style={styles.couponList}>
-              {filteredCoupons.map((coupon) => (
-                <View key={coupon.id} style={styles.couponCard}>
+              {filteredCoupons.map((coupon, couponIndex) => (
+                <View
+                  key={couponUsageStableKey(coupon) || `coupon-${couponIndex}`}
+                  style={styles.couponCard}
+                >
                   <Text style={styles.couponType}>{t('home.platformWideCoupon')}</Text>
                   
                   <View style={{backgroundColor: '#FFF5F0', padding: SPACING.md}}>
                   <View style={styles.couponBody}>
                     <View style={styles.couponLeft}>
-                      <Text style={styles.discountAmount}>¥{coupon.amount}</Text>
-                      <Text style={styles.minAmount}>{t('home.spendAtLeast').replace('{minAmount}', coupon.minPurchaseAmount.toString())}</Text>
+                      <Text style={styles.discountAmount}>{formatCouponFaceValue(coupon.amount)}</Text>
+                      <Text style={styles.minAmount}>
+                        {t('home.spendAtLeast').replace(
+                          '{minAmount}',
+                          formatCouponFaceValue(coupon.minPurchaseAmount),
+                        )}
+                      </Text>
                       <Text style={styles.expiryText}>
                         {t('home.expiresAt').replace('{date}', formatDate(coupon.validUntil))}
                       </Text>

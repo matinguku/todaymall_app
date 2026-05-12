@@ -452,9 +452,21 @@ const ProductDetailScreen: React.FC = () => {
   const resolveText = (value: unknown): string => {
     if (value == null) return '';
     if (typeof value === 'string') return value;
-    if (typeof value === 'object' && value !== null && ('en' in value || 'ko' in value || 'zh' in value)) {
-      const o = value as Record<string, string>;
-      return getLocalizedText({ en: o.en ?? '', ko: o.ko ?? '', zh: o.zh ?? '' }, locale);
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      const o = value as Record<string, unknown>;
+      if ('en' in o || 'ko' in o || 'zh' in o) {
+        const raw = o[locale] ?? o.en ?? o.ko ?? o.zh;
+        if (raw != null && typeof raw !== 'object') return String(raw);
+        return getLocalizedText(
+          {
+            en: String(o.en ?? ''),
+            ko: String(o.ko ?? ''),
+            zh: String(o.zh ?? ''),
+          },
+          locale,
+        );
+      }
     }
     return String(value);
   };
@@ -1819,7 +1831,7 @@ const ProductDetailScreen: React.FC = () => {
               resizeMode="cover"
             />
             <Text style={styles.simpleTaobaoTitle} numberOfLines={2}>
-              {(item as any).name}
+              {resolveText((item as any).name)}
             </Text>
             <Text style={styles.simpleTaobaoPrice}>
               {formatPriceKRW(Number((item as any).price || 0))}
@@ -2828,7 +2840,8 @@ const ProductDetailScreen: React.FC = () => {
 
 
   const renderVariationSelector = (variationType: { name: string; options: Array<{ value: string; image?: string; [key: string]: any }> }) => {
-    const variationName = variationType.name.toLowerCase();
+    const typeLabelRaw = resolveText(variationType.name as unknown).trim();
+    const variationName = typeLabelRaw.toLowerCase();
 
     // Get selected value from selectedVariations state
     const selectedValue = selectedVariations[variationName] || null;
@@ -2859,14 +2872,22 @@ const ProductDetailScreen: React.FC = () => {
     };
     const i18nKey =
       VARIATION_NAME_I18N_MAP[variationName] ||
-      VARIATION_NAME_I18N_MAP[variationType.name];
-    const displayName = i18nKey ? t(`product.${i18nKey}`) : variationType.name;
+      VARIATION_NAME_I18N_MAP[typeLabelRaw];
+    const displayName = i18nKey
+      ? t(`product.${i18nKey}`)
+      : resolveText(variationType.name as unknown);
     
-    const handleSelect = (value: string) => {
+    const handleSelect = (value: unknown) => {
+      const normalizedValue =
+        typeof value === 'string' ? value : resolveText(value);
       // Toggle behavior: re-tapping the already-selected option deselects
       // it and resets the gallery to its default first image. This lets the
       // user clear a color choice without picking a different one.
-      if (selectedValue === value) {
+      if (
+        selectedValue != null &&
+        (selectedValue === normalizedValue ||
+          resolveText(selectedValue as unknown) === normalizedValue)
+      ) {
         setSelectedVariations(prev => {
           const next = { ...prev };
           delete next[variationName];
@@ -2886,14 +2907,14 @@ const ProductDetailScreen: React.FC = () => {
       // Update selectedVariations state
       setSelectedVariations(prev => ({
         ...prev,
-        [variationName]: value,
+        [variationName]: normalizedValue,
       }));
 
       // Also update selectedColor and selectedSize for backward compatibility with addToCart
       if (variationName === 'color') {
-        setSelectedColor(value);
+        setSelectedColor(normalizedValue);
       } else if (variationName === 'size') {
-        setSelectedSize(value);
+        setSelectedSize(normalizedValue);
       }
 
       // If the chosen option carries an image, surface it on the gallery.
@@ -2904,7 +2925,14 @@ const ProductDetailScreen: React.FC = () => {
       //    gallery — stash it in `extraVariationImage` so the gallery and
       //    viewer append it as one more page; the effect below will scroll
       //    to that appended page once the gallery has rendered it.
-      const chosen = variationType.options.find((o: any) => o.value === value);
+      const chosen = variationType.options.find(
+        (o: any) =>
+          o.value === value ||
+          (typeof o.value === 'object' &&
+            o.value != null &&
+            resolveText(o.value as unknown) === normalizedValue) ||
+          resolveText(o.value as unknown) === normalizedValue,
+      );
       const targetUrl: string | undefined = chosen?.image;
       if (targetUrl) {
         const apiImages = getApiProductImages(product);
@@ -2940,10 +2968,17 @@ const ProductDetailScreen: React.FC = () => {
       // Render first variation type with images (if available) and text
       return (
         <View style={styles.selectorContainer}>
-          <Text style={styles.selectorTitle}>{displayName}{selectedValue ? ` : ${selectedValue}` : ''}</Text>
+          <Text style={styles.selectorTitle}>
+            {displayName}
+            {selectedValue ? ` : ${resolveText(selectedValue as unknown)}` : ''}
+          </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {variationType.options.map((option: any, optIndex: number) => {
-              const isSelected = selectedValue === option.value;
+              const optResolved = resolveText(option.value as unknown);
+              const selResolved =
+                selectedValue != null ? resolveText(selectedValue as unknown) : '';
+              const isSelected =
+                selResolved !== '' && selResolved === optResolved;
               return (
                 <TouchableOpacity
                   key={optIndex}
@@ -2967,7 +3002,7 @@ const ProductDetailScreen: React.FC = () => {
                     ]}
                     numberOfLines={3}
                   >
-                    {option.value}
+                    {resolveText(option.value as unknown)}
                   </Text>
                 </TouchableOpacity>
               );
@@ -2980,10 +3015,17 @@ const ProductDetailScreen: React.FC = () => {
       // Render other variation types (or first if no images) as text buttons
       return (
         <View style={styles.selectorContainer}>
-          <Text style={styles.selectorTitle}>{displayName}{selectedValue ? ` : ${selectedValue}` : ''}</Text>
+          <Text style={styles.selectorTitle}>
+            {displayName}
+            {selectedValue ? ` : ${resolveText(selectedValue as unknown)}` : ''}
+          </Text>
           <View style={styles.sizeGrid}>
             {variationType.options.map((option: any, optIndex: number) => {
-              const isSelected = selectedValue === option.value;
+              const optResolved = resolveText(option.value as unknown);
+              const selResolved =
+                selectedValue != null ? resolveText(selectedValue as unknown) : '';
+              const isSelected =
+                selResolved !== '' && selResolved === optResolved;
               return (
                 <TouchableOpacity
                   key={optIndex}
@@ -2999,7 +3041,7 @@ const ProductDetailScreen: React.FC = () => {
                       isSelected && styles.selectedSizeText,
                     ]}
                   >
-                    {option.value}
+                    {resolveText(option.value as unknown)}
                   </Text>
                 </TouchableOpacity>
               );
@@ -3082,10 +3124,12 @@ const ProductDetailScreen: React.FC = () => {
   };
 
   const renderSellerInfo = () => {
-    // Get company name from product metadata or seller
-    const companyName = (product as any).metadata?.original1688Data?.companyName || 
-                        product.seller?.name || 
-                        'Store';
+    // Get company name from product metadata or seller (may be { ko, en, zh } from API)
+    const companyName = resolveText(
+      (product as any).metadata?.original1688Data?.companyName ||
+        product.seller?.name ||
+        '',
+    ) || 'Store';
     
     // Get seller rating
     const sellerRating = product.seller?.rating || 
@@ -3254,8 +3298,8 @@ const ProductDetailScreen: React.FC = () => {
             <Text style={styles.sectionSubtitle}>{t('product.specifications')}{" >"}</Text>
             {displayedSpecs.map((attr: any, index: number) => (
               <View key={`${attr.name || 'spec'}-${index}`} style={styles.detailRow}>
-                <Text style={styles.detailLabel}>{attr.name || ''}</Text>
-                <Text style={styles.detailValue} numberOfLines={0}>{attr.value || ''}</Text>
+                <Text style={styles.detailLabel}>{resolveText(attr.name)}</Text>
+                <Text style={styles.detailValue} numberOfLines={0}>{resolveText(attr.value)}</Text>
               </View>
             ))}
             {shouldShowReadMore && (
@@ -3346,7 +3390,7 @@ const ProductDetailScreen: React.FC = () => {
                         style={styles.simpleTaobaoTitle}
                         numberOfLines={2}
                       >
-                        {(item as any).name}
+                        {resolveText((item as any).name)}
                       </Text>
                       <Text style={styles.simpleTaobaoPrice}>
                         ₩{Number((item as any).price || 0).toLocaleString()}

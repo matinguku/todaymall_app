@@ -691,7 +691,17 @@ const PointPartnerSellerCard: React.FC<{
   }, [cardStyle?.width]);
   const name = seller.userName || seller.nickname || 'Seller';
   const avatar = seller.picUrl || 'https://via.placeholder.com/80.png?text=S';
-  const followers = seller.followerCount ?? seller.followers ?? seller.totalFollowers ?? 0;
+  const followers = (() => {
+    const raw =
+      seller.followCount ??
+      seller.followerCount ??
+      seller.followersCount ??
+      seller.totalFollowers ??
+      (typeof seller.followers === 'number' ? seller.followers : undefined);
+    if (raw == null || raw === '') return 0;
+    const n = typeof raw === 'number' ? raw : parseFloat(String(raw));
+    return Number.isFinite(n) ? n : 0;
+  })();
   const totalSales = seller.totalItemsSold ?? seller.totalSales ?? seller.salesCount ?? 0;
   const isLive = seller.currentLiveStatus === 'live';
   const sellerId = seller?._id || seller?.id || seller?.sellerId || '';

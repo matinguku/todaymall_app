@@ -27,7 +27,7 @@ import { useRegisterMutation } from '../../hooks/useAuthMutations';
 import { useSocialLogin } from '../../services/socialAuth';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, VALIDATION_RULES, ERROR_MESSAGES, SCREEN_HEIGHT, BACK_NAVIGATION_HIT_SLOP } from '../../constants';
 import { useAppSelector } from '../../store/hooks';
-import { translations } from '../../i18n/translations';
+import { getTranslation } from '../../utils/i18nHelpers';
 import ShieldCheckIcon from '../../assets/icons/ShieldCheckIcon';
 import ArrowDropDownIcon from '../../assets/icons/ArrowDropDownIcon';
 
@@ -40,15 +40,7 @@ const SignupScreen: React.FC = () => {
   const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
   const { showToast } = useToast();
   
-  // Translation function
-  const t = (key: string) => {
-    const keys = key.split('.');
-    let value: any = translations[locale as keyof typeof translations];
-    for (const k of keys) {
-      value = value?.[k];
-    }
-    return value || key;
-  };
+  const t = (key: string) => getTranslation(key, locale);
   
   // Map language codes to flag emojis
   const getLanguageFlag = (locale: string) => {

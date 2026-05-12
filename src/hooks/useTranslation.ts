@@ -1,19 +1,14 @@
 import { useAppSelector } from '../store/hooks';
-import { translations } from '../i18n/translations';
+import { getTranslation } from '../utils/i18nHelpers';
 
 export const useTranslation = () => {
-  const locale = useAppSelector((state) => state.i18n?.locale || 'ko');
+  const rawLocale = useAppSelector((state) => state.i18n?.locale || 'ko');
+  const locale: 'en' | 'ko' | 'zh' =
+    rawLocale === 'en' || rawLocale === 'ko' || rawLocale === 'zh'
+      ? rawLocale
+      : 'ko';
 
-  const t = (key: string): string => {
-    const keys = key.split('.');
-    let value: any = translations[locale as keyof typeof translations] || translations.ko;
-    
-    for (const k of keys) {
-      value = value?.[k];
-    }
-    
-    return value || key;
-  };
+  const t = (key: string): string => getTranslation(key, locale);
 
   return { t, locale };
 };

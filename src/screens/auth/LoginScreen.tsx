@@ -29,7 +29,7 @@ import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, VALIDATION_RULES, ERROR
 import { resendLoginVerificationCode } from '../../services/authApi';
 import { guestOrderApi } from '../../services/guestOrderApi';
 import { useAppSelector } from '../../store/hooks';
-import { translations } from '../../i18n/translations';
+import { getTranslation } from '../../utils/i18nHelpers';
 import ShieldCheckIcon from '../../assets/icons/ShieldCheckIcon';
 import ArrowDropDownIcon from '../../assets/icons/ArrowDropDownIcon';
 
@@ -75,15 +75,7 @@ const LoginScreen: React.FC = () => {
   const { showToast } = useToast();
   const locale = useAppSelector((state) => state.i18n.locale) as 'en' | 'ko' | 'zh';
   
-  // Translation function
-  const t = (key: string) => {
-    const keys = key.split('.');
-    let value: any = translations[locale as keyof typeof translations];
-    for (const k of keys) {
-      value = value?.[k];
-    }
-    return value || key;
-  };
+  const t = (key: string) => getTranslation(key, locale);
   
   // Map language codes to flag emojis
   const getLanguageFlag = (locale: string) => {

@@ -42,6 +42,92 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
+/** Stable id for one coupon usage row (dedupe across API buckets). */
+export function couponUsageStableKey(c: Partial<Coupon>): string {
+  const u = c.usageId ?? c.id ?? '';
+  if (u !== '' && u != null) return String(u).trim();
+  const cid = c.couponId ?? '';
+  const recv = c.receivedAt ?? '';
+  if (cid !== '' || recv !== '') return `${String(cid)}|${String(recv)}`;
+  return '';
+}
+
+export type CouponBucket = 'available' | 'used' | 'expired';
+
+/** Classify a single coupon for wallet tabs — matches what we render per tab. */
+export function classifyCouponBucket(c: Partial<Coupon>, nowMs: number = Date.now()): CouponBucket {
+  const s = String(c.status ?? '')
+    .trim()
+    .toLowerCase();
+  if (s === 'used' || s === 'redeemed' || s === 'consumed' || s === 'applied') return 'used';
+  if (s === 'expired') return 'expired';
+  const vuRaw = c.validUntil ?? (c as { valid_until?: string }).valid_until;
+  if (vuRaw) {
+    const vu = new Date(String(vuRaw)).getTime();
+    if (!Number.isNaN(vu) && vu < nowMs) return 'expired';
+  }
+  // received, pending, empty → unused list
+  return 'available';
+}
+
+function pickDominantCouponDuplicate(a: Coupon, b: Coupon, nowMs: number): Coupon {
+  const rank = (x: Coupon) => {
+    const k = classifyCouponBucket(x, nowMs);
+    return k === 'used' ? 3 : k === 'expired' ? 2 : 1;
+  };
+  const ra = rank(a);
+  const rb = rank(b);
+  if (rb > ra) return { ...a, ...b };
+  if (ra > rb) return { ...b, ...a };
+  return { ...a, ...b };
+}
+
+/**
+ * Rebuild available / used / expired arrays from all coupon rows so tab counts
+ * match the rendered lists (handles duplicate ids across buckets or mis-tagged items).
+ */
+/** Sum `amount` fields — same numbers rendered as red face values on coupon cards (before `formatPriceKRW`). */
+export function sumCouponFaceValues(coupons: Coupon[]): number {
+  if (!Array.isArray(coupons)) return 0;
+  return coupons.reduce((sum, c) => {
+    const raw = c.amount;
+    const n = typeof raw === 'number' ? raw : parseFloat(String(raw ?? ''));
+    return sum + (Number.isFinite(n) ? n : 0);
+  }, 0);
+}
+
+export function normalizeVoucherWalletData(data: VoucherWalletData): VoucherWalletData {
+  const now = Date.now();
+  const merged = [
+    ...(data.availableCoupons || []),
+    ...(data.usedCoupons || []),
+    ...(data.expiredCoupons || []),
+  ];
+  const byKey = new Map<string, Coupon>();
+  for (const c of merged) {
+    const key = couponUsageStableKey(c);
+    if (!key) continue;
+    const prev = byKey.get(key);
+    byKey.set(key, prev ? pickDominantCouponDuplicate(prev, c, now) : c);
+  }
+  const unique = Array.from(byKey.values());
+  const availableCoupons: Coupon[] = [];
+  const usedCoupons: Coupon[] = [];
+  const expiredCoupons: Coupon[] = [];
+  for (const c of unique) {
+    const bucket = classifyCouponBucket(c, now);
+    if (bucket === 'used') usedCoupons.push(c);
+    else if (bucket === 'expired') expiredCoupons.push(c);
+    else availableCoupons.push(c);
+  }
+  return {
+    ...data,
+    availableCoupons,
+    usedCoupons,
+    expiredCoupons,
+  };
+}
+
 export const voucherApi = {
   // Get voucher wallet data (coupons and points)
   getVoucherWallet: async (): Promise<ApiResponse<VoucherWalletData>> => {
