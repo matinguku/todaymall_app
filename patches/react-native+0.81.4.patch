@@ -1,0 +1,114 @@
+diff --git a/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/animated/FrameBasedAnimationDriver.kt b/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/animated/FrameBasedAnimationDriver.kt
+index ab772fb..6cd0ba2 100644
+--- a/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/animated/FrameBasedAnimationDriver.kt
++++ b/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/animated/FrameBasedAnimationDriver.kt
+@@ -11,7 +11,6 @@ import com.facebook.common.logging.FLog
+ import com.facebook.react.bridge.ReadableMap
+ import com.facebook.react.bridge.ReadableType
+ import com.facebook.react.common.ReactConstants
+-import com.facebook.react.common.build.ReactBuildConfig
+ 
+ /**
+  * Implementation of [AnimationDriver] which provides a support for simple time-based animations
+@@ -53,48 +52,64 @@ internal class FrameBasedAnimationDriver(config: ReadableMap) : AnimationDriver(
+   }
+ 
+   override fun runAnimationStep(frameTimeNanos: Long) {
+-    val animatedValue = requireNotNull(animatedValue) { "Animated value should not be null" }
+-    if (startFrameTimeNanos < 0) {
+-      startFrameTimeNanos = frameTimeNanos
+-      if (currentLoop == 1) {
+-        // initiate start value when animation runs for the first time
+-        fromValue = animatedValue.nodeValue
++    try {
++      val animatedValue = requireNotNull(animatedValue) { "Animated value should not be null" }
++      if (frames.isEmpty()) {
++        hasFinished = true
++        return
+       }
+-    }
+-    val timeFromStartMillis = (frameTimeNanos - startFrameTimeNanos) / 1000000
+-    val frameIndex = Math.round(timeFromStartMillis / FRAME_TIME_MILLIS).toInt()
+-    if (frameIndex < 0) {
+-      val message =
+-          ("Calculated frame index should never be lower than 0. Called with frameTimeNanos " +
+-              frameTimeNanos +
+-              " and mStartFrameTimeNanos " +
+-              startFrameTimeNanos)
+-      check(!ReactBuildConfig.DEBUG) { message }
+-      if (logCount < 100) {
+-        FLog.w(ReactConstants.TAG, message)
+-        logCount++
++      if (startFrameTimeNanos < 0) {
++        startFrameTimeNanos = frameTimeNanos
++        if (currentLoop == 1) {
++          // initiate start value when animation runs for the first time
++          fromValue = animatedValue.nodeValue
++        }
+       }
+-      return
+-    } else if (hasFinished) {
+-      // nothing to do here
+-      return
+-    }
+-    val nextValue: Double
+-    if (frameIndex >= frames.size - 1) {
+-      if (iterations == -1 || currentLoop < iterations) {
+-        // Use last frame value, just in case it's different from mToValue
+-        nextValue = fromValue + frames[frames.size - 1] * (toValue - fromValue)
+-        startFrameTimeNanos = -1
+-        currentLoop++
++      // Choreographer can deliver a frame timestamp slightly before the recorded start (VSYNC
++      // jitter on some devices). Resync so frame index math stays non-negative.
++      if (frameTimeNanos < startFrameTimeNanos) {
++        if (logCount < 100) {
++          FLog.w(
++              ReactConstants.TAG,
++              ("Animation frame time precedes start time; resyncing. frameTimeNanos=" +
++                  frameTimeNanos +
++                  " startFrameTimeNanos=" +
++                  startFrameTimeNanos))
++          logCount++
++        }
++        startFrameTimeNanos = frameTimeNanos
++      }
++      val timeFromStartMillis = (frameTimeNanos - startFrameTimeNanos) / 1000000
++      val rawIndex = Math.round(timeFromStartMillis / FRAME_TIME_MILLIS).toInt()
++      val frameIndex = kotlin.math.min(kotlin.math.max(0, rawIndex), kotlin.math.max(0, frames.size - 1))
++      if (hasFinished) {
++        // nothing to do here
++        return
++      }
++      val nextValue: Double
++      if (frameIndex >= frames.size - 1) {
++        if (iterations == -1 || currentLoop < iterations) {
++          // Use last frame value, just in case it's different from mToValue
++          nextValue = fromValue + frames[frames.size - 1] * (toValue - fromValue)
++          startFrameTimeNanos = -1
++          currentLoop++
++        } else {
++          // animation has completed, no more frames left
++          nextValue = toValue
++          hasFinished = true
++        }
+       } else {
+-        // animation has completed, no more frames left
+-        nextValue = toValue
+-        hasFinished = true
++        nextValue = fromValue + frames[frameIndex] * (toValue - fromValue)
++      }
++      animatedValue.nodeValue = nextValue
++    } catch (t: Throwable) {
++      // Never crash the UI thread on timing/array edge cases (see Choreographer jitter issues).
++      if (logCount < 100) {
++        FLog.e(ReactConstants.TAG, "FrameBasedAnimationDriver.runAnimationStep failed", t)
++        logCount++
+       }
+-    } else {
+-      nextValue = fromValue + frames[frameIndex] * (toValue - fromValue)
++      hasFinished = true
+     }
+-    animatedValue.nodeValue = nextValue
+   }
+ 
+   companion object {

@@ -31,7 +31,13 @@ import SearchIcon from '../../../assets/icons/SearchIcon';
 import SensorsIcon from '../../../assets/icons/SensorsIcon';
 import ArrowDropDownIcon from '../../../assets/icons/ArrowDropDownIcon';
 import { formatPriceKRW } from '../../../utils/i18nHelpers';
-import { getLiveSellerListingProductMeta } from '../../../utils/liveSellerProductListingMeta';
+import {
+  getLiveSellerListingProductMeta,
+  pickLiveSellerRawLiveCode,
+  getLiveSellerOfferId,
+  getLiveSellerProductCodeRowDisplayValue,
+  getLiveSellerProductItemNumberRowDisplayValue,
+} from '../../../utils/liveSellerProductListingMeta';
 
 const { width } = Dimensions.get('window');
 /** Horizontal + vertical gutter between product cards (2-column grid). */
@@ -268,17 +274,7 @@ const LiveSellerDetailScreen: React.FC = () => {
           // the live-broadcast code. Falls back to scanning the product
           // sub-object too. The order goes from most-specific to most-
           // generic so a real liveCode field wins over generic codes.
-          const liveCode =
-            item.liveCode ||
-            item.live_code ||
-            item.liveCommerceCode ||
-            item.liveCommerceId ||
-            item.broadcastCode ||
-            item.broadcastId ||
-            item.product?.liveCode ||
-            item.product?.live_code ||
-            item.product?.liveCommerceCode ||
-            null;
+          const liveCodeStr = pickLiveSellerRawLiveCode(item) || undefined;
 
           // Pull a date out of whichever field the API exposes; we
           // store it as `YYYY-MM-DD` so products from the same broadcast
@@ -316,7 +312,7 @@ const LiveSellerDetailScreen: React.FC = () => {
             // resolveLiveCode() picks it up. ProductDetail maps this
             // back to 'ownmall' internally for API routing.
             source: 'live-commerce',
-            liveCode: liveCode != null ? String(liveCode) : undefined,
+            liveCode: liveCodeStr,
             label: item.isHotProduct ? t('live.hotProduct') : (item.status || t('live.live')),
             soldCount: item.itemsSold || 0,
             reviewCount: item.reviewNumbers || 0,
@@ -364,6 +360,7 @@ const LiveSellerDetailScreen: React.FC = () => {
             liveDate: liveDateKey,
             liveDateRaw: liveDateRaw ? String(liveDateRaw) : '',
             raw: item,
+            offerId: getLiveSellerOfferId(item),
             listProductCode,
             listProductItemNumber,
             listProductCost,
@@ -734,18 +731,20 @@ const LiveSellerDetailScreen: React.FC = () => {
       <TouchableOpacity
         style={styles.productCard}
         activeOpacity={0.8}
-        onPress={() => navigation.navigate('ProductDetail', {
-          productId: item.id,
-          offerId: item.externalId,
-          // Always use 'live-commerce' since we're inside the live-seller
-          // page, regardless of what item.source happens to be.
-          source: 'live-commerce',
-          // Forward the explicit live code (if present in the API
-          // response) so ProductDetail can include it in cart/order
-          // requests without having to parse the product name.
-          liveCode: item.liveCode,
-          country: country,
-        })}
+        onPress={() => {
+          const codeForNav = getLiveSellerProductCodeRowDisplayValue(item);
+          navigation.navigate('ProductDetail', {
+            productId: item.id,
+            offerId: item.externalId,
+            // Always use 'live-commerce' since we're inside the live-seller
+            // page, regardless of what item.source happens to be.
+            source: 'live-commerce',
+            // Forward resolved live numeric (explicit liveCode, title tail,
+            // or offerId) so ProductDetail matches cart / order behavior.
+            ...(codeForNav ? { liveCode: codeForNav } : {}),
+            country: country,
+          });
+        }}
       >
         <Image
           source={{ uri: imageUri || `https://via.placeholder.com/${IMAGE_CONFIG.PRODUCT_DISPLAY_PIXEL}.png?text=Product` }}
@@ -762,16 +761,22 @@ const LiveSellerDetailScreen: React.FC = () => {
             </Text>
           )}
           <Text style={styles.productTitle} numberOfLines={2}>{title}</Text>
-          {!!item.listProductCode && (
+          {(() => {
+            const codeVal = getLiveSellerProductCodeRowDisplayValue(item);
+            return codeVal ? (
             <Text style={styles.productListingDetail} numberOfLines={1}>
-              {t('product.productCode')}: {item.listProductCode}
+              {t('product.productCode')}: {codeVal}
             </Text>
-          )}
-          {!!item.listProductItemNumber && (
+            ) : null;
+          })()}
+          {(() => {
+            const numVal = getLiveSellerProductItemNumberRowDisplayValue(item);
+            return numVal ? (
             <Text style={styles.productListingDetail} numberOfLines={1}>
-              {t('product.productItemNumber')}: {item.listProductItemNumber}
+              {t('product.productItemNumber')}: {numVal}
             </Text>
-          )}
+            ) : null;
+          })()}
           {item.listProductCost != null && (
             <Text style={styles.productListingDetail} numberOfLines={1}>
               {t('product.productCost')}: {formatPriceKRW(item.listProductCost)}

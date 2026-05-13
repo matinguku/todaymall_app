@@ -42,6 +42,49 @@ export const getLocalizedText = (textObj: { en: string; ko: string; zh: string }
   return textObj[locale] || textObj.en; // Fallback to English if locale not found
 };
 
+/**
+ * Resolve API fields that may be a plain string, `{ en, ko, zh }`, or
+ * ownmall-style `{ titleEn, titleKo, titleZh }` to the active app locale.
+ */
+export function pickLocalizedString(value: unknown, locale: 'en' | 'ko' | 'zh'): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (typeof value !== 'object' || Array.isArray(value)) return String(value);
+
+  const o = value as Record<string, unknown>;
+  const hasEnKoZh =
+    typeof o.en === 'string' ||
+    typeof o.ko === 'string' ||
+    typeof o.zh === 'string';
+  if (hasEnKoZh) {
+    return getLocalizedText(
+      {
+        en: String(o.en ?? ''),
+        ko: String(o.ko ?? ''),
+        zh: String(o.zh ?? ''),
+      },
+      locale,
+    );
+  }
+
+  const titleEn = o.titleEn ?? o.en_title;
+  const titleKo = o.titleKo ?? o.ko_title;
+  const titleZh = o.titleZh ?? o.zh_title;
+  if (titleEn != null || titleKo != null || titleZh != null) {
+    return getLocalizedText(
+      {
+        en: String(titleEn ?? ''),
+        ko: String(titleKo ?? ''),
+        zh: String(titleZh ?? ''),
+      },
+      locale,
+    );
+  }
+
+  return String(value);
+}
+
 // Price conversion factor: multiply by 210.78 to convert to KRW
 // const PRICE_CONVERSION_FACTOR = 210.78;
 const PRICE_CONVERSION_FACTOR = 1;

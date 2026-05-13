@@ -1,3 +1,5 @@
+import { extractLiveCode, pickExplicitLiveCodeFromTree } from './liveCode';
+
 /**
  * Extra fields for live-seller product grid cards (code, item number, cost).
  * Accepts either a full live-commerce listing row or a flattened schedule item.
@@ -65,4 +67,58 @@ export function getLiveSellerListingProductMeta(item: any): LiveSellerListingPro
   }
 
   return { listProductCode, listProductItemNumber, listProductCost };
+}
+
+/** Explicit live-code on a listing row (walks `raw`, `product`, `productData`, etc.). */
+export function pickLiveSellerRawLiveCode(row: any): string {
+  return pickExplicitLiveCodeFromTree(row) || '';
+}
+
+/** 1688 / ownmall offer id on the listing (used as live-channel numeric id when no `liveCode`). */
+export function getLiveSellerOfferId(row: any): string {
+  if (!row) return '';
+  const r = row.raw ?? row;
+  const v =
+    row.offerId ??
+    r.offerId ??
+    r.product?.offerId ??
+    row.product?.offerId;
+  return v != null && String(v).trim() !== '' ? String(v).trim() : '';
+}
+
+/**
+ * Value shown beside the **Product Code** label on live-seller cards: real
+ * `liveCode` when present, else tail digits from title, else `offerId`,
+ * else catalog `listProductCode`.
+ */
+export function getLiveSellerProductCodeRowDisplayValue(mappedOrRow: any): string {
+  const raw = mappedOrRow?.raw ?? mappedOrRow;
+  const fromMappedLive =
+    mappedOrRow?.liveCode != null && String(mappedOrRow.liveCode).trim() !== ''
+      ? String(mappedOrRow.liveCode).trim()
+      : '';
+  if (fromMappedLive) return fromMappedLive;
+  const explicit = pickLiveSellerRawLiveCode(mappedOrRow);
+  if (explicit) return explicit;
+  const named = extractLiveCode(
+    mappedOrRow?.title,
+    mappedOrRow?.name,
+    raw?.subject,
+    raw?.subjectTrans,
+  );
+  if (named) return named;
+  const offer = getLiveSellerOfferId(mappedOrRow) || getLiveSellerOfferId(raw);
+  if (offer) return offer;
+  return getLiveSellerListingProductMeta(raw).listProductCode;
+}
+
+/**
+ * Value for **Product Item Number** row: prefer `offerId` (live-channel id),
+ * then SKU / listing `productNo` chain from {@link getLiveSellerListingProductMeta}.
+ */
+export function getLiveSellerProductItemNumberRowDisplayValue(mappedOrRow: any): string {
+  const offer = getLiveSellerOfferId(mappedOrRow);
+  if (offer) return offer;
+  const raw = mappedOrRow?.raw ?? mappedOrRow;
+  return getLiveSellerListingProductMeta(raw).listProductItemNumber;
 }

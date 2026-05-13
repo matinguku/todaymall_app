@@ -36,6 +36,7 @@ import { useToast } from '../../../../context/ToastContext';
 import { formatPriceKRW, formatKRWDirect, formatDepositBalance } from '../../../../utils/i18nHelpers';
 import { addressApi } from '../../../../services/addressApi';
 import { orderApi } from '../../../../services/orderApi';
+import { pickFirstExplicitLiveCodeFromRows } from '../../../../utils/liveCode';
 import { depositApi } from '../../../../services/depositApi';
 import type { BillgateResult } from '../../../../lib/billgate/types';
 
@@ -1315,6 +1316,9 @@ const PaymentScreen: React.FC = () => {
       const memoTrimmed = orderMemo.trim().slice(0, ORDER_MEMO_MAX_LENGTH);
       const combinedNotes = [productLineNotes, memoTrimmed].filter(Boolean).join('\n\n');
 
+      const rowsForOrderLiveCode = [...rawCheckoutItems, ...items];
+      const orderLiveCodeFromCheckout = pickFirstExplicitLiveCodeFromRows(rowsForOrderLiveCode);
+
       const orderRequest = {
         cartItems,
         quantities,
@@ -1333,6 +1337,7 @@ const PaymentScreen: React.FC = () => {
         pointsToUse: enteredPoints > 0 ? enteredPoints : 0,
         ...(paymentMethod === 'bank' && { memberName: memberName.trim() }),
         ...(paymentMethod === 'billgate' && billgateServiceCode && { serviceCode: billgateServiceCode }),
+        ...(orderLiveCodeFromCheckout ? { liveCode: orderLiveCodeFromCheckout } : {}),
       };
       createOrder(orderRequest);
       return;
@@ -1351,6 +1356,9 @@ const PaymentScreen: React.FC = () => {
       0
     );
     const memoTrimmedDirect = orderMemo.trim().slice(0, ORDER_MEMO_MAX_LENGTH);
+    const directRowsForLiveCode = [...directPurchaseItems, ...items];
+    const directOrderLiveCode = pickFirstExplicitLiveCodeFromRows(directRowsForLiveCode);
+
     const directRequest = {
       items: directPurchaseItems,
       designatedShootingImageCount: designatedShootingCount || undefined,
@@ -1371,6 +1379,7 @@ const PaymentScreen: React.FC = () => {
       }),
 
       ...(paymentMethod === 'bank' && { memberName: memberName.trim() }),
+      ...(directOrderLiveCode ? { liveCode: directOrderLiveCode } : {}),
     };
     createOrderDirectPurchase(directRequest);
   };

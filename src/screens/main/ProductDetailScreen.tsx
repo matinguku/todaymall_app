@@ -22,7 +22,13 @@ import Icon from '../../components/Icon';
 // Removed WebView import - using simpler HTML rendering approach
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, SERVER_BASE_URL, BACK_NAVIGATION_HIT_SLOP } from '../../constants';
 import { useAuth } from '../../context/AuthContext';
-import { isLiveSource } from '../../utils/liveCode';
+import {
+  isLiveSource,
+  resolveLiveCode,
+  pickExplicitLiveCodeFromTree,
+  extractLiveCode,
+  getLiveCodeForCartPayload,
+} from '../../utils/liveCode';
 import { recordLiveProduct } from '../../utils/liveProductTracker';
 
 import { ProductCard, SearchButton } from '../../components';
@@ -140,6 +146,36 @@ function skuAttributeRowMatches(attr: any, canonicalKey: string, selectedValue: 
   return v.toLowerCase() === String(selectedValue).toLowerCase();
 }
 
+/**
+ * PDP badge / copy row: label is always "Product Code"; for live-commerce the
+ * numeric value is the live code (explicit / name / route), then offerId, then
+ * catalog code.
+ */
+function getPdpCatalogCodeDisplay(
+  routeSource: unknown,
+  product: any,
+  routeLiveCode?: unknown,
+): { value: string } {
+  const catalog =
+    String(product?.productCode ?? '').trim() ||
+    String(product?.offerId ?? '').trim() ||
+    String(product?.id ?? '').trim();
+  if (!isLiveSource(routeSource)) {
+    return { value: catalog };
+  }
+  const directLive = String((product as any)?.liveCode ?? '').trim();
+  if (directLive) return { value: directLive };
+  const fromNav =
+    routeLiveCode != null && routeLiveCode !== '' ? String(routeLiveCode).trim() : '';
+  const resolved =
+    resolveLiveCode(routeSource, product, product?.name, product?.subject, product?.subjectTrans) ||
+    fromNav;
+  const offer = String((product as any).offerId ?? '').trim();
+  if (resolved) return { value: resolved };
+  if (offer) return { value: offer };
+  return { value: catalog };
+}
+
 const ProductDetailScreen: React.FC = () => {
   const { width: dynWidth, height: dynHeight } = useWindowDimensions();
   const pdpIsTablet = Math.min(dynWidth, dynHeight) >= 600;
@@ -154,6 +190,7 @@ const ProductDetailScreen: React.FC = () => {
     productData: initialProductData,
     source: routeSource,
     country: routeCountry,
+    liveCode: routeLiveCode,
   } = route.params || {};
   // console.log("[ProductDetailScreen] routeSource:", routeSource);
   
@@ -1111,6 +1148,13 @@ const ProductDetailScreen: React.FC = () => {
           subject: apiProduct.subject || '',
           subjectTrans: apiProduct.subjectTrans || apiProduct.subject || '',
           promotionUrl: apiProduct.promotionUrl || '',
+          productCode: String(
+            apiProduct.productCode ?? apiProduct.offerId ?? apiProduct.productId ?? '',
+          ).trim(),
+          liveCode:
+            pickExplicitLiveCodeFromTree(apiProduct) ??
+            extractLiveCode(apiProduct.subject, apiProduct.subjectTrans) ??
+            '',
           // Live-commerce internal seller id. The live channel's
           // /live-commerce/sellers/:sellerId endpoint keys off this Mongo
           // _id rather than the 1688 sellerOpenId.
@@ -1992,6 +2036,10 @@ const ProductDetailScreen: React.FC = () => {
       if (!isAuthenticated) {
       // Login modal so returning members can continue; new users can open
       // 회원가입 (registration) from Login. Same returnParams + autoAddToCart.
+      const persistedLiveCode =
+        routeLiveCode != null && String(routeLiveCode).trim() !== ''
+          ? String(routeLiveCode).trim()
+          : String((product as any).liveCode ?? '').trim() || undefined;
       const returnParams = {
         productId: (productId || offerId)?.toString?.() ?? String(productId || offerId || ''),
         offerId: offerId?.toString?.(),
@@ -1999,6 +2047,7 @@ const ProductDetailScreen: React.FC = () => {
         country: routeCountry || countryRef.current,
         productData: product,
         autoAddToCart: true,
+        ...(persistedLiveCode ? { liveCode: persistedLiveCode } : {}),
       };
       navigation.navigate('Auth', {
         screen: 'Login',
@@ -2165,6 +2214,11 @@ const ProductDetailScreen: React.FC = () => {
         minOrderQuantity: minOrderQuantity,
       };
 
+      const cartLiveCode = getLiveCodeForCartPayload(routeSource, product, routeLiveCode);
+      if (cartLiveCode) {
+        requestBody.liveCode = cartLiveCode;
+      }
+
       // Local-only live tracking. Backend doesn't tag live orders, so we
       // remember the offerId on this device the moment the user commits
       // to adding a live product to the cart. BuyListScreen later
@@ -2320,6 +2374,11 @@ const ProductDetailScreen: React.FC = () => {
         categoryname: (product as any).categoryName || product.category?.name || undefined,
         skuInfo: skuInfoPayload,
       };
+
+      const buyNowLiveCode = getLiveCodeForCartPayload(routeSource, product, routeLiveCode);
+      if (buyNowLiveCode) {
+        directPurchaseBody.liveCode = buyNowLiveCode;
+      }
 
       // Same local-only live tracking as handleAddToCart — see that
       // handler's comment for context.
@@ -2578,12 +2637,9 @@ const ProductDetailScreen: React.FC = () => {
   };
 
   const handleCopyProductCode = async () => {
-    const productCode = (product as any).productCode ||
-                       (product as any).offerId ||
-                       product.id ||
-                       '';
-    if (productCode) {
-      await Clipboard.setString(productCode);
+    const { value: codeToCopy } = getPdpCatalogCodeDisplay(routeSource, product, routeLiveCode);
+    if (codeToCopy) {
+      await Clipboard.setString(codeToCopy);
       setIsCopied(true);
       // Reset icon after 2 seconds
       setTimeout(() => {
@@ -2596,7 +2652,11 @@ const ProductDetailScreen: React.FC = () => {
   // Mirrors handleCopyProductCode but targets a different field so the
   // two copy buttons don't fight over the same `isCopied` state.
   const handleCopyPartNumber = () => {
-    const partNumber = (product as any).productNo || '';
+    const isLivePdp = routeSource === 'live-commerce' || routeSource === 'live';
+    const partNumber =
+      (product as any).productNo ||
+      (isLivePdp ? String((product as any).offerId ?? '').trim() : '') ||
+      '';
     if (partNumber) {
       Clipboard.setString(partNumber);
       setIsPartNumberCopied(true);
@@ -2612,11 +2672,9 @@ const ProductDetailScreen: React.FC = () => {
       ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
       : 0;
     
-    // Get product code
-    const productCode = (product as any).productCode || 
-                       (product as any).offerId || 
-                       product.id || 
-                       '';
+    // Catalog / live code row (live-commerce shows Live Code when present)
+    const codeDisplay = getPdpCatalogCodeDisplay(routeSource, product, routeLiveCode);
+    const displayCode = codeDisplay.value;
     
     // Get soldOut number from product
     const soldOut = (product as any).soldOut || '0';
@@ -2730,9 +2788,11 @@ const ProductDetailScreen: React.FC = () => {
               <Text style={styles.discountBadgeText}>-{discount}%</Text>
             </View>
           )}
-          {productCode && (
+          {displayCode && (
             <View style={styles.productCodeBadge}>
-              <Text style={styles.productCodeBadgeText}>{t('product.productCode')} {productCode}</Text>
+              <Text style={styles.productCodeBadgeText}>
+                {t('product.productCode')} {displayCode}
+              </Text>
               <TouchableOpacity
                 onPress={handleCopyProductCode}
                 style={styles.copyIconButton}
@@ -2755,7 +2815,10 @@ const ProductDetailScreen: React.FC = () => {
           // `productNo` is the live-product part number (e.g. "611385").
           // Only present on live-commerce products — for regular catalog
           // products this field is undefined and the row is skipped.
-          const partNumber: string = (product as any).productNo || '';
+          const partNumber: string =
+            (product as any).productNo ||
+            (isLive ? String((product as any).offerId ?? '').trim() : '') ||
+            '';
           if (!partNumber) return null;
           return (
             <View style={styles.productPartNumberRow}>
@@ -2810,13 +2873,15 @@ const ProductDetailScreen: React.FC = () => {
     );
   };
 
-  const renderProductCode = () => (
+  const renderProductCode = () => {
+    const codeDisplay = getPdpCatalogCodeDisplay(routeSource, product, routeLiveCode);
+    if (!codeDisplay.value) return null;
+    return (
     <>
-      {/* Product Code with Copy Button */}
-      {product.productCode && (
-        <View style={styles.productCodeContainer}>
+      {/* Product / Live code with copy */}
+      <View style={styles.productCodeContainer}>
           <Text style={styles.productCodeLabel}>{t('product.productCode')} </Text>
-          <Text style={styles.productCodeText}>{product.productCode}</Text>
+          <Text style={styles.productCodeText}>{codeDisplay.value}</Text>
           <TouchableOpacity
             style={styles.copyButton}
             onPress={handleCopyProductCode}
@@ -2834,9 +2899,9 @@ const ProductDetailScreen: React.FC = () => {
             </Text>
           </TouchableOpacity>
         </View>
-      )}
     </>
-  );
+    );
+  };
 
 
   const renderVariationSelector = (variationType: { name: string; options: Array<{ value: string; image?: string; [key: string]: any }> }) => {
@@ -3630,6 +3695,10 @@ const ProductDetailScreen: React.FC = () => {
               if (!isAuthenticated) {
                 // Login first for checkout; new accounts use 회원가입 (registration)
                 // from Login. Same returnParams + autoBuyNow after auth.
+                const persistedLiveCode =
+                  routeLiveCode != null && String(routeLiveCode).trim() !== ''
+                    ? String(routeLiveCode).trim()
+                    : String((product as any).liveCode ?? '').trim() || undefined;
                 const returnParams = {
                   productId: (productId || offerId)?.toString?.() ?? String(productId || offerId || ''),
                   offerId: offerId?.toString?.(),
@@ -3637,6 +3706,7 @@ const ProductDetailScreen: React.FC = () => {
                   country: routeCountry || countryRef.current,
                   productData: product,
                   autoBuyNow: true,
+                  ...(persistedLiveCode ? { liveCode: persistedLiveCode } : {}),
                 };
                 navigation.navigate('Auth', {
                   screen: 'Login',

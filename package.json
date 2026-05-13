@@ -11,7 +11,8 @@
     "dev:android": "concurrently -n metro,android -c cyan,green \"npm run start\" \"npx wait-on tcp:127.0.0.1:8081 && npm run android\"",
     "ios": "react-native run-ios",
     "adb:reverse": "node ./scripts/adbReverse.js",
-    "gradle": "node ./scripts/run-gradle.js"
+    "gradle": "node ./scripts/run-gradle.js",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@d11/react-native-fast-image": "^8.13.0",
@@ -62,6 +63,7 @@
     "babel-plugin-transform-inline-environment-variables": "^0.4.4",
     "babel-plugin-transform-remove-console": "^6.9.4",
     "concurrently": "^9.1.2",
+    "patch-package": "^8.0.1",
     "typescript": "~5.9.2",
     "wait-on": "^8.0.1"
   },

@@ -44,7 +44,7 @@ import { useAppSelector } from '../../../../store/hooks';
 import { formatPriceKRW, getLocalizedText } from '../../../../utils/i18nHelpers';
 import { translations } from '../../../../i18n/translations';
 import { logDevApiFailure } from '../../../../utils/devLog';
-import { getDisplayOrderNumber } from '../../../../utils/liveCode';
+import { getDisplayOrderNumber, pickOrderLiveCodeSnapshot } from '../../../../utils/liveCode';
 import { loadLiveProductIds, orderHasRecordedLiveProduct } from '../../../../utils/liveProductTracker';
 import { useCancelOrderMutation } from '../../../../hooks/useCancelOrderMutation';
 import { useAddToCartMutation } from '../../../../hooks/useAddToCartMutation';
@@ -91,6 +91,7 @@ interface OrderItem {
     valueTrans: string;
     skuImageUrl?: string;
   }[];
+  liveCode?: string;
 }
 
 interface Order {
@@ -105,6 +106,11 @@ interface Order {
   statusTranslationKey: string;
   items: OrderItem[];
   totalAmount: number;
+  /** Set for live / own-mall orders so getDisplayOrderNumber() can show LS. */
+  liveCode?: string;
+  purchaseSource?: string;
+  liveCodeSnapshot?: string;
+  childOrders?: unknown[];
   inquiryId?: string; // Inquiry ID if inquiry exists for this order
   unreadCount?: number; // Unread message count for this inquiry
   shippingAddress?: any; // Address information
@@ -115,6 +121,17 @@ interface StoreGroup {
   sellerOpenId: string;
   items: OrderItem[];
   storeTotal: number;
+}
+
+/** Re-send the broadcast live code on buy-again (not catalog productCode). */
+function liveCodeForBuyAgainPayload(item: OrderItem, order?: Order): string | undefined {
+  const fromItem = item.liveCode?.trim();
+  if (fromItem && fromItem !== 'local-recorded') return fromItem;
+  const snap = order?.liveCodeSnapshot?.trim();
+  if (snap) return snap;
+  const o = order?.liveCode?.trim();
+  if (o && o !== 'local-recorded') return o;
+  return undefined;
 }
 
 // Map API order status to tab status
@@ -209,6 +226,17 @@ const PROGRESS_STATUS_META: Record<string, {
   NO_ORDER_INFO: { tab: 'error', group: 'error', translationKey: 'pages.orders.status.noOrderInfo' },
   USER_REFUND_REQ: { tab: 'refunds', group: 'error', translationKey: 'pages.orders.status.userRefundRequest' },
   USER_REFUND_COMPLETED: { tab: 'refunds', group: 'error', translationKey: 'pages.orders.status.userRefundComplete' },
+};
+
+/** Own-mall parent bundles often keep `items: []` on the parent and attach rows on `childOrders`. */
+const flattenBuyListOrderLineItems = (order: any): any[] => {
+  const top = order?.items;
+  if (Array.isArray(top) && top.length > 0) return top;
+  const out: any[] = [];
+  for (const co of order?.childOrders || []) {
+    if (Array.isArray(co?.items)) out.push(...co.items);
+  }
+  return out;
 };
 
 const mapOrderStatusMeta = (order: ApiOrder): Pick<Order, 'status' | 'statusGroup' | 'statusTranslationKey' | 'progressStatus'> => {
@@ -576,6 +604,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({
         valueTrans: attr.valueTrans ?? attr.value ?? '',
         skuImageUrl: attr.skuImageUrl,
       }));
+      const buyAgainLive = liveCodeForBuyAgainPayload(item, order);
       addToCart({
         offerId: parseInt(item.offerId, 10) || 0,
         categoryId: 0,
@@ -596,6 +625,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({
         source: item.source || '1688',
         quantity: item.quantity,
         minOrderQuantity: 1,
+        ...(buyAgainLive ? { liveCode: buyAgainLive } : {}),
       });
     });
   };
@@ -643,6 +673,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({
       valueTrans: attr.valueTrans ?? attr.value ?? '',
       skuImageUrl: attr.skuImageUrl,
     }));
+    const modalLive = liveCodeForBuyAgainPayload(addToCartItem);
     addToCart({
       offerId: parseInt(addToCartItem.offerId, 10) || 0,
       categoryId: 0,
@@ -663,6 +694,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({
       source: addToCartItem.source || '1688',
       quantity: addToCartQuantity,
       minOrderQuantity: 1,
+      ...(modalLive ? { liveCode: modalLive } : {}),
     });
     setAddToCartModalVisible(false);
   };
@@ -935,15 +967,20 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({
         // AsyncStorage record. A truthy `liveCode` on the mapped order
         // is what flips the LS prefix in getDisplayOrderNumber().
         const backendLiveCode =
-          order.liveCode ?? order.live_code ?? order.liveCommerceCode ?? order.broadcastCode;
+          pickOrderLiveCodeSnapshot(order) ||
+          order.liveCode ||
+          order.live_code ||
+          order.liveCommerceCode ||
+          order.broadcastCode;
         const localLive = !backendLiveCode && orderHasRecordedLiveProduct(order, liveProductIds);
+        const lineItems = flattenBuyListOrderLineItems(order);
         return {
           id: order.id,
           orderId: order.id,
           orderNumber: order.orderNumber,
           date: new Date(order.createdAt).toISOString().split('T')[0],
           ...statusMeta,
-          items: (order.items || []).map((item: any) => ({
+          items: lineItems.map((item: any) => ({
             productName: resolveText(item.subjectMultiLang) || item.subjectTrans || item.subject || 'Unknown Product',
             quantity: item.quantity || 1,
             price: item.userPrice ?? item.price ?? 0,
@@ -960,10 +997,18 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({
             subject: item.subject,
             subjectTrans: item.subjectTrans,
             subjectMultiLang: item.subjectMultiLang,
-            liveCode: item.liveCode ?? item.live_code ?? item.liveCommerceCode ?? item.broadcastCode,
+            liveCode:
+              item.liveCodeSnapshot ??
+              item.liveCode ??
+              item.live_code ??
+              item.liveCommerceCode ??
+              item.broadcastCode,
           })),
           totalAmount,
           liveCode: backendLiveCode || (localLive ? 'local-recorded' : undefined),
+          purchaseSource: order.purchaseSource,
+          liveCodeSnapshot: order.liveCodeSnapshot,
+          childOrders: order.childOrders,
           orderType: order.orderType,
           // Raw API fields for OrderDetailScreen
           shippingAddress: order.shippingAddress,

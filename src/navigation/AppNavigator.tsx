@@ -319,7 +319,12 @@ const MainTabNavigator = () => {
           );
         },
         tabBarButton: route.name === 'Live'
-          ? (props) => (
+          ? (props) => {
+              const liveFocused = props.accessibilityState?.selected === true;
+              const liveAccent = COLORS.text.red;
+              const liveIdle = COLORS.black;
+              const liveGlyphColor = liveFocused ? liveAccent : liveIdle;
+              return (
               <View style={tabBarStyles.liveButtonWrap} pointerEvents="box-none">
                 <TouchableOpacity
                   activeOpacity={0.9}
@@ -350,8 +355,8 @@ const MainTabNavigator = () => {
                           rather than a solid disk.
                         - 1px linear-gradient stroke (#FF0000 → #FFE6FE →
                           white) running top to bottom.
-                        The label below the circle and the globe glyph
-                        (LanguageIcon, black) are drawn outside this Svg. */}
+                        Sensors glyph + tab label use brand red when selected
+                        (same as Home gradient accent / tabBarActiveTintColor). */}
                     <Svg
                       width={LIVE_BUTTON_SIZE}
                       height={LIVE_BUTTON_SIZE}
@@ -392,7 +397,7 @@ const MainTabNavigator = () => {
                         strokeWidth={1}
                       />
                     </Svg>
-                    <SensorsIcon width={LIVE_ICON_SIZE} height={LIVE_ICON_SIZE} color={COLORS.black} />
+                    <SensorsIcon width={LIVE_ICON_SIZE} height={LIVE_ICON_SIZE} color={liveGlyphColor} />
                   </View>
                   <Text
                     style={{
@@ -402,15 +407,16 @@ const MainTabNavigator = () => {
                       right: 0,
                       textAlign: 'center',
                       fontSize: isTabletDevice ? 14 : 12,
-                      fontWeight: '400',
-                      color: COLORS.black,
+                      fontWeight: liveFocused ? '600' : '400',
+                      color: liveGlyphColor,
                     }}
                   >
                     {t('navigation.live')}
                   </Text>
                 </TouchableOpacity>
               </View>
-            )
+              );
+            }
           : undefined,
         tabBarActiveTintColor: COLORS.text.red,
         tabBarInactiveTintColor: COLORS.black,

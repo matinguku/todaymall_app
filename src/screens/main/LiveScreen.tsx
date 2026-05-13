@@ -32,11 +32,73 @@ import LiveIcon from '../../assets/icons/LiveIcon';
 import SensorsIcon from '../../assets/icons/SensorsIcon';
 import SellerMarkIcon from '../../assets/icons/SellerMarkIcon';
 import PartnerShareIcon from '../../assets/icons/PartnerShareIcon';
+import LiveSellerPillsMenuIcon from '../../assets/icons/LiveSellerPillsMenuIcon';
+import LiveSellerPillsNextLabelIcon from '../../assets/icons/LiveSellerPillsNextLabelIcon';
+import LiveCarouselBottomFade, {
+  LIVE_CAROUSEL_BOTTOM_FADE_DESIGN_H,
+  LIVE_CAROUSEL_BOTTOM_FADE_DESIGN_W,
+} from '../../assets/icons/LiveCarouselBottomFade';
+import LiveViewingBatonSvg, {
+  LIVE_VIEWING_BATON_DESIGN_H,
+  LIVE_VIEWING_BATON_DESIGN_W,
+} from '../../assets/icons/LiveViewingBatonSvg';
 import { formatPriceKRW } from '../../utils/i18nHelpers';
 import { productsApi } from '../../services/productsApi';
 
 const CAROUSEL_WIDTH = SCREEN_WIDTH - SPACING.sm * 2;
 const CAROUSEL_HEIGHT = 420;
+
+/** Popular Items horizontal cards — ×1.2 vs base, then ×1.2 again (effective ×1.44 vs 187×337) */
+const POPULAR_CARD_SCALE = 1.2 * 1.2;
+const POPULAR_CARD_W = Math.round(187 * POPULAR_CARD_SCALE);
+const POPULAR_IMAGE_H = Math.round(337 * POPULAR_CARD_SCALE);
+/** Readability scrim: bottom 2/3 of product image (matches design intent) */
+const POPULAR_IMAGE_GRADIENT_H = Math.round((POPULAR_IMAGE_H * 2) / 3);
+
+/**
+ * Popular card overlay stack: absolute `bottom` anchors measured from card bottom.
+ * Strip → seller → title → review/sold line → stars (larger `bottom` = higher on card).
+ */
+const POPULAR_STRIP_BOTTOM = Math.round(10 * POPULAR_CARD_SCALE);
+const POPULAR_STACK_GAP = SPACING.smmd;
+const POPULAR_STRIP_BLOCK_H = 88;
+const POPULAR_SELLER_BLOCK_H = 58;
+const POPULAR_TITLE_BLOCK_H = 34;
+/** Single-line review + sold counts between title and stars */
+const POPULAR_META_BLOCK_H = 18;
+const POPULAR_SELLER_BOTTOM =
+  POPULAR_STRIP_BOTTOM + POPULAR_STRIP_BLOCK_H + POPULAR_STACK_GAP;
+const POPULAR_TITLE_BOTTOM =
+  POPULAR_SELLER_BOTTOM + POPULAR_SELLER_BLOCK_H + POPULAR_STACK_GAP;
+/** Bottom edge of review/sold row (sits in the gap above the title). */
+const POPULAR_RATING_BOTTOM =
+  POPULAR_TITLE_BOTTOM + POPULAR_TITLE_BLOCK_H + POPULAR_STACK_GAP;
+/** Bottom edge of stars row when a meta line is shown above it */
+const POPULAR_STARS_BOTTOM =
+  POPULAR_RATING_BOTTOM + POPULAR_META_BLOCK_H + POPULAR_STACK_GAP;
+
+/** Live seller pills — pill length (width) additionally ×0.9 vs scaled base */
+const SELLER_PILL_CONTENT_SCALE = 1.1;
+const SELLER_PILL_LENGTH_SCALE = 1.1;
+const LIVE_SELLER_PILL_W = Math.round(166 * SELLER_PILL_LENGTH_SCALE * 0.9);
+const LIVE_SELLER_PILL_H = Math.round(40 * SELLER_PILL_CONTENT_SCALE);
+const SELLER_PILL_AVATAR = Math.round(28 * SELLER_PILL_CONTENT_SCALE);
+const SELLER_PILL_PAD_L = Math.round(4 * SELLER_PILL_CONTENT_SCALE);
+const SELLER_PILL_PAD_R = Math.round(8 * SELLER_PILL_CONTENT_SCALE);
+const SELLER_PILL_AVATAR_GAP = Math.round(6 * SELLER_PILL_CONTENT_SCALE);
+const SELLER_PILL_FONT_SIZE = 12 * SELLER_PILL_CONTENT_SCALE;
+const SELLER_PILL_LINE_HEIGHT = Math.round(16 * SELLER_PILL_CONTENT_SCALE);
+
+/** Trailing “next” control — tap height ×0.95 vs scaled base */
+const NEXT_BATON_ICON_SIZE = Math.round(24 * SELLER_PILL_CONTENT_SCALE);
+const NEXT_BATON_WIDTH = Math.round(44 * SELLER_PILL_LENGTH_SCALE);
+const NEXT_BATON_HEIGHT = Math.round(44 * SELLER_PILL_CONTENT_SCALE * 0.95);
+/** Decorative “다음” label SVG (49×9 design), scaled to match pill row */
+const NEXT_BATON_LABEL_W = Math.round(49 * SELLER_PILL_CONTENT_SCALE);
+const NEXT_BATON_LABEL_H = Math.round(9 * SELLER_PILL_CONTENT_SCALE);
+
+/** Max pills when using top sellers fallback (no rows marked live on schedule) */
+const LIVE_SELLER_PILL_FALLBACK_LIMIT = 48;
 
 const asArray = (value: any): any[] => (Array.isArray(value) ? value : []);
 
@@ -158,7 +220,7 @@ const getViewerCount = (item: any) => {
 };
 
 // ─── Header ───────────────────────────────────────────────
-const LiveHeader: React.FC<{ onSearchPress?: () => void; t: (key: string) => string }> = ({ onSearchPress, t }) => (
+const LiveHeader: React.FC<{ onSearchPress?: () => void }> = ({ onSearchPress }) => (
   <View style={styles.header}>
     <View style={styles.headerLeft}>
       <View style={styles.broadcastIconContainer}>
@@ -166,8 +228,8 @@ const LiveHeader: React.FC<{ onSearchPress?: () => void; t: (key: string) => str
         <SensorsIcon width={24} height={24} />
       </View>
       <View>
-        <Text style={styles.headerTitle}>{t('live.live')}</Text>
-        <Text style={styles.headerSubtitle}>{t('live.channel')}</Text>
+        <Text style={styles.headerTitle}>LIVE</Text>
+        <Text style={styles.headerSubtitle}>CHANNAL</Text>
       </View>
     </View>
     <LanguageButton />
@@ -262,16 +324,48 @@ const SearchBar: React.FC<{
   );
 };
 
-// ─── Live Seller Chips ────────────────────────────────────
-const LiveSellerChip: React.FC<{ seller: any; onPress?: () => void; t: (key: string) => string }> = ({ seller, onPress, t }) => {
+// ─── Live seller pills (below search) — gradient pill + avatar / LIVE badge ─
+const LiveSellerPill: React.FC<{ seller: any; onPress?: () => void }> = ({ seller, onPress }) => {
   const sellerData = seller?.seller || seller;
   const name = sellerData?.nickname || sellerData?.userName || sellerData?.name || 'Seller';
   const avatar = sellerData?.picUrl || sellerData?.avatar || 'https://via.placeholder.com/36.png?text=S';
   return (
-    <TouchableOpacity style={styles.liveChip} onPress={onPress} activeOpacity={0.7}>
-      <Image source={{ uri: avatar }} style={styles.liveChipAvatar} />
-      <Text style={styles.liveChipName} numberOfLines={1}>{name}</Text>
-      <Text style={styles.liveChipLabel}>{t('live.liveOn').replace('{arrow}', '>')}</Text>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.sellerPillTouchable}>
+      <View style={styles.sellerPillBorderWrap}>
+        <LinearGradient
+          colors={['#FFFF00', '#FFFFFF']}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={styles.sellerPillGradientFill}
+        />
+        <View style={styles.sellerPillInnerRow}>
+          <View style={styles.sellerPillIconRing}>
+            <Image source={{ uri: avatar }} style={styles.sellerPillAvatarImg} />
+            <View style={styles.sellerPillRedOverlay} />
+          </View>
+          <View style={styles.sellerPillNameDecorRow}>
+            <View style={styles.sellerPillTextWrap}>
+              <Text
+                style={[styles.sellerPillName, Platform.OS === 'android' && styles.sellerPillNameAndroid]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                adjustsFontSizeToFit
+                minimumFontScale={0.72}
+              >
+                {name}
+              </Text>
+            </View>
+            <View pointerEvents="none" style={styles.sellerPillDecorLabel}>
+              <LiveSellerPillsNextLabelIcon
+                width={NEXT_BATON_LABEL_W}
+                height={NEXT_BATON_LABEL_H}
+                color={COLORS.text.primary}
+              />
+            </View>
+          </View>
+          <View style={styles.sellerPillTailSpacer} />
+        </View>
+      </View>
     </TouchableOpacity>
   );
 };
@@ -292,6 +386,41 @@ const NoticeBanner: React.FC<{ text?: string; t: (key: string) => string }> = ({
     </TouchableOpacity>
   </View>
 );
+
+/** Watch Live CTA — baton SVG chrome; label + 👉 emoji per design */
+const WatchLiveBatonButton: React.FC<{
+  onPress: () => void;
+  label: string;
+}> = ({ onPress, label }) => {
+  const [svgSize, setSvgSize] = useState({ w: LIVE_VIEWING_BATON_DESIGN_W, h: LIVE_VIEWING_BATON_DESIGN_H });
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <View
+        style={styles.watchLiveBatonWrap}
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout;
+          if (width > 0 && height > 0) {
+            setSvgSize({ w: width, h: height });
+          }
+        }}
+      >
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <LiveViewingBatonSvg width={svgSize.w} height={svgSize.h} />
+        </View>
+        <View style={styles.watchLiveBatonInner} accessible={false}>
+          <Text style={styles.watchLiveBatonEmoji}>👉</Text>
+          <Text style={styles.watchLiveBatonTitle}>{label}</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+};
 
 // ─── Featured Live Carousel ──────────────────────────────
 const FeaturedLiveCarousel: React.FC<{
@@ -337,6 +466,9 @@ const FeaturedLiveCarousel: React.FC<{
     const sellerLiveUrl = item ? pickSellerLiveLink(item) : null;
     const hasSellerLiveLink = !!(sellerLiveUrl && onWatchLivePress);
 
+    const carouselBottomFadeHeight =
+      (itemWidth * LIVE_CAROUSEL_BOTTOM_FADE_DESIGN_H) / LIVE_CAROUSEL_BOTTOM_FADE_DESIGN_W;
+
     return (
       <View style={[styles.carouselItem, { width: itemWidth }]}>
         {/* Seller info bar */}
@@ -348,18 +480,30 @@ const FeaturedLiveCarousel: React.FC<{
           </View>
         </View>
 
-        {/* Active card with `videoUrl`: play only while this screen is focused. */}
-        {item?.videoUrl && index === activeIndex && isScreenFocused ? (
-          <ReelVideoPlayer
-            videoUrl={item.videoUrl}
-            posterUrl={imageUrl || undefined}
-            style={styles.carouselImage}
-          />
-        ) : imageUrl ? (
-          <Image source={{ uri: imageUrl }} style={styles.carouselImage} resizeMode="cover" />
-        ) : (
-          <View style={[styles.carouselImage, { backgroundColor: COLORS.gray[200] }]} />
-        )}
+        <View style={styles.carouselMediaBlock}>
+          {/* Active card with `videoUrl`: play only while this screen is focused. */}
+          {item?.videoUrl && index === activeIndex && isScreenFocused ? (
+            <ReelVideoPlayer
+              videoUrl={item.videoUrl}
+              posterUrl={imageUrl || undefined}
+              style={styles.carouselImage}
+            />
+          ) : imageUrl ? (
+            <Image source={{ uri: imageUrl }} style={styles.carouselImage} resizeMode="cover" />
+          ) : (
+            <View style={[styles.carouselImage, { backgroundColor: COLORS.gray[200] }]} />
+          )}
+          <View
+            pointerEvents="none"
+            style={[styles.carouselBottomFadeWrap, { height: carouselBottomFadeHeight }]}
+          >
+            <LiveCarouselBottomFade
+              width={itemWidth}
+              height={carouselBottomFadeHeight}
+              gradientId={`live-carousel-bottom-fade-${index}`}
+            />
+          </View>
+        </View>
 
         {/* LIVE NOW badge */}
         {status?.toLowerCase() === 'live' && (
@@ -378,14 +522,10 @@ const FeaturedLiveCarousel: React.FC<{
 
         {hasSellerLiveLink && sellerLiveUrl && (
           <View style={[styles.carouselWatchButtonContainer, { width: itemWidth }]}>
-            <TouchableOpacity
-              style={styles.watchButton}
-              activeOpacity={0.8}
+            <WatchLiveBatonButton
               onPress={() => onWatchLivePress?.(sellerLiveUrl)}
-            >
-              <Text style={styles.watchButtonEmoji}>▶</Text>
-              <Text style={styles.watchButtonText}>{t('live.watchLive')}</Text>
-            </TouchableOpacity>
+              label={t('live.watchLiveStream')}
+            />
           </View>
         )}
       </View>
@@ -496,6 +636,26 @@ const TopSellerItem: React.FC<{ seller: any; onPress?: () => void }> = ({ seller
   );
 };
 
+const POPULAR_RATING_STAR_SIZE = 14;
+const POPULAR_RATING_STAR_COLOR = '#FFDD00';
+
+/**
+ * Maps average score (0–5) to full + optional half yellow star.
+ * Fraction ≥ 0.75 rounds up one full star; any other positive fraction adds one half star.
+ */
+const getPopularCardStarParts = (score: number): { full: number; half: boolean } => {
+  const s = Math.min(5, Math.max(0, Number(score) || 0));
+  let full = Math.floor(s + 1e-9);
+  const frac = s - full;
+  if (frac >= 0.75 && full < 5) {
+    return { full: full + 1, half: false };
+  }
+  if (frac > 0.001 && full < 5) {
+    return { full, half: true };
+  }
+  return { full, half: false };
+};
+
 // ─── Popular Item Card ────────────────────────────────────
 const PopularItemCard: React.FC<{ item: any; locale: 'en' | 'ko' | 'zh'; rank?: number; onPress?: () => void; t: (key: string) => string }> = ({ item, locale, rank, onPress, t }) => {
   const product = item.product || {};
@@ -513,6 +673,15 @@ const PopularItemCard: React.FC<{ item: any; locale: 'en' | 'ko' | 'zh'; rank?: 
       {/* Product image with rank badge */}
       <View style={styles.popularImageContainer}>
         <Image source={{ uri: image }} style={styles.popularImage} resizeMode="cover" />
+        <View style={styles.popularImageGradientOverlay} pointerEvents="none">
+          <LinearGradient
+            colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.92)']}
+            locations={[0, 1]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </View>
         {rank != null && (
           <View style={styles.rankBadge}>
             <SellerMarkIcon width={77} height={72} />
@@ -527,17 +696,71 @@ const PopularItemCard: React.FC<{ item: any; locale: 'en' | 'ko' | 'zh'; rank?: 
         )}
       </View>
 
-      {/* Rating */}
-      <View style={styles.popularRatingRow}>
-        {[1, 2, 3, 4, 5].map((s) => (
-          <StarIcon key={s} width={14} height={14} color={s <= Math.round(reviewScore) ? '#FFDD00' : '#E0E0E0'} />
-        ))}
-        <View style={{flexDirection: 'row', alignItems: 'center'}}>
-          <Text style={styles.popularRatingText}>{reviewScore > 0 ? reviewScore.toFixed(1) : '0'}</Text>
-          {reviews > 0 && <Text style={styles.popularReviewCount}>{t('product.reviewsCount').replace('{count}', reviews.toLocaleString())}</Text>}
-          {soldCount > 0 && <Text style={styles.popularSoldCount}> | {t('product.soldCount').replace('{count}', `${soldCount.toLocaleString()}+`)}</Text>}
+      {/* Stars + score — only when there are reviews (yellow / half-yellow only, no empty stars) */}
+      {reviews > 0 && (
+        <View
+          style={[
+            styles.popularRatingStarsShell,
+            (reviews > 0 || soldCount > 0) ? styles.popularRatingStarsShellWithMeta : null,
+          ]}
+        >
+          <View style={styles.popularRatingStarsInner}>
+            {(() => {
+              const { full, half } = getPopularCardStarParts(reviewScore);
+              const nodes: React.ReactNode[] = [];
+              for (let i = 0; i < full; i++) {
+                nodes.push(
+                  <StarIcon
+                    key={`popular-star-${i}`}
+                    width={POPULAR_RATING_STAR_SIZE}
+                    height={POPULAR_RATING_STAR_SIZE}
+                    color={POPULAR_RATING_STAR_COLOR}
+                  />,
+                );
+              }
+              if (half) {
+                nodes.push(
+                  <View
+                    key="popular-star-half"
+                    style={{
+                      width: POPULAR_RATING_STAR_SIZE / 2,
+                      height: POPULAR_RATING_STAR_SIZE,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <StarIcon
+                      width={POPULAR_RATING_STAR_SIZE}
+                      height={POPULAR_RATING_STAR_SIZE}
+                      color={POPULAR_RATING_STAR_COLOR}
+                    />
+                  </View>,
+                );
+              }
+              return nodes;
+            })()}
+          </View>
+          <Text style={styles.popularRatingText}>
+            {reviewScore > 0 ? reviewScore.toFixed(1) : '0.0'}
+          </Text>
         </View>
-      </View>
+      )}
+
+      {/* Review / sold — one line between stars and product title */}
+      {(reviews > 0 || soldCount > 0) && (
+        <View style={styles.popularReviewSoldRow}>
+          {reviews > 0 && (
+            <Text style={styles.popularReviewCount} numberOfLines={1} ellipsizeMode="tail">
+              {t('product.reviewsCount').replace('{count}', reviews.toLocaleString())}
+            </Text>
+          )}
+          {soldCount > 0 && (
+            <Text style={styles.popularSoldCount} numberOfLines={1} ellipsizeMode="tail">
+              {reviews > 0 ? ' | ' : ''}
+              {t('product.soldCount').replace('{count}', `${soldCount.toLocaleString()}+`)}
+            </Text>
+          )}
+        </View>
+      )}
 
       {/* Title */}
       <Text style={styles.popularTitle} numberOfLines={1}>{title}</Text>
@@ -1200,14 +1423,29 @@ const LiveScreen: React.FC = () => {
   // Featured carousel shows liveReels first; falls back to schedule when liveReels is empty.
   const featuredItems = useMemo(() => (liveReels.length > 0 ? liveReels : schedule), [liveReels, schedule]);
 
-  // Derive live sellers for chips (sellers that are currently live)
+  // Derive live sellers for pills: prefer schedule rows marked live; otherwise top sellers.
   const liveSellers = useMemo(() => {
     const live = schedule.filter((s: any) =>
       (s.status || s.currentLiveStatus || '').toLowerCase() === 'live'
     );
     if (live.length > 0) return live;
-    return topSellers.slice(0, 4);
+    return topSellers.slice(0, LIVE_SELLER_PILL_FALLBACK_LIMIT);
   }, [schedule, topSellers]);
+
+  const liveSellerPillRows = useMemo(() => {
+    const seen = new Set<string>();
+    const out: any[] = [];
+    for (const s of liveSellers) {
+      const o = s.seller || s;
+      const id = o?._id || o?.id;
+      if (!id) continue;
+      const key = String(id);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(s);
+    }
+    return out;
+  }, [liveSellers]);
 
   const liveNowCount = useMemo(() => {
     return schedule.filter((s: any) =>
@@ -1429,7 +1667,7 @@ const LiveScreen: React.FC = () => {
       />
 
       {/* Red Header */}
-      <LiveHeader t={t} onSearchPress={() => navigation.navigate('LiveSellerSearch')} />
+      <LiveHeader onSearchPress={() => navigation.navigate('LiveSellerSearch')} />
 
       {/* Fixed sub-header (search + notice), not scrolled */}
       <View style={styles.fixedHeaderSubSection}>
@@ -1448,7 +1686,53 @@ const LiveScreen: React.FC = () => {
           }
           t={t}
         />
-        <NoticeBanner t={t} />
+        {liveCommerceData && liveSellerPillRows.length > 0 && (
+          <View style={styles.sellerPillsRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.sellerPillsScroll}
+              contentContainerStyle={styles.sellerPillsContent}
+              nestedScrollEnabled
+              directionalLockEnabled
+              keyboardShouldPersistTaps="handled"
+            >
+              {liveSellerPillRows.map((s: any, i: number) => {
+                const sellerObj = s.seller || s;
+                const sid = String(sellerObj._id || sellerObj.id || '');
+                return (
+                  <LiveSellerPill
+                    key={s._id || s.id || sid || i}
+                    seller={sellerObj}
+                    onPress={() =>
+                      navigation.navigate('LiveSellerDetail', {
+                        sellerId: sid,
+                        sellerName: sellerObj.nickname || sellerObj.userName || '',
+                        source: 'ownmall',
+                      })
+                    }
+                  />
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.sellerPillsNextBtn}
+              onPress={() =>
+                navigation.navigate('LiveSellerSearch', {
+                  query: '',
+                  searchMode: 'sellers',
+                })
+              }
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={t('live.sellerPillsNext')}
+            >
+              <LiveSellerPillsMenuIcon width={NEXT_BATON_ICON_SIZE} height={NEXT_BATON_ICON_SIZE} color={COLORS.white} />
+            </TouchableOpacity>
+          </View>
+        )}
+        {/* <NoticeBanner t={t} /> */}
       </View>
 
       {/* Initial-load spinner: shown the first time the user lands on Live
@@ -1465,33 +1749,14 @@ const LiveScreen: React.FC = () => {
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* Live Seller Chips */}
-        {/* {liveSellers.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.chipsScroll}
-            contentContainerStyle={styles.chipsContent}
-          >
-            {liveSellers.map((s: any, i: number) => {
-              const sellerObj = s.seller || s;
-              return (
-                <LiveSellerChip
-                  key={s._id || s.id || i}
-                  seller={sellerObj}
-                  onPress={() => navigation.navigate('LiveSellerDetail', {
-                    sellerId: sellerObj._id || sellerObj.id || '',
-                    sellerName: sellerObj.nickname || sellerObj.userName || '',
-                    source: 'ownmall',
-                  })}
-                  t={t}
-                />
-              );
-            })}
-          </ScrollView>
-        )} */}
+        {/* Error */}
+        {isError && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>{error || t('live.failedToLoadLiveCommerceData')}</Text>
+          </View>
+        )}
 
-        {/* Featured Live Carousel — mobile only; tablet uses 3-panel row below */}
+        {/* Featured Live Carousel — top of scroll on mobile; tablet uses 3-panel row below */}
         {!isTablet && (
           showHeavyContent ? (
             featuredItems.length > 0 && (
@@ -1508,10 +1773,103 @@ const LiveScreen: React.FC = () => {
           )
         )}
 
-        {/* Error */}
-        {isError && (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error || t('live.failedToLoadLiveCommerceData')}</Text>
+        {/* Defer frame: schedule skeleton under the carousel placeholder */}
+        {!isTablet && !showHeavyContent && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>{t('live.liveStreamSchedule')}</Text>
+            </View>
+            {[0, 1, 2].map((i) => (
+              <View key={i} style={liveSkeletonStyles.scheduleRow} />
+            ))}
+          </View>
+        )}
+        {showHeavyContent && !isTablet && schedule.length > 0 && topSellers.length > 0 && (
+          <View style={styles.mobileScheduleTopSellerColumn}>
+            <View style={[styles.section, styles.mobileScheduleTopSellerSection]}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>{t('live.liveStreamSchedule')}</Text>
+                {liveNowCount > 0 && (
+                  <Text style={styles.liveNowCountText}>
+                    {liveNowCount}{' '}
+                    <Text style={{ color: COLORS.text.secondary }}>{t('live.liveNowStatus')}</Text>
+                  </Text>
+                )}
+              </View>
+              {schedule.slice(0, 6).map((item: any, i: number) => (
+                <ScheduleItem key={item._id || item.id || i} item={item} locale={locale} />
+              ))}
+            </View>
+            <View style={[styles.section, styles.mobileScheduleTopSellerSection]}>
+              <View style={styles.topSellerHeader}>
+                <Text style={styles.sectionTitle}>{t('live.topSeller')}</Text>
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.topSellerRowContent}
+              >
+                {topSellers.slice(0, 10).map((seller: any, i: number) => (
+                  <TopSellerItem
+                    key={seller._id || i}
+                    seller={seller}
+                    onPress={() => navigation.navigate('LiveSellerDetail', {
+                      sellerId: seller._id || seller.id || '',
+                      sellerName: seller.nickname || seller.userName || '',
+                      source: 'ownmall',
+                    })}
+                  />
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        )}
+        {showHeavyContent && !isTablet && schedule.length > 0 && topSellers.length === 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>{t('live.liveStreamSchedule')}</Text>
+              {liveNowCount > 0 && (
+                <Text style={styles.liveNowCountText}>
+                  {liveNowCount}{' '}
+                  <Text style={{ color: COLORS.text.secondary }}>{t('live.liveNowStatus')}</Text>
+                </Text>
+              )}
+            </View>
+            {schedule.slice(0, 6).map((item: any, i: number) => (
+              <ScheduleItem key={item._id || item.id || i} item={item} locale={locale} />
+            ))}
+          </View>
+        )}
+        {showHeavyContent && !isTablet && schedule.length === 0 && liveCommerceData && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>{t('live.liveStreamSchedule')}</Text>
+            </View>
+            <Text style={styles.liveStreamScheduleEmptyText}>{t('live.liveStreamScheduleEmpty')}</Text>
+          </View>
+        )}
+        {showHeavyContent && !isTablet && topSellers.length > 0 && schedule.length === 0 && (
+          <View style={styles.section}>
+            <View style={styles.topSellerHeader}>
+              <Text style={styles.sectionTitle}>{t('live.topSeller')}</Text>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.topSellerRowContent}
+            >
+              {topSellers.slice(0, 10).map((seller: any, i: number) => (
+                <TopSellerItem
+                  key={seller._id || i}
+                  seller={seller}
+                  onPress={() => navigation.navigate('LiveSellerDetail', {
+                    sellerId: seller._id || seller.id || '',
+                    sellerName: seller.nickname || seller.userName || '',
+                    source: 'ownmall',
+                  })}
+                />
+              ))}
+            </ScrollView>
           </View>
         )}
 
@@ -1526,88 +1884,6 @@ const LiveScreen: React.FC = () => {
                 ]}
               >
                 {(isTabletPortrait ? tabletPanelsPortrait : tabletPanelsLandscape).filter(Boolean)}
-              </View>
-            )}
-
-            {/* Mobile: Live Stream Schedule + Top Seller — shared column so widths and gutters match */}
-            {!isTablet && schedule.length > 0 && topSellers.length > 0 && (
-              <View style={styles.mobileScheduleTopSellerColumn}>
-                <View style={[styles.section, styles.mobileScheduleTopSellerSection]}>
-                  <View style={styles.sectionHeaderRow}>
-                    <Text style={styles.sectionTitle}>{t('live.liveStreamSchedule')}</Text>
-                    {liveNowCount > 0 && (
-                      <Text style={styles.liveNowCountText}>
-                        {liveNowCount}{' '}
-                        <Text style={{ color: COLORS.text.secondary }}>{t('live.liveNowStatus')}</Text>
-                      </Text>
-                    )}
-                  </View>
-                  {schedule.slice(0, 6).map((item: any, i: number) => (
-                    <ScheduleItem key={item._id || item.id || i} item={item} locale={locale} />
-                  ))}
-                </View>
-                <View style={[styles.section, styles.mobileScheduleTopSellerSection]}>
-                  <View style={styles.topSellerHeader}>
-                    <Text style={styles.sectionTitle}>{t('live.topSeller')}</Text>
-                  </View>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.topSellerRowContent}
-                  >
-                    {topSellers.slice(0, 10).map((seller: any, i: number) => (
-                      <TopSellerItem
-                        key={seller._id || i}
-                        seller={seller}
-                        onPress={() => navigation.navigate('LiveSellerDetail', {
-                          sellerId: seller._id || seller.id || '',
-                          sellerName: seller.nickname || seller.userName || '',
-                          source: 'ownmall',
-                        })}
-                      />
-                    ))}
-                  </ScrollView>
-                </View>
-              </View>
-            )}
-            {!isTablet && schedule.length > 0 && topSellers.length === 0 && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeaderRow}>
-                  <Text style={styles.sectionTitle}>{t('live.liveStreamSchedule')}</Text>
-                  {liveNowCount > 0 && (
-                    <Text style={styles.liveNowCountText}>
-                      {liveNowCount}{' '}
-                      <Text style={{ color: COLORS.text.secondary }}>{t('live.liveNowStatus')}</Text>
-                    </Text>
-                  )}
-                </View>
-                {schedule.slice(0, 6).map((item: any, i: number) => (
-                  <ScheduleItem key={item._id || item.id || i} item={item} locale={locale} />
-                ))}
-              </View>
-            )}
-            {!isTablet && topSellers.length > 0 && schedule.length === 0 && (
-              <View style={styles.section}>
-                <View style={styles.topSellerHeader}>
-                  <Text style={styles.sectionTitle}>{t('live.topSeller')}</Text>
-                </View>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.topSellerRowContent}
-                >
-                  {topSellers.slice(0, 10).map((seller: any, i: number) => (
-                    <TopSellerItem
-                      key={seller._id || i}
-                      seller={seller}
-                      onPress={() => navigation.navigate('LiveSellerDetail', {
-                        sellerId: seller._id || seller.id || '',
-                        sellerName: seller.nickname || seller.userName || '',
-                        source: 'ownmall',
-                      })}
-                    />
-                  ))}
-                </ScrollView>
               </View>
             )}
 
@@ -1628,16 +1904,24 @@ const LiveScreen: React.FC = () => {
                       rank={i + 1}
                       onPress={() => {
                         const productId = item.offerId || item.productNo || item.productId || item.product?.id || item.id || '';
-                        // source='live-commerce' tags this as a live-origin
-                        // navigation so ProductDetail's resolveLiveCode()
-                        // extracts the trailing numeric code from the
-                        // product name and forwards it as `liveCode` to
-                        // the cart-add / direct-purchase requests. The
-                        // backend then assigns an `LS`-prefixed order
-                        // number. ProductDetailScreen still maps this
-                        // source back to 'ownmall' internally for API
-                        // routing — see ProductDetailScreen.tsx:106.
-                        if (productId) navigation.navigate('ProductDetail', { productId, source: 'live-commerce' });
+                        const liveCodeParam =
+                          item.liveCode ||
+                          item.live_code ||
+                          item.liveCommerceCode ||
+                          item.product?.liveCode ||
+                          item.product?.live_code ||
+                          item.offerId ||
+                          item.product?.offerId ||
+                          undefined;
+                        if (productId) {
+                          navigation.navigate('ProductDetail', {
+                            productId,
+                            source: 'live-commerce',
+                            ...(liveCodeParam != null && liveCodeParam !== ''
+                              ? { liveCode: String(liveCodeParam) }
+                              : {}),
+                          });
+                        }
                       }}
                       t={t}
                     />
@@ -1664,7 +1948,23 @@ const LiveScreen: React.FC = () => {
                       })}
                       onProductPress={(prod) => {
                         const productId = prod?.offerId || prod?.productNo || prod?.productId || prod?.id || '';
-                        if (productId) navigation.navigate('ProductDetail', { productId, source: 'live-commerce' });
+                        const liveCodeParam =
+                          prod?.liveCode ||
+                          prod?.live_code ||
+                          prod?.liveCommerceCode ||
+                          prod?.product?.liveCode ||
+                          prod?.offerId ||
+                          prod?.product?.offerId ||
+                          undefined;
+                        if (productId) {
+                          navigation.navigate('ProductDetail', {
+                            productId,
+                            source: 'live-commerce',
+                            ...(liveCodeParam != null && liveCodeParam !== ''
+                              ? { liveCode: String(liveCodeParam) }
+                              : {}),
+                          });
+                        }
                       }}
                       t={t}
                       cardStyle={{ width: partnerCardWidth }}
@@ -1780,7 +2080,117 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     zIndex: 2,
     bottom: 0,
-    },
+  },
+
+  /** Pills scroll left/center; trailing control stays pinned on the right */
+  sellerPillsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+    paddingLeft: SPACING.sm,
+    paddingRight: SPACING.xs,
+    paddingBottom: SPACING.sm / 2,
+    minHeight: LIVE_SELLER_PILL_H + 4,
+  },
+  sellerPillsScroll: {
+    flex: 1,
+    minWidth: 0,
+  },
+  /**
+   * Do NOT use flexGrow:fillWidth here — it stretches content to the viewport and
+   * breaks horizontal scrolling when there are many pills. Keep intrinsic row width.
+   */
+  sellerPillsContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: SPACING.xs,
+  },
+  sellerPillTouchable: {
+    marginRight: SPACING.sm,
+  },
+  sellerPillBorderWrap: {
+    width: LIVE_SELLER_PILL_W,
+    height: LIVE_SELLER_PILL_H,
+    borderRadius: LIVE_SELLER_PILL_H / 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.05)',
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  sellerPillGradientFill: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  sellerPillInnerRow: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: SELLER_PILL_PAD_L,
+    paddingRight: SELLER_PILL_PAD_R,
+  },
+  sellerPillIconRing: {
+    width: SELLER_PILL_AVATAR,
+    height: SELLER_PILL_AVATAR,
+    borderRadius: SELLER_PILL_AVATAR / 2,
+    overflow: 'hidden',
+    marginRight: SELLER_PILL_AVATAR_GAP,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.1)',
+  },
+  sellerPillAvatarImg: {
+    width: SELLER_PILL_AVATAR,
+    height: SELLER_PILL_AVATAR,
+    borderRadius: SELLER_PILL_AVATAR / 2,
+  },
+  sellerPillRedOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 0, 0, 0.6)',
+    borderRadius: SELLER_PILL_AVATAR / 2,
+  },
+  /** Keeps seller name + trailing graphic adjacent; extra pill width goes in tailSpacer */
+  sellerPillNameDecorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  sellerPillTextWrap: {
+    flexShrink: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+    maxHeight: LIVE_SELLER_PILL_H,
+  },
+  /** “다음” vector art — tight to name; display-only */
+  sellerPillDecorLabel: {
+    justifyContent: 'center',
+    marginLeft: 6,
+    flexShrink: 0,
+  },
+  sellerPillTailSpacer: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 1,
+  },
+  sellerPillName: {
+    fontSize: SELLER_PILL_FONT_SIZE,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+    lineHeight: SELLER_PILL_LINE_HEIGHT,
+  },
+  sellerPillNameAndroid: {
+    includeFontPadding: false,
+  },
+  /** Fixed right: menu icon — seller search (same as before decorative label move) */
+  sellerPillsNextBtn: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: NEXT_BATON_WIDTH,
+    height: NEXT_BATON_HEIGHT,
+    marginLeft: SPACING.xs,
+  },
 
   scrollContent: {
     paddingBottom: SPACING.xl,
@@ -1874,43 +2284,6 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
 
-  // Live Seller Chips
-  chipsScroll: {
-    marginTop: SPACING.sm,
-  },
-  chipsContent: {
-    paddingHorizontal: SPACING.md,
-    gap: SPACING.sm,
-  },
-  liveChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.full,
-    paddingVertical: SPACING.xssm,
-    paddingHorizontal: SPACING.smmd,
-    marginRight: SPACING.sm,
-    borderWidth: 1,
-    borderColor: '#FF0000',
-  },
-  liveChipAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    marginRight: SPACING.xssm,
-  },
-  liveChipName: {
-    fontSize: FONTS.sizes.xs,
-    fontWeight: '700',
-    color: COLORS.text.primary,
-    maxWidth: 80,
-  },
-  liveChipLabel: {
-    fontSize: FONTS.sizes.xs,
-    fontWeight: '600',
-    color: '#FF0000',
-  },
-
   // Notice Banner
   noticeBanner: {
     flexDirection: 'row',
@@ -1952,7 +2325,7 @@ const styles = StyleSheet.create({
 
   // Carousel
   carouselContainer: {
-    marginTop: SPACING.smmd,
+    marginTop: SPACING.smmd / 2,
     marginHorizontal: SPACING.sm,
   },
   carouselItem: {
@@ -1962,6 +2335,18 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: COLORS.black,
+  },
+  carouselMediaBlock: {
+    width: '100%',
+    height: 470,
+    position: 'relative',
+  },
+  carouselBottomFadeWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 4,
   },
   carouselSellerBar: {
     flexDirection: 'row',
@@ -1997,6 +2382,30 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.xs,
     color: COLORS.white,
     opacity: 0.9,
+  },
+  watchLiveBatonWrap: {
+    position: 'relative',
+    alignSelf: 'center',
+    overflow: 'hidden',
+    borderRadius: BORDER_RADIUS.md,
+  },
+  watchLiveBatonInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    zIndex: 1,
+    gap: SPACING.xs,
+  },
+  watchLiveBatonEmoji: {
+    fontSize: 18,
+    lineHeight: 22,
+  },
+  watchLiveBatonTitle: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '600',
+    color: COLORS.white,
   },
   carouselImage: {
     width: '100%',
@@ -2061,25 +2470,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: CAROUSEL_WIDTH,
   },
-  watchButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-    borderColor: '#FFFFFF40',
-  },
-  watchButtonEmoji: {
-    fontSize: 16,
-    marginRight: SPACING.xs,
-  },
-  watchButtonText: {
-    fontSize: FONTS.sizes.sm,
-    fontWeight: '400',
-    color: COLORS.white,
-  },
 
   // Pagination
   paginationContainer: {
@@ -2142,6 +2532,13 @@ const styles = StyleSheet.create({
     color: COLORS.text.primary,
     marginHorizontal: SPACING.sm,
     fontFamily: FONTS.families.black,
+  },
+  liveStreamScheduleEmptyText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.smmd,
+    marginTop: -SPACING.xs,
   },
   liveNowCountText: {
     fontSize: FONTS.sizes.xs,
@@ -2259,8 +2656,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.sm,
   },
   popularCard: {
-    // 280 / 1.5 ≈ 187
-    width: 187,
+    width: POPULAR_CARD_W,
     borderRadius: BORDER_RADIUS.lg,
     backgroundColor: COLORS.transparent,
     marginRight: SPACING.smmd,
@@ -2271,15 +2667,25 @@ const styles = StyleSheet.create({
   popularImage: {
     marginTop: 8,
     width: '100%',
-    // 506 / 1.5 ≈ 337
-    height: 337,
+    height: POPULAR_IMAGE_H,
     backgroundColor: COLORS.gray[200],
     borderRadius: BORDER_RADIUS.lg,
+  },
+  popularImageGradientOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: POPULAR_IMAGE_GRADIENT_H,
+    borderBottomLeftRadius: BORDER_RADIUS.lg,
+    borderBottomRightRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
+    zIndex: 2,
   },
   rankBadge: {
     position: 'absolute',
     top: 0,
-    right: 20,
+    right: Math.round(20 * POPULAR_CARD_SCALE),
     alignItems: 'center',
     zIndex: 10,
   },
@@ -2316,17 +2722,35 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     overflow: 'hidden',
   },
-  popularRatingRow: {
+  popularReviewSoldRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'nowrap',
     paddingHorizontal: SPACING.smmd,
-    paddingTop: SPACING.sm,
-    flexWrap: 'wrap',
     position: 'absolute',
-    bottom: 170,
+    bottom: POPULAR_RATING_BOTTOM - 15,
     left: 0,
     right: 0,
     zIndex: 10,
+  },
+  popularRatingStarsShell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.smmd,
+    paddingTop: SPACING.xs,
+    position: 'absolute',
+    bottom: POPULAR_RATING_BOTTOM - 15,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+  popularRatingStarsInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  popularRatingStarsShellWithMeta: {
+    bottom: POPULAR_STARS_BOTTOM - 15,
   },
   popularRatingText: {
     fontSize: FONTS.sizes.xs,
@@ -2337,20 +2761,20 @@ const styles = StyleSheet.create({
   popularReviewCount: {
     fontSize: FONTS.sizes.xs,
     color: COLORS.white,
-    marginLeft: 4,
+    flexShrink: 1,
   },
   popularSoldCount: {
     fontSize: FONTS.sizes.xs,
     color: COLORS.white,
+    flexShrink: 1,
   },
   popularTitle: {
     fontSize: FONTS.sizes.sm,
     fontWeight: '700',
     color: COLORS.white,
     paddingHorizontal: SPACING.smmd,
-    marginTop: SPACING.xs,
     position: 'absolute',
-    bottom: 150,
+    bottom: POPULAR_TITLE_BOTTOM - 15,
     left: 0,
     right: 0,
     zIndex: 10,
@@ -2359,11 +2783,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     marginHorizontal: SPACING.smmd,
-    paddingTop: SPACING.sm,
+    paddingTop: SPACING.smmd,
     borderTopWidth: 1,
     borderTopColor: COLORS.gray[100],
     position: 'absolute',
-    bottom: 90,
+    bottom: POPULAR_SELLER_BOTTOM - 15,
     left: 0,
     right: 0,
     zIndex: 10,
@@ -2400,7 +2824,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.gray[100],
     position: 'absolute',
-    bottom: 10,
+    bottom: POPULAR_STRIP_BOTTOM,
     left: 0,
     right: 0,
     zIndex: 10,
@@ -2624,7 +3048,7 @@ const styles = StyleSheet.create({
   tabletPanelRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginTop: SPACING.lg,
+    marginTop: SPACING.lg / 2,
     marginHorizontal: SPACING.sm,
     gap: SPACING.sm,
   },
@@ -2783,9 +3207,17 @@ const liveSkeletonStyles = StyleSheet.create({
   featuredPlaceholder: {
     height: CAROUSEL_HEIGHT,
     marginHorizontal: SPACING.sm,
-    marginTop: SPACING.md,
+    marginTop: SPACING.smmd / 2,
     borderRadius: BORDER_RADIUS.lg,
     backgroundColor: COLORS.gray[100],
+  },
+  // Schedule rows (~ScheduleItem height) during defer frame
+  scheduleRow: {
+    height: 56,
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.gray[200],
   },
   // Top Seller row: 5 circle avatars matching topSellerAvatar (60x60)
   topSellerRow: {
@@ -2799,16 +3231,14 @@ const liveSkeletonStyles = StyleSheet.create({
     backgroundColor: COLORS.gray[200],
     marginRight: SPACING.lg,
   },
-  // Popular Items row: 3 cards matching popularCard width (280) and
-  // popularImage height (506)
+  // Popular Items row: skeleton matches POPULAR_CARD_W × POPULAR_IMAGE_H
   popularRow: {
     flexDirection: 'row',
     paddingHorizontal: SPACING.sm,
   },
   popularCard: {
-    // 280 / 1.5 ≈ 187, 506 / 1.5 ≈ 337
-    width: 187,
-    height: 337,
+    width: POPULAR_CARD_W,
+    height: POPULAR_IMAGE_H,
     marginTop: 8,
     borderRadius: BORDER_RADIUS.lg,
     backgroundColor: COLORS.gray[200],

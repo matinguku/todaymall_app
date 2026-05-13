@@ -24,7 +24,13 @@ import SearchIcon from '../../../assets/icons/SearchIcon';
 import SensorsIcon from '../../../assets/icons/SensorsIcon';
 import ArrowDropDownIcon from '../../../assets/icons/ArrowDropDownIcon';
 import { formatPriceKRW } from '../../../utils/i18nHelpers';
-import { getLiveSellerListingProductMeta } from '../../../utils/liveSellerProductListingMeta';
+import {
+  getLiveSellerListingProductMeta,
+  pickLiveSellerRawLiveCode,
+  getLiveSellerOfferId,
+  getLiveSellerProductCodeRowDisplayValue,
+  getLiveSellerProductItemNumberRowDisplayValue,
+} from '../../../utils/liveSellerProductListingMeta';
 
 const CARD_GAP = SPACING.smmd;
 const CARD_WIDTH = (SCREEN_WIDTH - SPACING.md * 2 - CARD_GAP) / 2;
@@ -297,7 +303,9 @@ const LiveSellerSearchScreen: React.FC = () => {
           reviewCount: it.reviewNumbers || it.reviewCount || 0,
           createdAt: it.createdAt ? new Date(it.createdAt).getTime() : 0,
           inStock: it.inStock !== false,
-          liveCode: it.liveCode || it.live_code || '',
+          liveCode: pickLiveSellerRawLiveCode(it) || undefined,
+          offerId: getLiveSellerOfferId(it),
+          raw: it,
           sellerId,
           sellerName,
           source: 'live-commerce',
@@ -397,12 +405,15 @@ const LiveSellerSearchScreen: React.FC = () => {
       <TouchableOpacity
         style={styles.productCard}
         activeOpacity={0.8}
-        onPress={() => navigation.navigate('ProductDetail', {
-          productId: item.id,
-          offerId: item.externalId,
-          source: 'live-commerce',
-          liveCode: item.liveCode,
-        })}
+        onPress={() => {
+          const codeForNav = getLiveSellerProductCodeRowDisplayValue(item);
+          navigation.navigate('ProductDetail', {
+            productId: item.id,
+            offerId: item.externalId,
+            source: 'live-commerce',
+            ...(codeForNav ? { liveCode: codeForNav } : {}),
+          });
+        }}
       >
         <Image
           source={{ uri: imageUri || `https://via.placeholder.com/${IMAGE_CONFIG.PRODUCT_DISPLAY_PIXEL}.png?text=Product` }}
@@ -415,16 +426,22 @@ const LiveSellerSearchScreen: React.FC = () => {
             <Text style={styles.productOriginalPrice}>{formatPriceKRW(originalPrice)}</Text>
           )}
           <Text style={styles.productTitle} numberOfLines={2}>{title}</Text>
-          {!!item.listProductCode && (
+          {(() => {
+            const codeVal = getLiveSellerProductCodeRowDisplayValue(item);
+            return codeVal ? (
             <Text style={styles.productListingDetail} numberOfLines={1}>
-              {t('product.productCode')}: {item.listProductCode}
+              {t('product.productCode')}: {codeVal}
             </Text>
-          )}
-          {!!item.listProductItemNumber && (
+            ) : null;
+          })()}
+          {(() => {
+            const numVal = getLiveSellerProductItemNumberRowDisplayValue(item);
+            return numVal ? (
             <Text style={styles.productListingDetail} numberOfLines={1}>
-              {t('product.productItemNumber')}: {item.listProductItemNumber}
+              {t('product.productItemNumber')}: {numVal}
             </Text>
-          )}
+            ) : null;
+          })()}
           {item.listProductCost != null && (
             <Text style={styles.productListingDetail} numberOfLines={1}>
               {t('product.productCost')}: {formatPriceKRW(item.listProductCost)}

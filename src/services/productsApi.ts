@@ -1517,6 +1517,22 @@ export const productsApi = {
                 sellerOpenId: ownProduct.sellerOpenId || '',
                 ownerSellerId: ownProduct.ownerSellerId || '',
                 promotionUrl: ownProduct.promotionUrl || '',
+                // Live-commerce / own-mall listing code (API root); not inside productData
+                liveCode:
+                  ownProduct.liveCode != null && String(ownProduct.liveCode).trim() !== ''
+                    ? String(ownProduct.liveCode).trim()
+                    : undefined,
+                productNo:
+                  ownProduct.productNo != null && String(ownProduct.productNo).trim() !== ''
+                    ? String(ownProduct.productNo).trim()
+                    : ownProduct.productData?.productNo != null &&
+                        String(ownProduct.productData.productNo).trim() !== ''
+                      ? String(ownProduct.productData.productNo).trim()
+                      : undefined,
+                productCode:
+                  ownProduct.productCode != null && String(ownProduct.productCode).trim() !== ''
+                    ? String(ownProduct.productCode).trim()
+                    : undefined,
                 tradeScore: ownProduct.sellerRating || 0,
                 soldOut: String(ownProduct.soldAmount || 0),
                 // Localized titles

@@ -41,11 +41,30 @@ export function pickProductPrimaryImage(product: unknown, depth = 0): string {
     s(p.primaryImage) ||
     s(p.offerImage) ||
     s(p.coverImage) ||
+    s(p.whiteImage) ||
     s(p.productImage);
 
   if (!direct && p.image && typeof p.image === 'object' && !Array.isArray(p.image)) {
     const o = p.image as Record<string, unknown>;
     direct = s(o.url) || s(o.uri) || s(o.src) || s(o.imageUrl) || s(o.picUrl);
+  }
+
+  // 1688 / OpenAPI often ship `productImage` as `{ images: string[] }` rather than a string URL.
+  if (!direct && p.productImage && typeof p.productImage === 'object' && !Array.isArray(p.productImage)) {
+    const o = p.productImage as Record<string, unknown>;
+    direct = s(o.url) || s(o.uri) || s(o.imageUrl) || s(o.picUrl);
+    if (!direct) {
+      const imgs = o.images;
+      if (Array.isArray(imgs) && imgs.length > 0) {
+        const first = imgs[0];
+        if (typeof first === 'string') {
+          direct = first.trim();
+        } else if (first && typeof first === 'object') {
+          const fo = first as Record<string, unknown>;
+          direct = s(fo.url) || s(fo.uri) || s(fo.src) || s(fo.imageUrl) || s(fo.picUrl);
+        }
+      }
+    }
   }
 
   if (!direct) {
@@ -75,9 +94,17 @@ export function pickProductPrimaryImage(product: unknown, depth = 0): string {
   }
 
   if (!direct) {
-    const skus = (p.skuInfos || p.skuList || p.skus) as unknown;
+    const skus = (p.productSkuInfos || p.skuInfos || p.skuList || p.skus) as unknown;
     if (Array.isArray(skus) && skus.length > 0) {
-      direct = pickProductPrimaryImage(skus[0], depth + 1);
+      const su = skus[0] as Record<string, unknown>;
+      direct = s(su.skuImageUrl) || s(su.image);
+      if (!direct && Array.isArray(su.skuAttributes) && (su.skuAttributes as unknown[]).length > 0) {
+        const a0 = (su.skuAttributes as unknown[])[0] as Record<string, unknown>;
+        direct = s(a0?.skuImageUrl);
+      }
+      if (!direct) {
+        direct = pickProductPrimaryImage(skus[0], depth + 1);
+      }
     }
   }
 
@@ -268,7 +295,9 @@ export function getAlibabaThumbnailImageUri(
       host === 'gw.alicdn.com');
 
   if (!isAlibabaHost) return image;
-  if (/_\d+x\d+q\d+\.jpg(?:$|[?#])/i.test(image)) return image;
+  // Already a 1688-style resized URL — do not append a second `_NxN` / `_NxNqQ` suffix
+  // (would break loading, e.g. `...jpg_200x200_300x300q60.jpg`).
+  if (/_\d+x\d+(?:q\d+)?\.(jpg|jpeg|png|webp)(?:$|[?#])/i.test(image)) return image;
 
   const px = Math.max(32, Math.min(800, Math.round(edgePx)));
   const q = Math.max(1, Math.min(100, Math.round(quality)));

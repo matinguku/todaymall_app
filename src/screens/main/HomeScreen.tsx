@@ -10,6 +10,7 @@ import {
   Dimensions,
   StatusBar,
   Animated,
+  Easing,
   Alert,
   Platform,
   Modal,
@@ -551,8 +552,8 @@ const AutoLiveChannelSection = React.memo(({
           </View>
 
           <View style={styles.liveChannelTextContainer}>
-            <Text style={styles.liveChannelTitle}>{(translations[locale] as any)?.home?.todaysLive || "TODAY'S"}</Text>
-            <Text style={styles.liveChannelSubtitle}>{(translations[locale] as any)?.home?.liveDeals || 'LIVE DEALS'}</Text>
+            <Text style={styles.liveChannelTitle}>TODAY'S</Text>
+            <Text style={styles.liveChannelSubtitle}>LIVE DEALS</Text>
             <TouchableOpacity
               style={styles.watchNowButton}
               onPress={() => navigation.navigate('Live' as never)}
@@ -1041,11 +1042,38 @@ const HomeScreenContent: React.FC = () => {
             ? Math.round(((originalPrice - price) / originalPrice) * 100)
             : 0;
           
+          // Some recommendation items return name fields as a multi-
+          // language `{ en, ko, zh }` object instead of a plain string.
+          // Rendering an object inside <Text> downstream would crash with
+          // "Objects are not valid as a React child", so coerce each
+          // candidate through this picker and pick the locale-matched
+          // title field in the preferred order.
+          const pickLocalized = (val: any): string => {
+            if (val == null) return '';
+            if (typeof val === 'string') return val;
+            if (typeof val === 'object') {
+              if (locale === 'ko') return val.ko || val.en || val.zh || '';
+              if (locale === 'zh') return val.zh || val.en || val.ko || '';
+              return val.en || val.ko || val.zh || '';
+            }
+            return String(val);
+          };
+          const localizedName =
+            (locale === 'ko'
+              ? item.titleKo || item.titleEn || item.titleZh
+              : locale === 'zh'
+                ? item.titleZh || item.titleEn || item.titleKo
+                : item.titleEn || item.titleKo || item.titleZh) ||
+            pickLocalized(item.subjectTrans) ||
+            pickLocalized(item.subject) ||
+            pickLocalized(item.name) ||
+            pickLocalized(item.title) ||
+            '';
           const productData: Product = {
             id: item.offerId?.toString() || '',
             externalId: item.offerId?.toString() || '',
             offerId: item.offerId?.toString() || '',
-            name: locale === 'zh' ? (item.subject || item.subjectTrans || '') : (item.subjectTrans || item.subject || ''),
+            name: localizedName,
             image: '',
             price: price,
             originalPrice: originalPrice,
@@ -1091,9 +1119,12 @@ const HomeScreenContent: React.FC = () => {
             picture: item.picture,
             images: item.images,
             imageList: item.imageList,
+            productImage: item.productImage,
+            whiteImage: item.whiteImage,
             offerDetail: item.offerDetail,
             offer: item.offer,
             skuInfos: item.skuInfos,
+            productSkuInfos: item.productSkuInfos,
             skuList: item.skuList,
             priceInfo: item.priceInfo,
           });
@@ -1272,10 +1303,16 @@ const HomeScreenContent: React.FC = () => {
   // so it's cheap to run on a timer.
   const KAKAO_TALK_SWAP_MS = 1500;
   const KAKAO_TALK_FADE_MS = 320;
+  /** Vertical bounce (px up, then back) — runs only while Home is focused */
+  const KAKAO_BOUNCE_UP_PX = 25;
+  const KAKAO_BOUNCE_UP_MS = 380;
+  const KAKAO_BOUNCE_DOWN_MS = 420;
+  const KAKAO_BOUNCE_REST_MS = 140;
   // Dimensions: design SVG is 34 × 39; rendered at 1.5× per request.
   const KAKAO_TALK_W = 34 * 1.5;
   const KAKAO_TALK_H = 39 * 1.5;
   const kakaoTalkPhase = useRef(new Animated.Value(0)).current;
+  const kakaoBounceY = useRef(new Animated.Value(0)).current;
   const kakaoLabelOpacity = kakaoTalkPhase.interpolate({
     inputRange: [0, 1],
     outputRange: [1, 0],
@@ -1284,19 +1321,54 @@ const HomeScreenContent: React.FC = () => {
     inputRange: [0, 1],
     outputRange: [0, 1],
   });
-  useEffect(() => {
-    let phase = 0;
-    const interval = setInterval(() => {
-      phase = phase === 0 ? 1 : 0;
-      Animated.timing(kakaoTalkPhase, {
-        toValue: phase,
-        duration: KAKAO_TALK_FADE_MS,
-        useNativeDriver: true,
-      }).start();
-    }, KAKAO_TALK_SWAP_MS);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Cross-fade + bounce only while Home is focused; stop on blur and reset so
+  // returning to Home always starts from "KAKAO" and rest position.
+  useFocusEffect(
+    useCallback(() => {
+      let phase = 0;
+      kakaoTalkPhase.stopAnimation();
+      kakaoTalkPhase.setValue(0);
+      kakaoBounceY.stopAnimation();
+      kakaoBounceY.setValue(0);
+
+      const interval = setInterval(() => {
+        phase = phase === 0 ? 1 : 0;
+        Animated.timing(kakaoTalkPhase, {
+          toValue: phase,
+          duration: KAKAO_TALK_FADE_MS,
+          useNativeDriver: true,
+        }).start();
+      }, KAKAO_TALK_SWAP_MS);
+
+      const bounceLoop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(kakaoBounceY, {
+            toValue: -KAKAO_BOUNCE_UP_PX,
+            duration: KAKAO_BOUNCE_UP_MS,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(kakaoBounceY, {
+            toValue: 0,
+            duration: KAKAO_BOUNCE_DOWN_MS,
+            easing: Easing.in(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.delay(KAKAO_BOUNCE_REST_MS),
+        ]),
+      );
+      bounceLoop.start();
+
+      return () => {
+        clearInterval(interval);
+        bounceLoop.stop();
+        kakaoTalkPhase.stopAnimation();
+        kakaoTalkPhase.setValue(0);
+        kakaoBounceY.stopAnimation();
+        kakaoBounceY.setValue(0);
+      };
+    }, [kakaoTalkPhase, kakaoBounceY]),
+  );
   const openKakaoTalk = useCallback(async () => {
     // Try the KakaoTalk app's plusfriend deep link first. If the app isn't
     // installed (or the URL scheme isn't whitelisted on iOS), fall back to
@@ -1477,6 +1549,7 @@ const HomeScreenContent: React.FC = () => {
     source: string = selectedPlatform,
     country: string = locale,
     productData?: Product,
+    liveCodeParam?: string,
   ) => {
     // Pass the card payload so ProductDetailScreen renders the image / title
     // / price instantly while it fetches the full detail in the background.
@@ -1485,6 +1558,9 @@ const HomeScreenContent: React.FC = () => {
       source: source,
       country: country,
       productData,
+      ...(liveCodeParam != null && String(liveCodeParam).trim() !== ''
+        ? { liveCode: String(liveCodeParam).trim() }
+        : {}),
     });
   };
   // Helper function to filter mock products by company and category
@@ -2028,7 +2104,7 @@ const HomeScreenContent: React.FC = () => {
                 const discount = product.discount || 0;
                 
                 // Convert to Product type
-                const resolvedImg = getAlibabaThumbnailImageUri(product);
+                const resolvedImg = getAlibabaThumbnailImageUri(product, homeGridPx);
                 const productData: Product = {
                   id: product.id?.toString() || product.externalId?.toString() || '',
                   externalId: product.externalId?.toString() || product.id?.toString() || '',
@@ -2093,7 +2169,11 @@ const HomeScreenContent: React.FC = () => {
                       onPress={() => handleNewInProductPress(product)}
                     >
                       <Image
-                        source={resolvedImg ? { uri: resolvedImg } : undefined}
+                        source={
+                          resolvedImg
+                            ? { uri: resolvedImg }
+                            : require('../../assets/images/deal1.png')
+                        }
                         style={styles.newInImage}
                         resizeMode="cover"
                       />
@@ -2421,21 +2501,55 @@ const HomeScreenContent: React.FC = () => {
     // Live Hot Item card: light blue gradient, "Live now" + sensor icon + point, image, avatar/name/views, name/price
     const renderLiveHotCard = (item: any, index: number) => {
       const p = item.product;
-      const subject = item.subject;
-      const subjectName = subject
-        ? (locale === 'ko' ? (subject.ko || subject.en || subject.zh)
-          : locale === 'zh' ? (subject.zh || subject.en || subject.ko)
-          : (subject.en || subject.ko || subject.zh)) || ''
-        : '';
-      const productName = subjectName || (p
-        ? (locale === 'ko' ? (p.titleKo || p.titleEn || p.titleZh)
-          : locale === 'zh' ? (p.titleZh || p.titleEn || p.titleKo)
-          : (p.titleEn || p.titleKo || p.titleZh)) || ''
-        : (item.name || ''));
+      // Several backend fields (subject, subjectTrans, name, title) come
+      // back as EITHER a plain string OR a multi-language object
+      // `{ en, ko, zh }`. Rendering the object directly inside <Text>
+      // crashes React with "Objects are not valid as a React child", so
+      // every candidate name goes through this picker which always
+      // returns a plain string for the current locale.
+      const pickLocalized = (val: any): string => {
+        if (val == null) return '';
+        if (typeof val === 'string') return val;
+        if (typeof val === 'object') {
+          if (locale === 'ko') return val.ko || val.en || val.zh || '';
+          if (locale === 'zh') return val.zh || val.en || val.ko || '';
+          return val.en || val.ko || val.zh || '';
+        }
+        return String(val);
+      };
+      // Walk every viable source until one returns a non-empty string.
+      // Sources: multi-lang subject, p.titleKo/En/Zh, p.subjectTrans /
+      // p.subject (either could itself be multi-lang), item.subjectTrans /
+      // name / title.
+      const productName =
+        pickLocalized(item.subject) ||
+        (locale === 'ko'
+          ? p?.titleKo || p?.titleEn || p?.titleZh
+          : locale === 'zh'
+            ? p?.titleZh || p?.titleEn || p?.titleKo
+            : p?.titleEn || p?.titleKo || p?.titleZh) ||
+        pickLocalized(p?.subjectTrans) ||
+        pickLocalized(p?.subject) ||
+        pickLocalized(item.subjectTrans) ||
+        pickLocalized(item.name) ||
+        pickLocalized(item.title) ||
+        // Fall back to the localized "Set" string so a card without any
+        // resolvable name still has a visible label instead of an empty
+        // <Text>. Translated via the `home.productSetDefault` key.
+        t('home.productSetDefault');
       const rawPrice = item.price ?? p?.promotionPrice ?? p?.price ?? 0;
       const price = typeof rawPrice === 'string' ? Number(rawPrice) || 0 : rawPrice;
       const totalViews = item.onlineViews || item.itemsSold || Number(item.soldOut) || 0;
       const productId = item.productId || p?.id || item._id || item.id || '';
+      const liveCodeNav =
+        item.liveCode ||
+        item.live_code ||
+        item.liveCommerceCode ||
+        p?.liveCode ||
+        p?.live_code ||
+        item.offerId ||
+        p?.offerId ||
+        '';
       const sellerName = item.seller?.nickname || item.companyName || '';
       const sellerAvatarRaw = item.seller?.picUrl || '';
       const itemImageUri = getAlibabaThumbnailImageUri(item, homeGridPx);
@@ -2445,7 +2559,16 @@ const HomeScreenContent: React.FC = () => {
           key={item.id || productId || `live-hot-${index}`}
           style={[styles.todaysDealsProductWrap, { width: dynDealsCardWidth }]}
           activeOpacity={0.9}
-          onPress={() => productId && navigateToProductDetail(productId, 'live-commerce', locale)}
+          onPress={() =>
+            productId &&
+            navigateToProductDetail(
+              productId,
+              'live-commerce',
+              locale,
+              undefined,
+              liveCodeNav || undefined,
+            )
+          }
         >
           <View style={[styles.liveHotUserRow, { width: dynDealsCardWidth }]}>
             {itemImageUri ? (
@@ -2495,11 +2618,41 @@ const HomeScreenContent: React.FC = () => {
       );
     };
 
-    const renderDealProductCard = (product: Product, badgeSource: any) => {
+    const renderDealProductCard = (product: any, badgeSource: any) => {
       const dealImg = getAlibabaThumbnailImageUri(product, homeGridPx);
+      // The /new-in-products API returns raw product objects with locale-
+      // specific title fields (titleKo / titleEn / titleZh) and the
+      // upstream subject/subjectTrans pair — but `subject` / `subjectTrans`
+      // / `name` can each arrive as EITHER a plain string OR a multi-
+      // language `{ en, ko, zh }` object. Pass every candidate through
+      // pickLocalized so the rendered value is always a string. Rendering
+      // a raw object inside <Text> would crash with "Objects are not
+      // valid as a React child".
+      const pickLocalized = (val: any): string => {
+        if (val == null) return '';
+        if (typeof val === 'string') return val;
+        if (typeof val === 'object') {
+          if (locale === 'ko') return val.ko || val.en || val.zh || '';
+          if (locale === 'zh') return val.zh || val.en || val.ko || '';
+          return val.en || val.ko || val.zh || '';
+        }
+        return String(val);
+      };
+      const productName =
+        pickLocalized(product?.name) ||
+        (locale === 'ko'
+          ? product?.titleKo || product?.titleEn || product?.titleZh
+          : locale === 'zh'
+            ? product?.titleZh || product?.titleEn || product?.titleKo
+            : product?.titleEn || product?.titleKo || product?.titleZh) ||
+        pickLocalized(product?.subjectTrans) ||
+        pickLocalized(product?.subject) ||
+        '';
+      const rawPrice = product?.price ?? product?.promotionPrice ?? 0;
+      const productPrice = typeof rawPrice === 'string' ? Number(rawPrice) || 0 : rawPrice;
       return (
       <TouchableOpacity
-        key={product.id || product.externalId}
+        key={product.id || product.externalId || product.offerId}
         style={[styles.todaysDealsProductWrap, { width: dynDealsCardWidth }]}
         activeOpacity={0.9}
         onPress={() => handleProductPress(product)}
@@ -2523,8 +2676,8 @@ const HomeScreenContent: React.FC = () => {
               />
             )}
           </View>
-          <Text style={styles.dealProductName} numberOfLines={2}>{product.name}</Text>
-          <Text style={styles.dealProductPrice}>{formatPriceKRW(product.price)}</Text>
+          <Text style={styles.dealProductName} numberOfLines={2}>{productName}</Text>
+          <Text style={styles.dealProductPrice}>{formatPriceKRW(productPrice)}</Text>
         </View>
       </TouchableOpacity>
     );
@@ -3150,39 +3303,45 @@ const HomeScreenContent: React.FC = () => {
       )}
 
       {/* Floating KAKAO/TALK chat baton — bottom-right, above the tab bar.
-          A chat-bubble shape (drawn via Svg/Path to match the design) with
-          two stacked Text layers that cross-fade every KAKAO_TALK_SWAP_MS.
-          Sits beside the scroll-to-top button so they don't overlap. */}
-      <TouchableOpacity
-        onPress={openKakaoTalk}
-        activeOpacity={0.85}
-        style={styles.kakaoTalkButton}
+          Bubble shape + label cross-fade; whole control bounces vertically while Home is focused. */}
+      <Animated.View
+        pointerEvents="box-none"
+        style={[
+          styles.kakaoTalkButton,
+          { transform: [{ translateY: kakaoBounceY }] },
+        ]}
       >
-        <Svg
-          width={KAKAO_TALK_W}
-          height={KAKAO_TALK_H}
-          viewBox="0 0 34 39"
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
+        <TouchableOpacity
+          onPress={openKakaoTalk}
+          activeOpacity={0.85}
+          style={styles.kakaoTalkTouchableFill}
         >
-          <SvgPath
-            d="M17 0C26.3888 0 34 7.61116 34 17C34 24.0692 29.6847 30.1298 23.5449 32.6934L12.4805 38.835L12.8555 33.4893C5.47003 31.6388 0 24.9591 0 17C0 7.61116 7.61116 0 17 0Z"
-            fill="#000"
-          />
-        </Svg>
-        <View style={styles.kakaoTalkLabelStack} pointerEvents="none">
-          <Animated.Text
-            style={[styles.kakaoTalkLabel, { opacity: kakaoLabelOpacity }]}
+          <Svg
+            width={KAKAO_TALK_W}
+            height={KAKAO_TALK_H}
+            viewBox="0 0 34 39"
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
           >
-            KAKAO
-          </Animated.Text>
-          <Animated.Text
-            style={[styles.kakaoTalkLabel, { opacity: talkLabelOpacity }]}
-          >
-            TALK
-          </Animated.Text>
-        </View>
-      </TouchableOpacity>
+            <SvgPath
+              d="M17 0C26.3888 0 34 7.61116 34 17C34 24.0692 29.6847 30.1298 23.5449 32.6934L12.4805 38.835L12.8555 33.4893C5.47003 31.6388 0 24.9591 0 17C0 7.61116 7.61116 0 17 0Z"
+              fill="#000"
+            />
+          </Svg>
+          <View style={styles.kakaoTalkLabelStack} pointerEvents="none">
+            <Animated.Text
+              style={[styles.kakaoTalkLabel, { opacity: kakaoLabelOpacity }]}
+            >
+              KAKAO
+            </Animated.Text>
+            <Animated.Text
+              style={[styles.kakaoTalkLabel, { opacity: talkLabelOpacity }]}
+            >
+              TALK
+            </Animated.Text>
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
       
       <ImagePickerModal
         visible={imagePickerModalVisible}
@@ -3845,6 +4004,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 999,
+  },
+  kakaoTalkTouchableFill: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   // Stacks the two text layers on top of each other so they can cross-fade
   // in place. The label band height matches the bubble's body (the upper

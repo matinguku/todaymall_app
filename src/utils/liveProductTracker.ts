@@ -1,8 +1,8 @@
 /**
  * Local-only live-product tracking via AsyncStorage.
  *
- * The backend currently doesn't expose a "this order contains live items"
- * marker on the orders endpoint, so we tag live products on the device
+ * The backend may expose `liveCodeSnapshot` / `purchaseSource: live` on
+ * orders; for older payloads we still tag live products on the device
  * the moment the user adds one to the cart (or buys it directly). When
  * the orders list later renders, we cross-reference each order item's
  * offerId against the recorded set to decide whether to swap the
@@ -75,14 +75,35 @@ export function orderHasRecordedLiveProduct(
   liveProductIds: Set<string>,
 ): boolean {
   if (liveProductIds.size === 0) return false;
-  const o = order as { items?: Array<Record<string, unknown> | null | undefined> } | null | undefined;
-  if (!o || !Array.isArray(o.items)) return false;
-  for (const item of o.items) {
-    if (!item) continue;
+  const o = order as {
+    items?: Array<Record<string, unknown> | null | undefined>;
+    childOrders?: Array<Record<string, unknown> | null | undefined>;
+  } | null | undefined;
+  if (!o) return false;
+
+  const checkItem = (item: Record<string, unknown> | null | undefined): boolean => {
+    if (!item) return false;
     const candidates = [item.offerId, item.productId, item.itemId, item.id];
     for (const c of candidates) {
       const id = normalizeId(c);
       if (id && liveProductIds.has(id)) return true;
+    }
+    return false;
+  };
+
+  if (Array.isArray(o.items)) {
+    for (const item of o.items) {
+      if (checkItem(item as Record<string, unknown> | undefined)) return true;
+    }
+  }
+  if (Array.isArray(o.childOrders)) {
+    for (const co of o.childOrders) {
+      if (!co) continue;
+      const items = co.items as Array<Record<string, unknown> | undefined> | undefined;
+      if (!Array.isArray(items)) continue;
+      for (const item of items) {
+        if (checkItem(item)) return true;
+      }
     }
   }
   return false;

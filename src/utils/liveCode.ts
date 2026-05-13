@@ -24,13 +24,23 @@ export function isLiveSource(source: unknown): boolean {
 }
 
 /** Field names the backend may expose the code under, in priority order. */
-const EXPLICIT_LIVE_CODE_FIELDS = [
+export const EXPLICIT_LIVE_CODE_FIELDS = [
   'liveCode',
   'live_code',
+  'liveCodeSnapshot',
+  'live_code_snapshot',
   'liveCommerceCode',
   'liveCommerceId',
+  'liveProductCode',
+  'live_product_code',
+  'listingLiveCode',
+  'listing_live_code',
+  'liveBroadcastCode',
+  'live_broadcast_code',
   'broadcastCode',
   'broadcastId',
+  'broadcast_code',
+  'broadcast_id',
 ] as const;
 
 /**
@@ -45,6 +55,43 @@ export function pickExplicitLiveCode(product: unknown): string | null {
     if (v == null) continue;
     const s = String(v).trim();
     if (s) return s;
+  }
+  return null;
+}
+
+/**
+ * Same as {@link pickExplicitLiveCode} but walks common nesting paths used by
+ * live-commerce listing APIs (`product`, `productData`, `listing`, etc.) so
+ * we do not fall back to `offerId` when `liveCode` only exists on a child.
+ */
+export function pickExplicitLiveCodeFromTree(root: unknown): string | null {
+  if (root == null || typeof root !== 'object') return null;
+  const r = root as Record<string, unknown>;
+  const product = r.product as Record<string, unknown> | undefined;
+  const buckets: unknown[] = [
+    root,
+    r.raw,
+    r.product,
+    r.productData,
+    product?.productData,
+    r.listing,
+    r.liveProduct,
+    r.liveListing,
+  ];
+  for (const b of buckets) {
+    const hit = pickExplicitLiveCode(b);
+    if (hit) return hit;
+  }
+  const nestKeys = ['data', 'result', 'detail', 'attributes', 'info'] as const;
+  for (const k of nestKeys) {
+    const sub = r[k];
+    if (sub && typeof sub === 'object' && !Array.isArray(sub)) {
+      const hit = pickExplicitLiveCode(sub);
+      if (hit) return hit;
+      const subObj = sub as Record<string, unknown>;
+      const inner = pickExplicitLiveCode(subObj.product) ?? pickExplicitLiveCode(subObj.productData);
+      if (inner) return inner;
+    }
   }
   return null;
 }
@@ -80,7 +127,40 @@ export function resolveLiveCode(
   ...names: Array<string | null | undefined>
 ): string | null {
   if (!isLiveSource(source)) return null;
-  return pickExplicitLiveCode(product) ?? extractLiveCode(...names);
+  return pickExplicitLiveCodeFromTree(product) ?? extractLiveCode(...names);
+}
+
+/**
+ * Live code for POST `/cart` and `/cart/checkout/direct-purchase` when the
+ * user opened PDP from live-commerce. Prefer the navigation param, then
+ * explicit fields on the product payload, then title parsing — never the
+ * catalog `productCode` / offer id (those stay on `offerId`).
+ */
+export function getLiveCodeForCartPayload(
+  routeSource: unknown,
+  product: unknown,
+  routeLiveCode?: unknown,
+): string | undefined {
+  if (!isLiveSource(routeSource)) return undefined;
+  const nav =
+    routeLiveCode != null && String(routeLiveCode).trim() !== ''
+      ? String(routeLiveCode).trim()
+      : '';
+  if (nav) return nav;
+  const p = product as { name?: string; subject?: string; subjectTrans?: string } | null | undefined;
+  return (
+    resolveLiveCode(routeSource, product, p?.name, p?.subject, p?.subjectTrans) ?? undefined
+  );
+}
+
+/** First explicit live-code-like value on any checkout / order line row. */
+export function pickFirstExplicitLiveCodeFromRows(rows: unknown): string | undefined {
+  if (!Array.isArray(rows)) return undefined;
+  for (const row of rows) {
+    const hit = pickExplicitLiveCodeFromTree(row) ?? pickExplicitLiveCode(row);
+    if (hit) return hit;
+  }
+  return undefined;
 }
 
 // ─── Order display helpers ────────────────────────────────────────────
@@ -105,32 +185,70 @@ type OrderItemLoose = {
 type OrderLoose = {
   orderNumber?: string | null;
   items?: ReadonlyArray<OrderItemLoose | null | undefined> | null;
+  childOrders?: ReadonlyArray<unknown> | null;
+  purchaseSource?: string | null;
 };
+
+/**
+ * First explicit live / snapshot code on an order: root, each child order,
+ * then each line item under `childOrders` (own-mall parent bundles often
+ * keep `items: []` on the parent and put rows on children).
+ */
+export function pickOrderLiveCodeSnapshot(order: unknown): string | null {
+  const o = order as Record<string, unknown> | null | undefined;
+  if (!o) return null;
+  const tryNode = (node: unknown): string | null => pickExplicitLiveCode(node);
+  const root = tryNode(o);
+  if (root) return root;
+  const children = o.childOrders;
+  if (!Array.isArray(children)) return null;
+  for (const co of children) {
+    const c = tryNode(co);
+    if (c) return c;
+    const items = (co as Record<string, unknown>)?.items;
+    if (!Array.isArray(items)) continue;
+    for (const it of items) {
+      const hit = tryNode(it);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+function purchaseSourceIsLive(v: unknown): boolean {
+  return String(v ?? '').trim().toLowerCase() === 'live';
+}
 
 /**
  * Heuristic check: does the order look like a live-commerce order?
  * Returns `true` when any of the following is detected:
- *   1. The order itself carries an explicit liveCode-like field.
- *   2. Any item carries an explicit liveCode-like field.
- *   3. Any item's subject ends with ≥3 trailing digits.
+ *   1. `purchaseSource === 'live'` on the order or any child order.
+ *   2. Any explicit live / `liveCodeSnapshot` field on order, child, or item.
+ *   3. Any flat `items[]` entry matches (2) or subject tail digits (legacy).
  */
 export function hasLiveItem(order: unknown): boolean {
   const o = order as (OrderLoose & { [k: string]: unknown }) | null | undefined;
   if (!o) return false;
-  // (1) Order-level explicit field
+  if (purchaseSourceIsLive(o.purchaseSource)) return true;
+  if (pickOrderLiveCodeSnapshot(o) != null) return true;
   if (pickExplicitLiveCode(o) != null) return true;
-  // (2) and (3) Item-level checks
-  if (!Array.isArray(o.items)) return false;
-  for (const item of o.items) {
-    if (!item) continue;
-    if (pickExplicitLiveCode(item) != null) return true;
-    const multiLangValues = item.subjectMultiLang
-      ? Object.values(item.subjectMultiLang).filter(
-          (v): v is string => typeof v === 'string',
-        )
-      : [];
-    const code = extractLiveCode(item.subject, item.subjectTrans, ...multiLangValues);
-    if (code != null) return true;
+  if (Array.isArray(o.items)) {
+    for (const item of o.items) {
+      if (!item) continue;
+      if (pickExplicitLiveCode(item) != null) return true;
+      const multiLangValues = item.subjectMultiLang
+        ? Object.values(item.subjectMultiLang).filter(
+            (v): v is string => typeof v === 'string',
+          )
+        : [];
+      const code = extractLiveCode(item.subject, item.subjectTrans, ...multiLangValues);
+      if (code != null) return true;
+    }
+  }
+  if (Array.isArray(o.childOrders)) {
+    for (const co of o.childOrders) {
+      if (hasLiveItem(co)) return true;
+    }
   }
   return false;
 }
