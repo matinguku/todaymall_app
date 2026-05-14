@@ -14,23 +14,12 @@ import { uploadToCloudinary, uploadVideoToCloudinary } from './cloudinary';
 
 import { API_BASE_URL } from '../constants';
 import { buildSignatureHeaders } from './signature';
-import { logDevApiFailure } from '../utils/devLog';
 
 // In-memory cache for category tree (clears on app restart)
 const categoryTreeCache: Record<string, CategoriesTreeResponse> = {};
 
 // Products API
 export const productsApi = {
-  /**
-   * Backend 1688 adapters expect `country=en` even when UI locale is ko/zh.
-   * Localized strings are controlled by `lang` (and some Taobao endpoints use
-   * `language`). Sending `country=ko` has been observed to trigger 500s on
-   * `/v1/products/detail` and some list endpoints.
-   */
-  normalize1688Country: (country: string | undefined | null): string => {
-    // Keep 'en'; otherwise force to 'en' for stability.
-    return String(country || 'en').toLowerCase() === 'en' ? 'en' : 'en';
-  },
 
   // Image search for 1688
   imageSearch1688: async (
@@ -547,13 +536,14 @@ export const productsApi = {
       }
       
       // Default 1688 (and other platforms) search
-      const effectiveCountry = source === '1688'
-        ? productsApi.normalize1688Country(country)
-        : country;
+      // Map locale codes to country codes for API
+      // 'zh' (language code) should map to 'en' (country code) for Chinese
+      const countryCode = country === 'zh' ? 'en' : country;
+      
       const params = new URLSearchParams({
         keyword,
         source,
-        country: effectiveCountry,
+        country: countryCode,
         page: page.toString(),
         pageSize: pageSize.toString(),
         // sellerOpenId,
@@ -616,7 +606,7 @@ export const productsApi = {
         // Server responded with error status
         return {
           success: false,
-          message: error.response?.data?.message || `Failed to search products. Status: ${error.response?.status ?? 'unknown'}`,
+          message: error.response.data.message || `Failed to search products. Status: ${error.response.status}`,
           data: null,
         };
       } else if (error.request) {
@@ -709,9 +699,9 @@ export const productsApi = {
     try {
       const token = await getStoredToken();
       
-      const countryCode = platform === '1688'
-        ? productsApi.normalize1688Country(country)
-        : (country === 'zh' ? 'en' : country);
+      // Map locale codes to country codes for API
+      // 'zh' (language code) should map to 'en' (country code) for Chinese
+      const countryCode = country === 'zh' ? 'en' : country;
       
       // Build query parameters (outMemberId is required)
       const params = new URLSearchParams({
@@ -721,12 +711,13 @@ export const productsApi = {
         pageSize: pageSize.toString(),
       });
       
-      // Required endpoint format:
-      // /products/1688/recommendations?country=ko&outMemberId=...
-      const url = `${API_BASE_URL}/products/1688/recommendations?${params.toString()}`;
-      if (__DEV__) {
-        console.log('🔍 [Recommendations] 실제 요청 URL:', url);
-      }
+      // Updated API endpoint: /products/{platform}/recommendations
+      const url = `${API_BASE_URL}/products/${platform}/recommendations?${params.toString()}`;
+      // console.log('🔍 [Recommendations API] Request:', {
+      //   url,
+      //   params,
+      //   token,
+      // });
 
       const signatureHeaders = await buildSignatureHeaders('GET', url);
 
@@ -1397,14 +1388,16 @@ export const productsApi = {
           country === 'zh' ? 'zh' :
           'en';
 
-        const taobaoParams = new URLSearchParams({
-          item_id: productId,
-          language,
-        });
-        const taobaoUrl = `${API_BASE_URL}/products/taobao-global/product/get?${taobaoParams.toString()}`;
-        if (__DEV__) {
-          console.log('📦 [Taobao Product Detail] 실제 요청 URL:', taobaoUrl);
-        }
+        const taobaoUrl = `${API_BASE_URL}/products/taobao-global/${productId}/detail?item_resource=Taobao&language=${language}`;
+
+        // console.log('📦 [Taobao Product Detail API] Request:', {
+        //   url: taobaoUrl,
+        //   productId,
+        //   productIdType: typeof productId,
+        //   source,
+        //   country,
+        //   language,
+        // });
         const signatureHeaders = await buildSignatureHeaders('GET', taobaoUrl);
         const taobaoResponse = await axios.get(taobaoUrl, {
           headers: {
@@ -1426,71 +1419,34 @@ export const productsApi = {
 
         const taobaoData = taobaoResponse.data;
 
-        /** Only treat non-null / non-zero / non-empty-string codes as hard failures. */
-        const taobaoBizErrorIndicatesFailure = (code: unknown): boolean => {
-          if (code === null || code === undefined) return false;
-          if (typeof code === 'boolean') return code;
-          if (typeof code === 'number') return !Number.isNaN(code) && code !== 0;
-          if (typeof code === 'string') {
-            const s = code.trim();
-            if (!s || s === '0') return false;
-            return true;
-          }
-          return true;
-        };
+        // console.log('📦 [Taobao Product Detail API] Response:', {
+        //   status: taobaoResponse.status,
+        //   statusText: taobaoResponse.statusText,
+        //   hasData: !!taobaoData,
+        //   biz_error_code: taobaoData?.biz_error_code,
+        //   biz_error_msg: taobaoData?.biz_error_msg,
+        //   hasDataField: !!taobaoData?.data,
+        //   dataKeys: taobaoData?.data ? Object.keys(taobaoData.data) : [],
+        // });
 
-        const taobaoPayloadLooksLikeItem = (p: any): boolean => {
-          if (!p || typeof p !== 'object') return false;
-          if (p.item_id != null || p.itemId != null) return true;
-          if (Array.isArray(p.pic_urls) && p.pic_urls.length > 0) return true;
-          if (Array.isArray(p.sku_list) && p.sku_list.length > 0) return true;
-          if (typeof p.title === 'string' && p.title.trim() !== '') return true;
-          return false;
-        };
-
-        // Walk common gateway + Taobao Global wrappers until we find the item object.
-        let root: any = taobaoData;
-        if (root && typeof root === 'object' && root.status === 'success' && root.data != null) {
-          root = root.data;
-        }
-
-        if (root && typeof root === 'object' && 'biz_error_code' in root) {
-          if (taobaoBizErrorIndicatesFailure(root.biz_error_code)) {
-            return {
-              success: false,
-              message: root.biz_error_msg || 'Failed to get Taobao product detail',
-              data: null,
-            };
-          }
-          if (root.data != null) root = root.data;
-        }
-
-        // Some gateways nest the item once more under `data` without `biz_error_code`.
-        if (root && typeof root === 'object' && root.data != null && !taobaoPayloadLooksLikeItem(root)) {
-          const inner = root.data;
-          if (taobaoPayloadLooksLikeItem(inner)) root = inner;
-        }
-
-        let detailPayload: any = root;
-        if (detailPayload?.item && typeof detailPayload.item === 'object') {
-          detailPayload = detailPayload.item;
-        }
-        if (detailPayload?.result && typeof detailPayload.result === 'object') {
-          const r = detailPayload.result;
-          if (taobaoPayloadLooksLikeItem(r)) detailPayload = r;
-        }
-
-        if (!taobaoPayloadLooksLikeItem(detailPayload)) {
+        if (!taobaoData || taobaoData.biz_error_code !== null || !taobaoData.data) {
+          // console.error('📦 [Taobao Product Detail API] Validation failed:', {
+          //   hasData: !!taobaoData,
+          //   biz_error_code: taobaoData?.biz_error_code,
+          //   biz_error_msg: taobaoData?.biz_error_msg,
+          //   hasDataField: !!taobaoData?.data,
+          // });
           return {
             success: false,
-            message: root?.biz_error_msg || root?.message || 'Failed to get Taobao product detail',
+            message: taobaoData?.biz_error_msg || 'Failed to get Taobao product detail',
             data: null,
           };
         }
 
+        // Return raw Taobao detail data; normalization is handled in ProductDetailScreen
         return {
           success: true,
-          data: detailPayload,
+          data: taobaoData.data,
           message: 'Taobao product detail retrieved successfully',
         };
       }
@@ -1499,15 +1455,23 @@ export const productsApi = {
       const isOwnMall = source === 'ownmall' || source === 'companymall' || source === 'myCompany' || source === 'live-commerce' || source?.toLowerCase() === 'mycompany';
       if (isOwnMall) {
         const ownMallUrl = `${API_BASE_URL}/own-mall/products/${productId}`;
-        const signatureHeaders = await buildSignatureHeaders('GET', ownMallUrl);
-        const ownMallResponse = await axios.get(ownMallUrl, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'ngrok-skip-browser-warning': 'true',
-            ...signatureHeaders,
+        const ownMallResponse = await axiosGetWithTransientRetries(
+          async () => {
+            const signatureHeaders = await buildSignatureHeaders('GET', ownMallUrl);
+            return {
+              url: ownMallUrl,
+              config: {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                  'ngrok-skip-browser-warning': 'true',
+                  ...signatureHeaders,
+                },
+              },
+            };
           },
-        });
+          'OwnMall product detail',
+        );
         console.log('📦 [OwnMall Product Detail API] Response:', ownMallUrl, ownMallResponse.data);
         if (ownMallResponse.data?.status === 'success' && ownMallResponse.data?.data?.product) {
           const ownProduct = ownMallResponse.data.data.product;
@@ -1599,63 +1563,27 @@ export const productsApi = {
       }
 
       // Default 1688 (and other platforms) product detail
-      // NOTE: 1688 detail endpoint has proven unstable with non-English lang
-      // after i18n rollout; keep lang=en for 1688 and localize on client.
-      const language = source === '1688'
-        ? 'en'
-        : (
-          country === 'ko' ? 'ko' :
-          country === 'zh' ? 'zh' :
-          'en'
-        );
-      const effectiveCountry = source === '1688'
-        ? productsApi.normalize1688Country(country)
-        : country;
       const params = new URLSearchParams({
         productId,
         source,
-        country: effectiveCountry,
-        lang: language,
+        country,
       });
 
-      const requestDetail = async (lang: string) => {
-        const requestParams = new URLSearchParams({
-          productId,
-          source,
-          country: effectiveCountry,
-          lang,
-        });
-        const requestUrl = `${API_BASE_URL}/products/detail?${requestParams.toString()}`;
-        const signatureHeaders = await buildSignatureHeaders('GET', requestUrl);
-        if (__DEV__) {
-          console.log('📦 [Product Detail] 실제 요청 URL:', requestUrl);
-        }
-        return axios.get(requestUrl, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            ...signatureHeaders,
-          },
-        });
-      };
-
-      let response;
-      try {
-        response = await requestDetail(language);
-      } catch (firstError: any) {
-        const shouldRetryWithEnglish =
-          source === '1688' &&
-          language !== 'en' &&
-          (firstError?.response?.status >= 500 || !firstError?.response);
-
-        if (!shouldRetryWithEnglish) throw firstError;
-
-        console.warn(
-          '[productsApi.getProductDetail] retrying with lang=en after failure:',
-          firstError?.response?.status || firstError?.message,
-        );
-        response = await requestDetail('en');
-      }
+      const url = `${API_BASE_URL}/products/detail?${params.toString()}`;
+      const signatureHeaders = await buildSignatureHeaders('GET', url);
+      console.log('📦 [Product Detail API] Request:', {
+        url,
+        productId,
+        source,
+        country,
+      });
+      const response = await axios.get(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          ...signatureHeaders,
+        },
+      });
       
       // Check if response data exists
       if (!response.data || !response.data.data || !response.data.data.product) {
@@ -1672,7 +1600,15 @@ export const productsApi = {
         message: 'Product detail retrieved successfully',
       };
     } catch (error: any) {
-      logDevApiFailure('productsApi.getProductDetail', error);
+      console.error('Get product detail error:', error.response ? {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data
+      } : error.request ? {
+        status: error.request.status,
+        statusText: error.request.statusText,
+        data: error.request.data
+      } : error);
 
       if (error.response) {
         return {
@@ -2222,7 +2158,7 @@ export const productsApi = {
         sellerOpenId,
         beginPage: (params?.beginPage || 1).toString(),
         pageSize: (params?.pageSize || 20).toString(),
-        country: productsApi.normalize1688Country(params?.country || 'en'),
+        country: params?.country || 'en',
         ...(params?.sort && { sort: params.sort }),
         ...(params?.keyword && { keyword: params.keyword }),
         ...(params?.priceStart && { priceStart: params.priceStart.toString() }),

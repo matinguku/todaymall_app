@@ -41,7 +41,9 @@ export const useProductDetailMutation = (
     source: string = '1688',
     country: string = 'en'
   ) => {
-    const ctx: ProductDetailRequestContext = { productId, source, country };
+    const rawSrc = String(source ?? '1688').trim();
+    const detailSource = rawSrc.toLowerCase() === 'taobao' ? 'taobao' : rawSrc || '1688';
+    const ctx: ProductDetailRequestContext = { productId, source: detailSource, country };
     const seq = ++inFlightRef.current;
     setIsLoading(true);
     setIsSuccess(false);
@@ -49,7 +51,7 @@ export const useProductDetailMutation = (
     setError(null);
 
     try {
-      const response = await productsApi.getProductDetail(productId, source, country);
+      const response = await productsApi.getProductDetail(productId, detailSource, country);
 
       if (seq !== inFlightRef.current) {
         return;

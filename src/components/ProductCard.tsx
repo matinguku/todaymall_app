@@ -10,14 +10,14 @@ import {
 import FastImage from '@d11/react-native-fast-image';
 import Icon from './Icon';
 
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../constants';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, IMAGE_CONFIG } from '../constants';
 import { Product } from '../types';
 import HeartPlusIcon from '../assets/icons/HeartPlusIcon';
 import FamilyStarIcon from '../assets/icons/FamilyStarIcon';
 import { formatPriceKRW } from '../utils/i18nHelpers';
 import {
   getProductCardImageUri,
-  stripThumbnailSizeSuffix,
+  buildAlibabaImageLoadAttempts,
 } from '../utils/productImage';
 import { useResponsive } from '../hooks/useResponsive';
 
@@ -37,26 +37,32 @@ const ProductImage = React.memo(
     // FastImage compares the `uri` string (not object reference) and keeps
     // its own memory + disk cache, so re-renders don't trigger reloads even
     // when the parent recreates the source object literal each render.
-    const [resolvedUri, setResolvedUri] = React.useState(uri);
-    const fallbackTries = React.useRef(0);
+    const attempts = React.useMemo(
+      () =>
+        uri.trim()
+          ? buildAlibabaImageLoadAttempts(
+              uri,
+              IMAGE_CONFIG.HOME_GRID_IMAGE_PIXEL,
+              IMAGE_CONFIG.PRODUCT_DISPLAY_QUALITY,
+              16,
+            )
+          : [],
+      [uri],
+    );
+    const [attemptIdx, setAttemptIdx] = React.useState(0);
     React.useEffect(() => {
-      fallbackTries.current = 0;
-      setResolvedUri(uri);
+      setAttemptIdx(0);
     }, [uri]);
 
+    const resolvedUri =
+      attempts.length > 0 ? attempts[Math.min(attemptIdx, attempts.length - 1)] : uri;
+
     const onImageError = React.useCallback(() => {
-      if (fallbackTries.current >= 3) return;
-      fallbackTries.current += 1;
-      setResolvedUri((prev) => {
-        if (!prev) return prev;
-        const stripped = stripThumbnailSizeSuffix(prev);
-        if (stripped !== prev) return stripped;
-        if (prev.startsWith('https://')) {
-          return prev.replace(/^https:\/\//i, 'http://');
-        }
-        return prev;
+      setAttemptIdx((i) => {
+        const max = attempts.length;
+        return max > 0 && i + 1 < max ? i + 1 : i;
       });
-    }, []);
+    }, [attempts]);
 
     return (
       <View style={{ position: 'relative' }}>

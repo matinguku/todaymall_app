@@ -164,6 +164,8 @@ export function buildProductDisplayImageUri(
     image = image.replace(/^http:\/\//i, 'https://');
   }
 
+  image = normalizeAliPicassoInfixSizes(image);
+
   let host = '';
   try {
     const u = new URL(image);
@@ -181,6 +183,26 @@ export function buildProductDisplayImageUri(
       host.includes('alibaba.com') ||
       host.includes('cbu01.') ||
       host === 'gw.alicdn.com');
+
+  // `.../img/ibank/...-0-cib.jpg` must not become `...-0-cib_300x300.jpg` — Picasso 404s that shape.
+  if (alibabaHost && /\/img\/ibank\/.+-\d+-cib\.(jpg|jpeg|png|webp)(\?|#|$)/i.test(image)) {
+    return image;
+  }
+
+  // Taobao/Tmall `imgextra`: `...-0-item_pic.jpg` is valid; `...-0-item_pic_300x300.jpg` is not.
+  if (alibabaHost && /\/imgextra\/.+-\d+-item_pic\.(jpg|jpeg|png|webp)(\?|#|$)/i.test(image)) {
+    return image;
+  }
+
+  // List/detail APIs often return `..._!!0-item_pic_200x200.jpg` — Picasso 404s; stable base is `..._!!0-item_pic.jpg`.
+  if (alibabaHost && /\/imgextra\/.+_!!\d+-item_pic\.(jpg|jpeg|png|webp)(\?|#|$)/i.test(image)) {
+    return image;
+  }
+
+  // `..._!!{seller}.jpg` — infix `_WxH` before `.jpg` 404s; do not add another `_PxP` before `.jpg`.
+  if (alibabaHost && /\/imgextra\/[^?#]+_!!\d+\.(jpg|jpeg|png|webp)(\?|#|$)/i.test(image)) {
+    return image;
+  }
 
   // Detect both `_NxN.jpg` and `_NxNqQ.jpg` so URLs that have already been
   // thumbnailed (e.g. by getAlibabaThumbnailImageUri before being stored on
@@ -277,6 +299,8 @@ export function getAlibabaThumbnailImageUri(
   if (image.startsWith('//')) image = `https:${image}`;
   if (image.startsWith('http://')) image = image.replace(/^http:\/\//i, 'https://');
 
+  image = normalizeAliPicassoInfixSizes(image);
+
   let host = '';
   try {
     host = new URL(image).hostname.toLowerCase();
@@ -308,4 +332,189 @@ export function getAlibabaThumbnailImageUri(
   const query = m[2] ?? '';
   const hash = m[3] ?? '';
   return `${base}_${px}x${px}q${q}.jpg${query}${hash}`;
+}
+
+/** https + trim; shared by gallery fallbacks. */
+export function normalizeDisplayImageUri(raw?: string): string {
+  if (!raw) return '';
+  let image = raw.trim();
+  if (!image) return '';
+  if (image.startsWith('//')) image = `https:${image}`;
+  if (image.startsWith('http://')) image = image.replace(/^http:\/\//i, 'https://');
+  return image;
+}
+
+/**
+ * cbu01 `img/ibank` 1688 paths: Picasso serves `...-0-cib.jpg` and `...-0-cib.jpg_WxHqQ.jpg`,
+ * but `...-0-cib_WxH.jpg` (size before the final extension) returns IMAGE_NOT_FOUND.
+ * APIs often return the broken infix form — collapse it to the stable base URL.
+ */
+function normalizeCbuIbankCibInfixSize(url: string): string {
+  const image = normalizeDisplayImageUri(url);
+  if (!image || !/\/img\/ibank\//i.test(image)) return image;
+  return image.replace(
+    /(-\d+-cib)_\d+x\d+(?:q\d+)?(\.(?:jpg|jpeg|png|webp))/gi,
+    '$1$2',
+  );
+}
+
+/** `...-0-item_pic_200x200.jpg` → `...-0-item_pic.jpg` on Taobao imgextra (Picasso 404s the infix). */
+function normalizeImgextraItemPicInfixSize(url: string): string {
+  if (!url || !/\/imgextra\//i.test(url)) return url;
+  return url.replace(
+    /(-\d+-item_pic)_\d+x\d+(?:q\d+)?(\.(?:jpg|jpeg|png|webp))/gi,
+    '$1$2',
+  );
+}
+
+/** `..._!!0-item_pic_200x200.jpg` → `..._!!0-item_pic.jpg` (Taobao list shape; hyphen form is handled above). */
+function normalizeImgextraBangItemPicInfixSize(url: string): string {
+  if (!url || !/\/imgextra\//i.test(url)) return url;
+  return url.replace(
+    /(_!!\d+-item_pic)_\d+x\d+(?:q\d+)?(\.(?:jpg|jpeg|png|webp))/gi,
+    '$1$2',
+  );
+}
+
+/** `..._!!{seller}_200x200.jpg` → `..._!!{seller}.jpg` on imgextra (seller id must stay on the path). */
+function normalizeImgextraBangSellerWxHInfix(url: string): string {
+  if (!url || !/\/imgextra\//i.test(url)) return url;
+  return url.replace(
+    /(_!!\d+)_\d+x\d+(?:q\d+)?(\.(?:jpg|jpeg|png|webp))$/i,
+    '$1$2',
+  );
+}
+
+/** Collapse Picasso-broken `_WxH` infixes for cbu01 ibank + Taobao imgextra before resize / fallback logic. */
+function normalizeAliPicassoInfixSizes(url: string): string {
+  const s0 = normalizeDisplayImageUri(url);
+  if (!s0) return s0;
+  let s = normalizeCbuIbankCibInfixSize(s0);
+  s = normalizeImgextraItemPicInfixSize(s);
+  s = normalizeImgextraBangItemPicInfixSize(s);
+  s = normalizeImgextraBangSellerWxHInfix(s);
+  return s;
+}
+
+/**
+ * Strip one Alibaba resize layer from the path. Handles:
+ * - imgextra / ibank infix sizes (see normalizeAliPicassoInfixSizes)
+ * - `..._!!{digits}.jpg` → `....jpg` (non-imgextra; main O1CN without numeric tail)
+ * - `..._480x480q55.jpg`
+ */
+function stripOneAlibabaDynamicResizeSuffix(url: string): string | null {
+  const image = normalizeDisplayImageUri(url);
+  if (!image) return null;
+
+  const collapsed = normalizeAliPicassoInfixSizes(image);
+  if (collapsed !== image) return collapsed;
+
+  const qIdx = image.search(/[?#]/);
+  const path = qIdx >= 0 ? image.slice(0, qIdx) : image;
+  const tail = qIdx >= 0 ? image.slice(qIdx) : '';
+
+  // `...O1CNxxx_!!461....jpg` → `...O1CNxxx.jpg` (skip on imgextra — `_!!seller` tail is required)
+  if (!/\/imgextra\//i.test(path)) {
+    const bangNumeric = path.match(/^(.*)_!!\d+(\.(?:jpg|jpeg|png|webp))$/i);
+    if (bangNumeric?.[1]) {
+      const next = bangNumeric[1] + bangNumeric[2];
+      if (next !== path) return next + tail;
+    }
+  }
+
+  const m1688 = path.match(
+    /^(.*\.(?:jpg|jpeg|png|webp))_\d+x\d+(?:q\d+)?\.(?:jpg|jpeg|png|webp)$/i,
+  );
+  if (m1688?.[1]) {
+    return m1688[1] + tail;
+  }
+
+  const mTail = path.match(/^(.*)_\d+x\d+(?:q\d+)?(\.(?:jpg|jpeg|png|webp))$/i);
+  if (mTail?.[1] && mTail[1] + mTail[2] !== path) {
+    return mTail[1] + mTail[2] + tail;
+  }
+
+  return null;
+}
+
+/**
+ * Chain of progressively simpler URLs for img.alicdn.com / cbu01 paths where a
+ * dynamic size segment returns 404.
+ */
+export function expandAlibabaCdnImageFallbacks(raw?: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (u: string) => {
+    const n = normalizeDisplayImageUri(u);
+    if (!n || seen.has(n)) return;
+    seen.add(n);
+    out.push(n);
+  };
+
+  push(raw ?? '');
+  let cur = normalizeDisplayImageUri(raw ?? '');
+  for (let i = 0; i < 12; i++) {
+    const next = stripOneAlibabaDynamicResizeSuffix(cur);
+    if (!next || next === cur) break;
+    push(next);
+    cur = next;
+  }
+  return out;
+}
+
+/**
+ * Ordered URIs for image load retry (smaller Alibaba thumbs first, then legacy, then raw).
+ */
+function isAlibabaImageHost(uri: string): boolean {
+  try {
+    const host = new URL(uri).hostname.toLowerCase();
+    return (
+      host.includes('alicdn.com') ||
+      host.includes('1688.com') ||
+      host.includes('taobao.com') ||
+      host.includes('tmall.com') ||
+      host.includes('alibaba.com') ||
+      host.includes('cbu01.') ||
+      host === 'gw.alicdn.com'
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function buildAlibabaImageLoadAttempts(
+  raw: string,
+  thumbEdgePx: number,
+  quality: number,
+  maxAttempts: number = 18,
+): string[] {
+  const bases = expandAlibabaCdnImageFallbacks(raw);
+  const attempts: string[] = [];
+  const add = (u: string) => {
+    const n = normalizeDisplayImageUri(u);
+    if (n && !attempts.includes(n)) attempts.push(n);
+  };
+
+  const pxPrimary = Math.max(120, Math.min(480, Math.round(thumbEdgePx)));
+  const pxMid = Math.max(120, Math.min(360, Math.round(pxPrimary * 0.75)));
+  const pxSmall = Math.max(96, Math.min(240, Math.round(pxPrimary * 0.5)));
+  const qPrimary = Math.max(40, Math.min(90, Math.round(quality)));
+  const qLo = Math.max(35, Math.min(75, Math.round(quality * 0.85)));
+
+  for (const b of bases) {
+    const ali = isAlibabaImageHost(b);
+    // Prefer smaller CDN requests on Alibaba first (less decode + some CDNs only serve certain sizes).
+    if (ali) {
+      add(buildCdnThumbnailUri(b, pxSmall, qLo));
+      add(buildCdnThumbnailUri(b, pxMid, qLo));
+    }
+    add(buildCdnThumbnailUri(b, pxPrimary, qPrimary));
+    if (ali && pxPrimary > 200) {
+      add(buildProductDisplayImageUri(b, pxMid));
+      add(buildProductDisplayImageUri(b, pxSmall));
+    }
+    add(buildProductDisplayImageUri(b, pxPrimary));
+    add(b);
+  }
+  return attempts.slice(0, maxAttempts);
 }

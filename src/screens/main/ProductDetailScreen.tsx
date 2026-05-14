@@ -51,7 +51,10 @@ import { useCheckoutDirectPurchaseMutation } from '../../hooks/useCheckoutDirect
 import { useTranslation } from '../../hooks/useTranslation';
 import { useToast } from '../../context/ToastContext';
 import { formatPriceKRW, getLocalizedText } from '../../utils/i18nHelpers';
-import { buildCdnThumbnailUri } from '../../utils/productImage';
+import {
+  buildAlibabaImageLoadAttempts,
+  buildCdnThumbnailUri,
+} from '../../utils/productImage';
 import { warmRelatedPage } from '../../utils/relatedPrefetch';
 import { useWishlistStatus } from '../../hooks/useWishlistStatus';
 import { useAddToWishlistMutation } from '../../hooks/useAddToWishlistMutation';
@@ -92,6 +95,32 @@ const COLOR_SWATCH_THUMB_QUALITY = 58;
 
 const TAOBAO_RELATED_THUMB_QUALITY = 56;
 
+function useAlibabaImageFallbackSource(
+  rawUri: string,
+  thumbEdgePx: number,
+  quality: number,
+  maxAttempts: number,
+) {
+  const attempts = useMemo(
+    () =>
+      rawUri.trim()
+        ? buildAlibabaImageLoadAttempts(rawUri, thumbEdgePx, quality, maxAttempts)
+        : [],
+    [rawUri, thumbEdgePx, quality, maxAttempts],
+  );
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    setIdx(0);
+  }, [rawUri]);
+
+  const displayUri = attempts[idx] ?? '';
+  const onImageError = useCallback(() => {
+    setIdx((i) => (i + 1 < attempts.length ? i + 1 : i));
+  }, [attempts.length]);
+
+  return { displayUri, onImageError };
+}
+
 /** Memoized gallery page: CDN-sized decode + FastImage cache to limit PDP jank. */
 type PdpGallerySlideProps = {
   uri: string;
@@ -110,20 +139,32 @@ const PdpGallerySlide = React.memo(function PdpGallerySlide({
   index,
   onPress,
 }: PdpGallerySlideProps) {
-  const thumbUri = useMemo(
-    () => buildCdnThumbnailUri(uri, thumbEdgePx, GALLERY_THUMB_QUALITY),
-    [uri, thumbEdgePx],
+  const { displayUri, onImageError } = useAlibabaImageFallbackSource(
+    uri,
+    thumbEdgePx,
+    GALLERY_THUMB_QUALITY,
+    22,
   );
+  if (!displayUri) {
+    return (
+      <TouchableOpacity activeOpacity={0.9} onPress={onPress}>
+        <View
+          style={{ width: widthPx, height: heightPx, backgroundColor: COLORS.gray[100] }}
+        />
+      </TouchableOpacity>
+    );
+  }
   return (
     <TouchableOpacity activeOpacity={0.9} onPress={onPress}>
       <FastImage
         source={{
-          uri: thumbUri,
+          uri: displayUri,
           priority: index === 0 ? FastImage.priority.high : FastImage.priority.low,
           cache: FastImage.cacheControl.immutable,
         }}
         style={{ width: widthPx, height: heightPx, backgroundColor: COLORS.gray[100] }}
         resizeMode={FastImage.resizeMode.cover}
+        onError={onImageError}
       />
     </TouchableOpacity>
   );
@@ -136,19 +177,29 @@ const ColorSwatchImage = React.memo(function ColorSwatchImage({
   uri: string;
   isSelected: boolean;
 }) {
-  const thumbUri = useMemo(
-    () => buildCdnThumbnailUri(uri, COLOR_SWATCH_THUMB_EDGE, COLOR_SWATCH_THUMB_QUALITY),
-    [uri],
+  const { displayUri, onImageError } = useAlibabaImageFallbackSource(
+    uri,
+    COLOR_SWATCH_THUMB_EDGE,
+    COLOR_SWATCH_THUMB_QUALITY,
+    10,
   );
+  if (!displayUri) {
+    return (
+      <View
+        style={[styles.colorImage, isSelected && styles.selectedColorImage] as any}
+      />
+    );
+  }
   return (
     <FastImage
       source={{
-        uri: thumbUri,
+        uri: displayUri,
         priority: FastImage.priority.low,
         cache: FastImage.cacheControl.immutable,
       }}
       style={[styles.colorImage, isSelected && styles.selectedColorImage] as any}
       resizeMode={FastImage.resizeMode.cover}
+      onError={onImageError}
     />
   );
 });
@@ -160,19 +211,25 @@ const TaobaoRelatedThumb = React.memo(function TaobaoRelatedThumb({
   uri: string;
   thumbEdgePx: number;
 }) {
-  const thumbUri = useMemo(
-    () => buildCdnThumbnailUri(uri, thumbEdgePx, TAOBAO_RELATED_THUMB_QUALITY),
-    [uri, thumbEdgePx],
+  const { displayUri, onImageError } = useAlibabaImageFallbackSource(
+    uri,
+    thumbEdgePx,
+    TAOBAO_RELATED_THUMB_QUALITY,
+    10,
   );
+  if (!displayUri) {
+    return <View style={styles.simpleTaobaoImage as any} />;
+  }
   return (
     <FastImage
       source={{
-        uri: thumbUri,
+        uri: displayUri,
         priority: FastImage.priority.low,
         cache: FastImage.cacheControl.immutable,
       }}
       style={styles.simpleTaobaoImage as any}
       resizeMode={FastImage.resizeMode.cover}
+      onError={onImageError}
     />
   );
 });
@@ -1092,8 +1149,37 @@ const ProductDetailScreen: React.FC = () => {
       if (ctx.source === 'taobao' && data) {
         const taobao = data;
 
-        // Images from pic_urls
-        const images: string[] = Array.isArray(taobao.pic_urls) ? taobao.pic_urls : [];
+        const taobaoItemId =
+          taobao.item_id ??
+          taobao.itemId ??
+          taobao.num_iid ??
+          taobao.item_num_id ??
+          taobao.open_iid;
+        const idStr = taobaoItemId != null ? String(taobaoItemId) : String(productId ?? '');
+
+        let images: string[] = Array.isArray(taobao.pic_urls) ? taobao.pic_urls.filter(Boolean) : [];
+        if (images.length === 0 && typeof taobao.pic_url === 'string' && taobao.pic_url.trim() !== '') {
+          images = [taobao.pic_url.trim()];
+        }
+        if (images.length === 0 && Array.isArray(taobao.item_imgs)) {
+          images = taobao.item_imgs.filter((x: any) => typeof x === 'string' && x.trim() !== '');
+        }
+        if (images.length === 0 && Array.isArray(taobao.images)) {
+          images = taobao.images.filter((x: any) => typeof x === 'string' && x.trim() !== '');
+        }
+
+        const skuRows: any[] = (() => {
+          const a = taobao.sku_list;
+          if (Array.isArray(a) && a.length > 0) return a;
+          const b = taobao.sku_infos;
+          if (Array.isArray(b) && b.length > 0) return b;
+          const c = taobao.skus;
+          if (Array.isArray(c) && c.length > 0) return c;
+          if (Array.isArray(a)) return a;
+          if (Array.isArray(b)) return b;
+          if (Array.isArray(c)) return c;
+          return [];
+        })();
 
         // Build map from sku_id to localized properties if multi_language_info.sku_properties exists
         const localizedSkuPropsMap: Record<string, any[]> = {};
@@ -1106,8 +1192,8 @@ const ProductDetailScreen: React.FC = () => {
         }
 
         // Map SKUs to variants
-        const rawVariants = (taobao.sku_list || []).map((sku: any) => {
-          const skuId = sku.sku_id?.toString() || '';
+        const rawVariants = skuRows.map((sku: any) => {
+          const skuId = (sku.sku_id ?? sku.skuId)?.toString() || '';
           const localizedProps = localizedSkuPropsMap[skuId] || sku.properties || [];
 
           const name = Array.isArray(localizedProps)
@@ -1123,10 +1209,10 @@ const ProductDetailScreen: React.FC = () => {
             id: skuId,
             name,
             price,
-            stock: sku.quantity || 0,
-            image: sku.pic_url || images[0] || '',
+            stock: sku.quantity ?? sku.stock ?? sku.amount_on_sale ?? 0,
+            image: sku.pic_url || sku.picUrl || images[0] || '',
             attributes: localizedProps,
-            specId: sku.spec_id || skuId,
+            specId: sku.spec_id ?? sku.specId ?? skuId,
             skuId,
           };
         });
@@ -1141,9 +1227,9 @@ const ProductDetailScreen: React.FC = () => {
         const price = isNaN(priceNum) ? 0 : priceNum;
 
         const mappedProduct = {
-          id: taobao.item_id?.toString() || productId?.toString() || '',
-          externalId: taobao.item_id?.toString() || '',
-          offerId: taobao.item_id?.toString() || '',
+          id: idStr,
+          externalId: idStr,
+          offerId: idStr,
           name: taobao.multi_language_info?.title || taobao.title || '',
           description: taobao.description || '',
           images,
@@ -1174,9 +1260,10 @@ const ProductDetailScreen: React.FC = () => {
           reviewCount: 0,
           rating_count: 0,
           inStock: true,
-          stockCount: (taobao.sku_list || []).reduce(
-            (sum: number, sku: any) => sum + (sku.quantity || 0),
-            0
+          stockCount: skuRows.reduce(
+            (sum: number, sku: any) =>
+              sum + (sku.quantity ?? sku.stock ?? sku.amount_on_sale ?? 0),
+            0,
           ),
           tags: taobao.tags || [],
           isNew: false,
@@ -1190,7 +1277,7 @@ const ProductDetailScreen: React.FC = () => {
           mainVideo: '',
           rawVariants,
           attributes,
-          productSkuInfos: taobao.sku_list || [],
+          productSkuInfos: skuRows,
           productSaleInfo: {},
           productShippingInfo: {},
           sellerDataInfo: {},
@@ -1200,6 +1287,7 @@ const ProductDetailScreen: React.FC = () => {
           subject: taobao.title || '',
           subjectTrans: taobao.multi_language_info?.title || taobao.title || '',
           promotionUrl: '',
+          source: 'taobao',
         };
 
         setProduct(mappedProduct);
@@ -1366,8 +1454,9 @@ const ProductDetailScreen: React.FC = () => {
       //   country,
       // });
       setDetailFetched(true);
-      // Reset ref on error so we can retry
-      hasFetchedProductRef.current = null;
+      // Keep hasFetchedProductRef set to this productId (see fetch useEffect): clearing
+      // it here caused a refetch storm when `initialProductData` identity changed on
+      // re-renders — productsApi.getProductDetail already retries transient failures.
       
       // Check if it's a 404 or "not found" error
       const errorMessage = errorStr.toLowerCase();
@@ -1452,11 +1541,12 @@ const ProductDetailScreen: React.FC = () => {
     // Don't refetch the same productId twice (e.g. from re-render churn).
     if (hasFetchedProductRef.current === currentProductId) return;
 
-    const fetchSource = sourceRef.current;
-    const fetchCountry = countryRef.current;
-    fetchProductDetail(currentProductId, fetchSource, fetchCountry);
+    // Mark attempted before the async call so dependency churn (e.g. new
+    // `initialProductData` object reference) does not enqueue duplicate detail requests.
+    hasFetchedProductRef.current = currentProductId;
+    fetchProductDetail(currentProductId, source, country);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedRouteProductId, initialProductData, routeSource, routeCountry]);
+  }, [resolvedRouteProductId, initialProductData, routeSource, routeCountry, source, country]);
   
   // Fetch wishlist count when product is loaded
   useEffect(() => {
