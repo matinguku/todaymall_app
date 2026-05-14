@@ -1109,8 +1109,11 @@ const HomeScreenContent: React.FC = () => {
             repurchaseRate: item.repurchaseRate || '',
           };
           
-          // Preserve non-typed fields for navigation / tracking
-          (productData as any).source = selectedPlatform;
+          // Recommendations ("More to Love") are always fetched with platform `1688`
+          // (see fetch below). Do not use `selectedPlatform` here — when the user has
+          // Taobao selected, tagging these rows as `taobao` would open PDP with
+          // Taobao Global `item_id` while the id is still an 1688 offerId → detail fails.
+          (productData as any).source = '1688';
           // Keep raw image-related fields so image resolver can resolve if `image` stays empty
           Object.assign(productData as any, {
             imageUrl: item.imageUrl,
