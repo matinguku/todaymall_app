@@ -33,6 +33,8 @@ import {
   extractLiveCode,
   getLiveCodeForCartPayload,
   resolveLiveCodeForOwnmallOrderLine,
+  sanitizeLiveCodeForApi,
+  isStrictBackendLiveCode,
 } from '../../utils/liveCode';
 import { recordLiveProduct } from '../../utils/liveProductTracker';
 
@@ -260,17 +262,26 @@ function getPdpCatalogCodeDisplay(
   if (!isLiveSource(routeSource)) {
     return { value: catalog };
   }
-  const directLive = String((product as any)?.liveCode ?? '').trim();
+  const directLive = sanitizeLiveCodeForApi((product as any)?.liveCode);
   if (directLive) return { value: directLive };
   const fromNav =
     routeLiveCode != null && routeLiveCode !== '' ? String(routeLiveCode).trim() : '';
-  const resolved =
-    resolveLiveCode(routeSource, product, product?.name, product?.subject, product?.subjectTrans) ||
-    fromNav;
+  const fromNavOk = sanitizeLiveCodeForApi(fromNav);
+  if (fromNavOk) return { value: fromNavOk };
+  const resolved = sanitizeLiveCodeForApi(
+    resolveLiveCode(routeSource, product, product?.name, product?.subject, product?.subjectTrans),
+  );
   const offer = String((product as any).offerId ?? '').trim();
   if (resolved) return { value: resolved };
   if (offer) return { value: offer };
   return { value: catalog };
+}
+
+/** True when navigation passed a non-empty liveCode that fails API format rules. */
+function routeHasInvalidLiveCommerceLiveParam(routeLiveCode: unknown): boolean {
+  const raw = routeLiveCode != null ? String(routeLiveCode).trim() : '';
+  if (!raw) return false;
+  return !isStrictBackendLiveCode(raw);
 }
 
 /** Plain text from HTML description — module scope so PDP re-renders don't re-parse unless `description` changes. */
@@ -328,6 +339,8 @@ const ProductDetailScreen: React.FC = () => {
   const sourceRef = useRef<string>('1688');
   const countryRef = useRef<string>('en');
   const hasFetchedProductRef = useRef<string | null>(null);
+  /** When `offerId` / `productId` / `source` change, reset PDP so we do not show the previous product until the new detail arrives. */
+  const routeProductIdentityRef = useRef<string>('');
 
   // Keep refs in sync with route params / store so fetch calls use correct source/country
   useEffect(() => {
@@ -1061,8 +1074,8 @@ const ProductDetailScreen: React.FC = () => {
   });
 
   // Product detail mutation - MUST be called before any useEffect hooks
-  const { mutate: fetchProductDetail, isLoading: isFetchingDetail } = useProductDetailMutation({
-    onSuccess: (data) => {
+  const { mutate: fetchProductDetail } = useProductDetailMutation({
+    onSuccess: (data, ctx) => {
       // console.log('📦 [ProductDetailScreen] Product detail fetched successfully:', {
       //   hasData: !!data,
       //   dataKeys: data ? Object.keys(data) : [],
@@ -1075,8 +1088,8 @@ const ProductDetailScreen: React.FC = () => {
           offerId: (d as any)?.offerId,
         });
       }
-      // Taobao product detail mapping
-      if (source === 'taobao' && data) {
+      // Taobao product detail mapping (branch on the source used for this request, not render-time `source`)
+      if (ctx.source === 'taobao' && data) {
         const taobao = data;
 
         // Images from pic_urls
@@ -1302,18 +1315,24 @@ const ProductDetailScreen: React.FC = () => {
             apiProduct.productCode ?? apiProduct.offerId ?? apiProduct.productId ?? '',
           ).trim(),
           liveCode: (() => {
+            if (!isLiveSource(routeSource)) return '';
             const fromApi =
               pickExplicitLiveCodeFromTree(apiProduct) ??
               extractLiveCode(apiProduct.subject, apiProduct.subjectTrans) ??
               '';
-            if (fromApi) return fromApi;
+            const s1 = sanitizeLiveCodeForApi(fromApi);
+            if (s1) return s1;
             const navLc =
               routeLiveCode != null && String(routeLiveCode).trim() !== ''
                 ? String(routeLiveCode).trim()
                 : '';
-            if (navLc) return navLc;
+            const s2 = sanitizeLiveCodeForApi(navLc);
+            if (s2) return s2;
             const pid = String(productId ?? '').trim();
-            if (pid && /^\d{3,12}$/.test(pid) && !/^[a-f\d]{24}$/i.test(pid)) return pid;
+            if (pid && /^\d{3,12}$/.test(pid) && !/^[a-f\d]{24}$/i.test(pid)) {
+              const s3 = sanitizeLiveCodeForApi(pid);
+              if (s3) return s3;
+            }
             return '';
           })(),
           // Live-commerce internal seller id. The live channel's
@@ -1335,7 +1354,7 @@ const ProductDetailScreen: React.FC = () => {
         }
       }
     },
-    onError: (error) => {
+    onError: (error, _ctx) => {
       const errorStr = typeof error === 'string' ? error : (error as any)?.message || String(error);
       // console.error('📦 [ProductDetailScreen] Product detail fetch error:', {
       //   error,
@@ -1397,6 +1416,30 @@ const ProductDetailScreen: React.FC = () => {
     return () => task.cancel?.();
   }, [detailFetched, product?.id]);
 
+  // Reset visible product + fetch guards when navigating to another PDP identity
+  // (same screen instance). Avoids showing product A while product B's request is in flight.
+  useEffect(() => {
+    const currentProductId = resolvedRouteProductId;
+    if (!currentProductId) return;
+    const identityKey = `${offerId ?? ''}|${productId ?? ''}|${source}`;
+    if (routeProductIdentityRef.current === identityKey) return;
+    routeProductIdentityRef.current = identityKey;
+    setProduct(initialProductData || null);
+    setDetailFetched(false);
+    setBelowFoldReady(false);
+    hasFetchedProductRef.current = null;
+    relatedFetchedForRef.current = null;
+    setRelatedProducts([]);
+    setRelatedProductsPage(1);
+    setRelatedProductsHasMore(true);
+    setLiveSellerInfo(null);
+    setSelectedColor(null);
+    setSelectedSize(null);
+    setSelectedVariations({});
+    setSelectedImageIndex(0);
+    setExtraVariationImage(null);
+  }, [resolvedRouteProductId, offerId, productId, source]);
+
   // Always fetch the full product detail in the background. If we already
   // have initialProductData (from the previous-page card payload), the screen
   // is already painting that data — the fetch just upgrades it with the rest
@@ -1408,9 +1451,7 @@ const ProductDetailScreen: React.FC = () => {
 
     // Don't refetch the same productId twice (e.g. from re-render churn).
     if (hasFetchedProductRef.current === currentProductId) return;
-    if (isFetchingDetail) return;
 
-    hasFetchedProductRef.current = currentProductId;
     const fetchSource = sourceRef.current;
     const fetchCountry = countryRef.current;
     fetchProductDetail(currentProductId, fetchSource, fetchCountry);
@@ -2394,7 +2435,12 @@ const ProductDetailScreen: React.FC = () => {
 
       const cartLiveCode = getLiveCodeForCartPayload(routeSource, product, routeLiveCode, productId);
       if (isLiveSource(routeSource) && !cartLiveCode) {
-        showToast(t('product.liveProductCodeMissing'), 'warning');
+        showToast(
+          routeHasInvalidLiveCommerceLiveParam(routeLiveCode)
+            ? t('product.invalidLiveCodeFormat')
+            : t('product.liveProductCodeMissing'),
+          'warning',
+        );
         return;
       }
 
@@ -2556,7 +2602,12 @@ const ProductDetailScreen: React.FC = () => {
 
       const buyNowLiveCode = getLiveCodeForCartPayload(routeSource, product, routeLiveCode, productId);
       if (isLiveSource(routeSource) && !buyNowLiveCode) {
-        showToast(t('product.liveProductCodeMissing'), 'warning');
+        showToast(
+          routeHasInvalidLiveCommerceLiveParam(routeLiveCode)
+            ? t('product.invalidLiveCodeFormat')
+            : t('product.liveProductCodeMissing'),
+          'warning',
+        );
         return;
       }
 

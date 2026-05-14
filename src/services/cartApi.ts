@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getStoredToken } from './authApi';
+import { sanitizeLiveCodeForApi } from '../utils/liveCode';
 
 import { API_BASE_URL } from '../constants';
 import { buildSignatureHeaders } from './signature';
@@ -256,9 +257,16 @@ export const cartApi = {
       const token = await getStoredToken();
 
       const url = `${API_BASE_URL}/cart`;
-      const signatureHeaders = await buildSignatureHeaders('POST', url, request);
+      const payload: AddToCartRequest = { ...request };
+      if (payload.liveCode != null) {
+        const clean = sanitizeLiveCodeForApi(payload.liveCode);
+        if (clean) payload.liveCode = clean;
+        else delete payload.liveCode;
+      }
 
-      const response = await axios.post(url, request, {
+      const signatureHeaders = await buildSignatureHeaders('POST', url, payload);
+
+      const response = await axios.post(url, payload, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -516,8 +524,14 @@ export const cartApi = {
     try {
       const token = await getStoredToken();
       const url = `${API_BASE_URL}/cart/checkout/direct-purchase`;
-      const signatureHeaders = await buildSignatureHeaders('POST', url, body);
-      const response = await axios.post(url, body, {
+      const payload: DirectPurchaseRequest = { ...body };
+      if (payload.liveCode != null) {
+        const clean = sanitizeLiveCodeForApi(payload.liveCode);
+        if (clean) payload.liveCode = clean;
+        else delete payload.liveCode;
+      }
+      const signatureHeaders = await buildSignatureHeaders('POST', url, payload);
+      const response = await axios.post(url, payload, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',

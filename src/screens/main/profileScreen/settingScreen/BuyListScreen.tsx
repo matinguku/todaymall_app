@@ -44,7 +44,12 @@ import { useAppSelector } from '../../../../store/hooks';
 import { formatPriceKRW, getLocalizedText } from '../../../../utils/i18nHelpers';
 import { translations } from '../../../../i18n/translations';
 import { logDevApiFailure } from '../../../../utils/devLog';
-import { getDisplayOrderNumber, pickOrderLiveCodeSnapshot, pickLiveProviderOrderId } from '../../../../utils/liveCode';
+import {
+  getDisplayOrderNumber,
+  pickOrderLiveCodeSnapshot,
+  pickLiveProviderOrderIdForLiveLine,
+  sanitizeLiveCodeForApi,
+} from '../../../../utils/liveCode';
 import { loadLiveProductIds, orderHasRecordedLiveProduct } from '../../../../utils/liveProductTracker';
 import { useCancelOrderMutation } from '../../../../hooks/useCancelOrderMutation';
 import { useAddToCartMutation } from '../../../../hooks/useAddToCartMutation';
@@ -125,14 +130,18 @@ interface StoreGroup {
   storeTotal: number;
 }
 
-/** Re-send the broadcast live code on buy-again (not catalog productCode). */
+/** Re-send the broadcast live code on buy-again (API-shaped codes only). */
 function liveCodeForBuyAgainPayload(item: OrderItem, order?: Order): string | undefined {
-  const fromItem = item.liveCode?.trim();
-  if (fromItem && fromItem !== 'local-recorded') return fromItem;
-  const snap = order?.liveCodeSnapshot?.trim();
-  if (snap) return snap;
-  const o = order?.liveCode?.trim();
-  if (o && o !== 'local-recorded') return o;
+  const candidates = [
+    item.liveCode?.trim(),
+    order?.liveCodeSnapshot?.trim(),
+    order?.liveCode?.trim(),
+  ].filter(Boolean) as string[];
+  for (const c of candidates) {
+    if (c === 'local-recorded') continue;
+    const ok = sanitizeLiveCodeForApi(c);
+    if (ok) return ok;
+  }
   return undefined;
 }
 
@@ -646,13 +655,13 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({
   };
 
   const { mutate: fetchProductDetail, isLoading: isLoadingProductDetail } = useProductDetailMutation({
-    onSuccess: (data) => {
+    onSuccess: (data, _ctx) => {
       setAddToCartProductDetail(data);
       // Pre-select first SKU variant if available
       const variants = data?.product?.rawVariants || data?.rawVariants || [];
       if (variants.length > 0) setAddToCartSelectedSku(variants[0]);
     },
-    onError: () => {
+    onError: (_error, _ctx) => {
       // Show modal with basic item info even if detail fetch fails
       setAddToCartProductDetail(null);
     },
@@ -1013,7 +1022,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({
               item.live_code ??
               item.liveCommerceCode ??
               item.broadcastCode,
-            liveProviderOrderId: pickLiveProviderOrderId(item) ?? undefined,
+            liveProviderOrderId: pickLiveProviderOrderIdForLiveLine(item) ?? undefined,
           })),
           totalAmount,
           liveCode: backendLiveCode || (localLive ? 'local-recorded' : undefined),

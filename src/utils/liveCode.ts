@@ -174,6 +174,24 @@ export function resolveLiveCode(
 }
 
 /**
+ * Backend rules for `liveCode` on `/cart`, checkout, and orders: exactly six
+ * digits, or `LV` plus six alphanumeric characters (case-insensitive LV).
+ */
+export function isStrictBackendLiveCode(value: unknown): boolean {
+  const s = value != null ? String(value).trim() : '';
+  if (!s) return false;
+  if (/^\d{6}$/.test(s)) return true;
+  return /^LV[a-zA-Z0-9]{6}$/i.test(s);
+}
+
+/** Returns trimmed `liveCode` only when it satisfies {@link isStrictBackendLiveCode}. */
+export function sanitizeLiveCodeForApi(value: unknown): string | undefined {
+  const s = value != null ? String(value).trim() : '';
+  if (!s) return undefined;
+  return isStrictBackendLiveCode(s) ? s : undefined;
+}
+
+/**
  * When PDP is opened from live-commerce, the listing code is often passed
  * only as navigation `productId` (numeric). Reject Mongo-style 24-hex ids.
  */
@@ -205,12 +223,16 @@ export function getLiveCodeForCartPayload(
     routeLiveCode != null && String(routeLiveCode).trim() !== ''
       ? String(routeLiveCode).trim()
       : '';
-  if (nav) return nav;
+  if (nav) {
+    const ok = sanitizeLiveCodeForApi(nav);
+    if (ok) return ok;
+  }
   const p = product as { name?: string; subject?: string; subjectTrans?: string } | null | undefined;
   const fromProduct =
     resolveLiveCode(routeSource, product, p?.name, p?.subject, p?.subjectTrans) ?? undefined;
-  if (fromProduct) return fromProduct;
-  return liveCodeFromRouteProductId(routeProductId);
+  const sProd = sanitizeLiveCodeForApi(fromProduct);
+  if (sProd) return sProd;
+  return sanitizeLiveCodeForApi(liveCodeFromRouteProductId(routeProductId));
 }
 
 /** First explicit live-code-like value on any checkout / order line row. */
@@ -221,7 +243,8 @@ export function pickFirstExplicitLiveCodeFromRows(rows: unknown): string | undef
       pickExplicitLiveCodeFromTree(row) ??
       pickExplicitLiveCode(row) ??
       resolveLiveCodeForOwnmallOrderLine(row);
-    if (hit) return hit;
+    const ok = sanitizeLiveCodeForApi(hit);
+    if (ok) return ok;
   }
   return undefined;
 }
@@ -234,9 +257,15 @@ export function resolveLiveLineCode(it: unknown): string | null {
   if (it == null || typeof it !== 'object') return null;
   const o = it as Record<string, unknown>;
   const fromPick = pickExplicitLiveCodeFromTree(it) ?? pickExplicitLiveCode(it);
-  if (fromPick && String(fromPick).trim()) return String(fromPick).trim();
+  if (fromPick && String(fromPick).trim()) {
+    const ok = sanitizeLiveCodeForApi(fromPick);
+    if (ok) return ok;
+  }
   const raw = o.liveCode ?? o.live_code;
-  if (raw != null && String(raw).trim() !== '') return String(raw).trim();
+  if (raw != null && String(raw).trim() !== '') {
+    const ok = sanitizeLiveCodeForApi(raw);
+    if (ok) return ok;
+  }
   return resolveLiveCodeForOwnmallOrderLine(it);
 }
 
@@ -250,7 +279,7 @@ export function augmentDirectPurchaseItemsWithOrderLiveCode(
   items: unknown[],
   orderLiveCode: string | undefined,
 ): unknown[] {
-  const lc = orderLiveCode != null ? String(orderLiveCode).trim() : '';
+  const lc = sanitizeLiveCodeForApi(orderLiveCode) ?? '';
   if (!lc || !Array.isArray(items)) return items;
   return items.map((it) => {
     if (it == null || typeof it !== 'object') return it;
@@ -297,6 +326,25 @@ export function pickLiveProviderOrderId(root: unknown): string | null {
     }
   }
   return null;
+}
+
+/**
+ * Same as {@link pickLiveProviderOrderId}, but only when the line is
+ * live-commerce ({@link resolveLiveLineCode} non-null). Standard rows may
+ * still carry supplier-style ids on nested `product`; those must not be
+ * shown as the live "service order" on payment / order UIs.
+ */
+export function pickLiveProviderOrderIdForLiveLine(item: unknown): string | null {
+  if (resolveLiveLineCode(item) == null) return null;
+  if (item == null || typeof item !== 'object') return null;
+  const r = item as Record<string, unknown>;
+  for (const key of ['liveProviderOrderId', 'live_provider_order_id'] as const) {
+    const v = r[key];
+    if (v == null) continue;
+    const s = String(v).trim();
+    if (s) return s;
+  }
+  return pickLiveProviderOrderId(item);
 }
 
 // ─── Order display helpers ────────────────────────────────────────────

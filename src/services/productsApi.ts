@@ -1426,34 +1426,71 @@ export const productsApi = {
 
         const taobaoData = taobaoResponse.data;
 
-        // console.log('📦 [Taobao Product Detail API] Response:', {
-        //   status: taobaoResponse.status,
-        //   statusText: taobaoResponse.statusText,
-        //   hasData: !!taobaoData,
-        //   biz_error_code: taobaoData?.biz_error_code,
-        //   biz_error_msg: taobaoData?.biz_error_msg,
-        //   hasDataField: !!taobaoData?.data,
-        //   dataKeys: taobaoData?.data ? Object.keys(taobaoData.data) : [],
-        // });
+        /** Only treat non-null / non-zero / non-empty-string codes as hard failures. */
+        const taobaoBizErrorIndicatesFailure = (code: unknown): boolean => {
+          if (code === null || code === undefined) return false;
+          if (typeof code === 'boolean') return code;
+          if (typeof code === 'number') return !Number.isNaN(code) && code !== 0;
+          if (typeof code === 'string') {
+            const s = code.trim();
+            if (!s || s === '0') return false;
+            return true;
+          }
+          return true;
+        };
 
-        if (!taobaoData || taobaoData.biz_error_code !== null || !taobaoData.data) {
-          // console.error('📦 [Taobao Product Detail API] Validation failed:', {
-          //   hasData: !!taobaoData,
-          //   biz_error_code: taobaoData?.biz_error_code,
-          //   biz_error_msg: taobaoData?.biz_error_msg,
-          //   hasDataField: !!taobaoData?.data,
-          // });
+        const taobaoPayloadLooksLikeItem = (p: any): boolean => {
+          if (!p || typeof p !== 'object') return false;
+          if (p.item_id != null || p.itemId != null) return true;
+          if (Array.isArray(p.pic_urls) && p.pic_urls.length > 0) return true;
+          if (Array.isArray(p.sku_list) && p.sku_list.length > 0) return true;
+          if (typeof p.title === 'string' && p.title.trim() !== '') return true;
+          return false;
+        };
+
+        // Walk common gateway + Taobao Global wrappers until we find the item object.
+        let root: any = taobaoData;
+        if (root && typeof root === 'object' && root.status === 'success' && root.data != null) {
+          root = root.data;
+        }
+
+        if (root && typeof root === 'object' && 'biz_error_code' in root) {
+          if (taobaoBizErrorIndicatesFailure(root.biz_error_code)) {
+            return {
+              success: false,
+              message: root.biz_error_msg || 'Failed to get Taobao product detail',
+              data: null,
+            };
+          }
+          if (root.data != null) root = root.data;
+        }
+
+        // Some gateways nest the item once more under `data` without `biz_error_code`.
+        if (root && typeof root === 'object' && root.data != null && !taobaoPayloadLooksLikeItem(root)) {
+          const inner = root.data;
+          if (taobaoPayloadLooksLikeItem(inner)) root = inner;
+        }
+
+        let detailPayload: any = root;
+        if (detailPayload?.item && typeof detailPayload.item === 'object') {
+          detailPayload = detailPayload.item;
+        }
+        if (detailPayload?.result && typeof detailPayload.result === 'object') {
+          const r = detailPayload.result;
+          if (taobaoPayloadLooksLikeItem(r)) detailPayload = r;
+        }
+
+        if (!taobaoPayloadLooksLikeItem(detailPayload)) {
           return {
             success: false,
-            message: taobaoData?.biz_error_msg || 'Failed to get Taobao product detail',
+            message: root?.biz_error_msg || root?.message || 'Failed to get Taobao product detail',
             data: null,
           };
         }
 
-        // Return raw Taobao detail data; normalization is handled in ProductDetailScreen
         return {
           success: true,
-          data: taobaoData.data,
+          data: detailPayload,
           message: 'Taobao product detail retrieved successfully',
         };
       }

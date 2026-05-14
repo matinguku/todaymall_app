@@ -15,7 +15,7 @@ import { formatPriceKRW } from '../../../../utils/i18nHelpers';
 import { orderApi } from '../../../../services/orderApi';
 import { logDevApiFailure } from '../../../../utils/devLog';
 import { useTranslation } from '../../../../hooks/useTranslation';
-import { pickLiveProviderOrderId } from '../../../../utils/liveCode';
+import { pickLiveProviderOrderIdForLiveLine } from '../../../../utils/liveCode';
 
 // Maps the raw progressStatus value (e.g. 'BUYING_MANUAL') to the
 // existing pages.orders.status.* i18n key so the order detail header
@@ -254,10 +254,7 @@ const OrderDetailScreen: React.FC = () => {
             <Text style={styles.storeName}>{storeName} {'>'}</Text>
             {items.map((item: any, i: number) => {
               const skuLabel = (item.skuAttributes || []).map((a: any) => a.valueTrans || a.value).join(' / ');
-              const lineServiceOrderId =
-                (item.liveProviderOrderId && String(item.liveProviderOrderId).trim()) ||
-                pickLiveProviderOrderId(item) ||
-                '';
+              const lineServiceOrderId = pickLiveProviderOrderIdForLiveLine(item) || '';
               return (
                 <View key={i} style={styles.productRow}>
                   <Image source={{ uri: item.imageUrl || item.image }} style={styles.productImage} />

@@ -520,6 +520,8 @@ export const translations = {
       pleaseSelectOptions: 'Please select color and size',
       liveProductCodeMissing:
         'This live listing is missing a product code. Please open it again from the live shop.',
+      invalidLiveCodeFormat:
+        'Live code must be 6 digits or LV plus 6 letters/numbers. Open this product from the live shop or enter a valid code.',
       addedToCart: 'Item added to cart successfully',
       failedToAdd: 'Failed to add item to cart',
       sold: 'sold',
@@ -969,7 +971,7 @@ For return assistance, please contact our customer service team with your order 
       toProblem: 'Problem product',
       toErrorIn: 'Error in stock',
       toRefunds: 'Returns',
-      paymentCompletedCard: 'Payment Completed',
+      paymentCompletedCard: 'Purchase Payment Pending',
       awaitingShipmentPaymentCard: 'Awaiting Shipment Payment',
       internationalShippingCard: 'International Shipping',
       viewAllOrdersCard: 'View All',
@@ -2221,6 +2223,8 @@ Supports credit and check cards from various banks for recharging and payments.`
       pleaseLoginCart: '请先登录后查看购物车',
       pleaseSelectOptions: '请选择颜色和尺寸',
       liveProductCodeMissing: '该直播商品缺少商品编码，请从直播卖场重新进入。',
+      invalidLiveCodeFormat:
+        '直播代码须为 6 位数字，或 LV 加 6 位字母或数字。请从直播卖场进入该商品或填写有效代码。',
       addedToCart: '商品已成功添加到购物车',
       failedToAdd: '添加商品到购物车失败',
       sold: '已售',
@@ -2657,7 +2661,7 @@ Supports credit and check cards from various banks for recharging and payments.`
       toProblem: '問題商品',
       toErrorIn: '錯誤入貨',
       toRefunds: '退款',
-      paymentCompletedCard: '购买付款完成',
+      paymentCompletedCard: '购买付款待处理',
       awaitingShipmentPaymentCard: '待出货付款',
       internationalShippingCard: '国际运输',
       viewAllOrdersCard: '查看全部',
@@ -4087,6 +4091,8 @@ Supports credit and check cards from various banks for recharging and payments.`
       pleaseSelectOptions: '컬러와 사이즈를 선택해주세요',
       liveProductCodeMissing:
         '라이브 상품 코드를 찾을 수 없습니다. 라이브 매장에서 상품을 다시 열어주세요.',
+      invalidLiveCodeFormat:
+        '라이브 코드는 숫자 6자리이거나, LV 뒤에 영문/숫자 6자리여야 합니다. 라이브 매장에서 상품을 열거나 올바른 코드를 입력해 주세요.',
       addedToCart: '장바구니에 상품이 추가되었습니다',
       failedToAdd: '장바구니 추가에 실패했습니다',
       sold: '판매',
@@ -4614,7 +4620,7 @@ Supports credit and check cards from various banks for recharging and payments.`
       toProblem: '문제상품',
       toErrorIn: '오류입고',
       toRefunds: '반품/환불',
-      paymentCompletedCard: '구매 결제 완료',
+      paymentCompletedCard: '구매 결제 대기',
       awaitingShipmentPaymentCard: '출고 결제 대기',
       internationalShippingCard: '국제 운송',
       viewAllOrdersCard: '전체 보기',
