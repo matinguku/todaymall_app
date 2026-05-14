@@ -36,7 +36,10 @@ import { useToast } from '../../../../context/ToastContext';
 import { formatPriceKRW, formatKRWDirect, formatDepositBalance } from '../../../../utils/i18nHelpers';
 import { addressApi } from '../../../../services/addressApi';
 import { orderApi } from '../../../../services/orderApi';
-import { pickFirstExplicitLiveCodeFromRows } from '../../../../utils/liveCode';
+import {
+  pickFirstExplicitLiveCodeFromRows,
+  augmentDirectPurchaseItemsWithOrderLiveCode,
+} from '../../../../utils/liveCode';
 import { depositApi } from '../../../../services/depositApi';
 import type { BillgateResult } from '../../../../lib/billgate/types';
 
@@ -1359,8 +1362,13 @@ const PaymentScreen: React.FC = () => {
     const directRowsForLiveCode = [...directPurchaseItems, ...items];
     const directOrderLiveCode = pickFirstExplicitLiveCodeFromRows(directRowsForLiveCode);
 
+    const directItemsPrepared = augmentDirectPurchaseItemsWithOrderLiveCode(
+      directPurchaseItems,
+      directOrderLiveCode,
+    ) as any[];
+
     const directRequest = {
-      items: directPurchaseItems,
+      items: directItemsPrepared,
       designatedShootingImageCount: designatedShootingCount || undefined,
       estimatedShippingCostBySeller: estimatedShippingCostBySeller || {},
       addressId: selectedAddress.id,

@@ -12,7 +12,11 @@ export interface ApiResponse<T> {
 }
 
 export interface AddToCartRequest {
-  offerId: number;
+  /**
+   * Catalog offer id. For live-commerce lines the provider also expects
+   * `liveCode`; both may be sent so checkout / order flows can classify the line.
+   */
+  offerId?: number;
   categoryId: number;
   source?: string;
   subject: string;
@@ -158,7 +162,8 @@ export interface CheckoutResponse {
 }
 
 export interface DirectPurchaseRequest {
-  productId: number;
+  /** Catalog / listing id; for live PDPs send together with `liveCode` when applicable. */
+  productId?: number;
   source: string;
   quantity: string;
   price: number;

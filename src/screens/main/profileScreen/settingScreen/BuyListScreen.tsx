@@ -44,7 +44,7 @@ import { useAppSelector } from '../../../../store/hooks';
 import { formatPriceKRW, getLocalizedText } from '../../../../utils/i18nHelpers';
 import { translations } from '../../../../i18n/translations';
 import { logDevApiFailure } from '../../../../utils/devLog';
-import { getDisplayOrderNumber, pickOrderLiveCodeSnapshot } from '../../../../utils/liveCode';
+import { getDisplayOrderNumber, pickOrderLiveCodeSnapshot, pickLiveProviderOrderId } from '../../../../utils/liveCode';
 import { loadLiveProductIds, orderHasRecordedLiveProduct } from '../../../../utils/liveProductTracker';
 import { useCancelOrderMutation } from '../../../../hooks/useCancelOrderMutation';
 import { useAddToCartMutation } from '../../../../hooks/useAddToCartMutation';
@@ -92,6 +92,8 @@ interface OrderItem {
     skuImageUrl?: string;
   }[];
   liveCode?: string;
+  /** Provider's per-line order id for live-commerce (from API). */
+  liveProviderOrderId?: string;
 }
 
 interface Order {
@@ -605,8 +607,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({
         skuImageUrl: attr.skuImageUrl,
       }));
       const buyAgainLive = liveCodeForBuyAgainPayload(item, order);
-      addToCart({
-        offerId: parseInt(item.offerId, 10) || 0,
+      const repurchasePayload: any = {
         categoryId: 0,
         subject: item.productName,
         subjectTrans: item.productName,
@@ -625,8 +626,13 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({
         source: item.source || '1688',
         quantity: item.quantity,
         minOrderQuantity: 1,
-        ...(buyAgainLive ? { liveCode: buyAgainLive } : {}),
-      });
+      };
+      if (buyAgainLive) {
+        repurchasePayload.liveCode = buyAgainLive;
+      } else {
+        repurchasePayload.offerId = parseInt(item.offerId, 10) || 0;
+      }
+      addToCart(repurchasePayload);
     });
   };
 
@@ -674,8 +680,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({
       skuImageUrl: attr.skuImageUrl,
     }));
     const modalLive = liveCodeForBuyAgainPayload(addToCartItem);
-    addToCart({
-      offerId: parseInt(addToCartItem.offerId, 10) || 0,
+    const modalPayload: any = {
       categoryId: 0,
       subject: addToCartItem.productName,
       subjectTrans: addToCartItem.productName,
@@ -694,8 +699,13 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({
       source: addToCartItem.source || '1688',
       quantity: addToCartQuantity,
       minOrderQuantity: 1,
-      ...(modalLive ? { liveCode: modalLive } : {}),
-    });
+    };
+    if (modalLive) {
+      modalPayload.liveCode = modalLive;
+    } else {
+      modalPayload.offerId = parseInt(addToCartItem.offerId, 10) || 0;
+    }
+    addToCart(modalPayload);
     setAddToCartModalVisible(false);
   };
 
@@ -1003,6 +1013,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({
               item.live_code ??
               item.liveCommerceCode ??
               item.broadcastCode,
+            liveProviderOrderId: pickLiveProviderOrderId(item) ?? undefined,
           })),
           totalAmount,
           liveCode: backendLiveCode || (localLive ? 'local-recorded' : undefined),
@@ -1452,6 +1463,7 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({
         .join('/');
     };
     const specsText = formatSkuAttributes(item.skuAttributes);
+    const lineServiceOrderId = item.liveProviderOrderId?.trim();
 
     return (
       <View key={uniqueKey} style={styles.productItem}>
@@ -1460,6 +1472,22 @@ const BuyListScreen: React.FC<BuyListScreenProps> = ({
           <Text style={styles.productTitle} numberOfLines={2}>{item.productName}</Text>
           {!!specsText && (
             <Text style={styles.productSpecs} numberOfLines={1}>{specsText}</Text>
+          )}
+          {!!lineServiceOrderId && (
+            <View style={styles.itemOrderIdRow}>
+              <Text style={styles.itemOrderIdLabel} numberOfLines={1}>
+                {t('buyList.itemServiceOrderId')}: {lineServiceOrderId}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  const Clipboard = require('@react-native-clipboard/clipboard').default;
+                  Clipboard.setString(lineServiceOrderId);
+                  showToast(t('buyList.copied') || 'Copied', 'success');
+                }}
+              >
+                <Text style={styles.orderCopyText}>{t('buyList.copy')}</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
         <View style={styles.productPriceCol}>
@@ -3998,6 +4026,20 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.sm,
     color: COLORS.red,
     fontWeight: '600',
+  },
+  itemOrderIdRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  itemOrderIdLabel: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.text.secondary,
+    flex: 1,
+    marginRight: SPACING.sm,
   },
   orderTotalRow: {
     flexDirection: 'row',

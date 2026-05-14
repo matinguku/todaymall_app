@@ -15,6 +15,7 @@ import { formatPriceKRW } from '../../../../utils/i18nHelpers';
 import { orderApi } from '../../../../services/orderApi';
 import { logDevApiFailure } from '../../../../utils/devLog';
 import { useTranslation } from '../../../../hooks/useTranslation';
+import { pickLiveProviderOrderId } from '../../../../utils/liveCode';
 
 // Maps the raw progressStatus value (e.g. 'BUYING_MANUAL') to the
 // existing pages.orders.status.* i18n key so the order detail header
@@ -253,6 +254,10 @@ const OrderDetailScreen: React.FC = () => {
             <Text style={styles.storeName}>{storeName} {'>'}</Text>
             {items.map((item: any, i: number) => {
               const skuLabel = (item.skuAttributes || []).map((a: any) => a.valueTrans || a.value).join(' / ');
+              const lineServiceOrderId =
+                (item.liveProviderOrderId && String(item.liveProviderOrderId).trim()) ||
+                pickLiveProviderOrderId(item) ||
+                '';
               return (
                 <View key={i} style={styles.productRow}>
                   <Image source={{ uri: item.imageUrl || item.image }} style={styles.productImage} />
@@ -261,6 +266,16 @@ const OrderDetailScreen: React.FC = () => {
                       {item.subjectTrans || item.subject || item.productName || ''}
                     </Text>
                     {!!skuLabel && <Text style={styles.productSpecs}>{skuLabel}</Text>}
+                    {!!lineServiceOrderId && (
+                      <View style={styles.itemServiceOrderRow}>
+                        <Text style={styles.itemServiceOrderText} numberOfLines={2}>
+                          {t('buyList.itemServiceOrderId')}: {lineServiceOrderId}
+                        </Text>
+                        <TouchableOpacity onPress={() => copy(lineServiceOrderId)}>
+                          <Text style={styles.copyBtn}>{t('profile.copy')}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                     <View style={styles.priceRow}>
                       <Text style={styles.productPrice}>{formatPriceKRW(item.userPrice ?? item.price ?? 0)}</Text>
                       <Text style={styles.productQty}>×{item.quantity}</Text>
@@ -534,6 +549,14 @@ const styles = StyleSheet.create({
   productImage: { width: 72, height: 72, borderRadius: BORDER_RADIUS.sm, backgroundColor: COLORS.gray[100] },
   productTitle: { fontSize: FONTS.sizes.sm, color: COLORS.text.primary, lineHeight: 18 },
   productSpecs: { fontSize: FONTS.sizes.xs, color: COLORS.text.secondary, marginTop: 2 },
+  itemServiceOrderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+    marginTop: 6,
+  },
+  itemServiceOrderText: { fontSize: FONTS.sizes.xs, color: COLORS.text.secondary, flex: 1 },
   priceRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: 4 },
   productPrice: { fontSize: FONTS.sizes.sm, fontWeight: '700', color: COLORS.text.primary },
   productQty: { fontSize: FONTS.sizes.xs, color: COLORS.text.secondary },

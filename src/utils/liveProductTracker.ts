@@ -83,7 +83,15 @@ export function orderHasRecordedLiveProduct(
 
   const checkItem = (item: Record<string, unknown> | null | undefined): boolean => {
     if (!item) return false;
-    const candidates = [item.offerId, item.productId, item.itemId, item.id];
+    const candidates = [
+      item.offerId,
+      item.productId,
+      item.itemId,
+      item.id,
+      item.liveCode,
+      item.liveCodeSnapshot,
+      item.live_code,
+    ];
     for (const c of candidates) {
       const id = normalizeId(c);
       if (id && liveProductIds.has(id)) return true;

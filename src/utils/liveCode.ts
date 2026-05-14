@@ -115,6 +115,49 @@ export function extractLiveCode(...names: Array<string | null | undefined>): str
   return null;
 }
 
+function purchaseSourceIsLive(v: unknown): boolean {
+  return String(v ?? '').trim().toLowerCase() === 'live';
+}
+
+/**
+ * Own-mall order / checkout line marked as a live broadcast product
+ * (`ownmallProductType: "live"` from API), distinct from PDP `live-commerce` route.
+ */
+export function isOwnmallLiveLineItem(item: unknown): boolean {
+  if (item == null || typeof item !== 'object') return false;
+  const r = item as Record<string, unknown>;
+  const t = String(r.ownmallProductType ?? r.ownmall_product_type ?? '').trim().toLowerCase();
+  if (t === 'live') return true;
+  return purchaseSourceIsLive(r.purchaseSource);
+}
+
+/**
+ * Value to send as `liveCode` for POST /orders/direct-purchase (and similar)
+ * when the checkout row is an own-mall live line. Uses explicit live fields,
+ * then `productNo` (e.g. "X308"), then trailing digits from titles.
+ */
+export function resolveLiveCodeForOwnmallOrderLine(item: unknown): string | null {
+  if (item == null || typeof item !== 'object') return null;
+  const explicit = pickExplicitLiveCodeFromTree(item) ?? pickExplicitLiveCode(item);
+  if (explicit) return explicit;
+  if (!isOwnmallLiveLineItem(item)) return null;
+  const r = item as Record<string, unknown>;
+  const pn = r.productNo ?? r.product_no;
+  if (pn != null) {
+    const s = String(pn).trim();
+    if (s) return s;
+  }
+  const multiLang = r.subjectMultiLang as Record<string, unknown> | undefined;
+  const multiVals = multiLang
+    ? Object.values(multiLang).filter((x): x is string => typeof x === 'string')
+    : [];
+  return extractLiveCode(
+    typeof r.subject === 'string' ? r.subject : undefined,
+    typeof r.subjectTrans === 'string' ? r.subjectTrans : undefined,
+    ...multiVals,
+  );
+}
+
 /**
  * Resolve the liveCode for a product when (and only when) it was
  * navigated from a live-commerce origin. Tries the explicit product
@@ -131,15 +174,31 @@ export function resolveLiveCode(
 }
 
 /**
+ * When PDP is opened from live-commerce, the listing code is often passed
+ * only as navigation `productId` (numeric). Reject Mongo-style 24-hex ids.
+ */
+function liveCodeFromRouteProductId(routeProductId: unknown): string | undefined {
+  const raw = routeProductId != null ? String(routeProductId).trim() : '';
+  if (!raw) return undefined;
+  if (/^[a-f\d]{24}$/i.test(raw)) return undefined;
+  // Typical live listing codes are short numeric strings; cap length so we
+  // do not treat a long numeric id as a live code.
+  if (/^\d{3,12}$/.test(raw)) return raw;
+  return undefined;
+}
+
+/**
  * Live code for POST `/cart` and `/cart/checkout/direct-purchase` when the
  * user opened PDP from live-commerce. Prefer the navigation param, then
- * explicit fields on the product payload, then title parsing — never the
- * catalog `productCode` / offer id (those stay on `offerId`).
+ * explicit fields on the product payload, then title parsing, then the
+ * numeric `productId` route param when it is a short digit code (not a Mongo id).
+ * Send this together with catalog `offerId` / `productId` when the provider expects both.
  */
 export function getLiveCodeForCartPayload(
   routeSource: unknown,
   product: unknown,
   routeLiveCode?: unknown,
+  routeProductId?: unknown,
 ): string | undefined {
   if (!isLiveSource(routeSource)) return undefined;
   const nav =
@@ -148,19 +207,96 @@ export function getLiveCodeForCartPayload(
       : '';
   if (nav) return nav;
   const p = product as { name?: string; subject?: string; subjectTrans?: string } | null | undefined;
-  return (
-    resolveLiveCode(routeSource, product, p?.name, p?.subject, p?.subjectTrans) ?? undefined
-  );
+  const fromProduct =
+    resolveLiveCode(routeSource, product, p?.name, p?.subject, p?.subjectTrans) ?? undefined;
+  if (fromProduct) return fromProduct;
+  return liveCodeFromRouteProductId(routeProductId);
 }
 
 /** First explicit live-code-like value on any checkout / order line row. */
 export function pickFirstExplicitLiveCodeFromRows(rows: unknown): string | undefined {
   if (!Array.isArray(rows)) return undefined;
   for (const row of rows) {
-    const hit = pickExplicitLiveCodeFromTree(row) ?? pickExplicitLiveCode(row);
+    const hit =
+      pickExplicitLiveCodeFromTree(row) ??
+      pickExplicitLiveCode(row) ??
+      resolveLiveCodeForOwnmallOrderLine(row);
     if (hit) return hit;
   }
   return undefined;
+}
+
+/**
+ * Live listing / broadcast code on a checkout or order line
+ * (explicit fields, plain `liveCode` / `live_code`, or own-mall live SKU rules).
+ */
+export function resolveLiveLineCode(it: unknown): string | null {
+  if (it == null || typeof it !== 'object') return null;
+  const o = it as Record<string, unknown>;
+  const fromPick = pickExplicitLiveCodeFromTree(it) ?? pickExplicitLiveCode(it);
+  if (fromPick && String(fromPick).trim()) return String(fromPick).trim();
+  const raw = o.liveCode ?? o.live_code;
+  if (raw != null && String(raw).trim() !== '') return String(raw).trim();
+  return resolveLiveCodeForOwnmallOrderLine(it);
+}
+
+/**
+ * When the order carries a top-level `liveCode`, merge it onto direct-purchase
+ * lines that lack one so POST /orders/direct-purchase matches checkout. Does
+ * not remove catalog `offerId` / `productId` — the provider uses them together
+ * with `liveCode` per your workflow.
+ */
+export function augmentDirectPurchaseItemsWithOrderLiveCode(
+  items: unknown[],
+  orderLiveCode: string | undefined,
+): unknown[] {
+  const lc = orderLiveCode != null ? String(orderLiveCode).trim() : '';
+  if (!lc || !Array.isArray(items)) return items;
+  return items.map((it) => {
+    if (it == null || typeof it !== 'object') return it;
+    const o = it as Record<string, unknown>;
+    if (resolveLiveLineCode(o)) return it;
+    return { ...o, liveCode: lc, ownmallProductType: o.ownmallProductType ?? o.ownmall_product_type ?? 'live' };
+  });
+}
+
+/** Field names the service provider may use for the per-line live / agency order id. */
+const LIVE_PROVIDER_ORDER_ID_FIELDS = [
+  'liveOrderId',
+  'live_order_id',
+  'liveOrderNumber',
+  'live_order_number',
+  'serviceProviderOrderId',
+  'service_provider_order_id',
+  'supplierOrderId',
+  'supplier_order_id',
+  'externalOrderId',
+  'agencyOrderNo',
+  'purchaseOrderNo',
+] as const;
+
+/**
+ * Per–line item: id returned by the live / fulfillment provider (distinct from
+ * our cart `offerId`). Used on order UIs instead of inferring from offer id.
+ */
+export function pickLiveProviderOrderId(root: unknown): string | null {
+  if (root == null || typeof root !== 'object') return null;
+  const r = root as Record<string, unknown>;
+  for (const key of LIVE_PROVIDER_ORDER_ID_FIELDS) {
+    const v = r[key];
+    if (v == null) continue;
+    const s = String(v).trim();
+    if (s) return s;
+  }
+  const nestedKeys = ['product', 'lineItem', 'orderItem', 'item'] as const;
+  for (const nk of nestedKeys) {
+    const sub = r[nk];
+    if (sub && typeof sub === 'object' && !Array.isArray(sub)) {
+      const hit = pickLiveProviderOrderId(sub);
+      if (hit) return hit;
+    }
+  }
+  return null;
 }
 
 // ─── Order display helpers ────────────────────────────────────────────
@@ -200,6 +336,13 @@ export function pickOrderLiveCodeSnapshot(order: unknown): string | null {
   const tryNode = (node: unknown): string | null => pickExplicitLiveCode(node);
   const root = tryNode(o);
   if (root) return root;
+  const flatItems = o.items;
+  if (Array.isArray(flatItems)) {
+    for (const it of flatItems) {
+      const hit = tryNode(it) ?? resolveLiveCodeForOwnmallOrderLine(it);
+      if (hit) return hit;
+    }
+  }
   const children = o.childOrders;
   if (!Array.isArray(children)) return null;
   for (const co of children) {
@@ -208,15 +351,11 @@ export function pickOrderLiveCodeSnapshot(order: unknown): string | null {
     const items = (co as Record<string, unknown>)?.items;
     if (!Array.isArray(items)) continue;
     for (const it of items) {
-      const hit = tryNode(it);
+      const hit = tryNode(it) ?? resolveLiveCodeForOwnmallOrderLine(it);
       if (hit) return hit;
     }
   }
   return null;
-}
-
-function purchaseSourceIsLive(v: unknown): boolean {
-  return String(v ?? '').trim().toLowerCase() === 'live';
 }
 
 /**
@@ -225,6 +364,7 @@ function purchaseSourceIsLive(v: unknown): boolean {
  *   1. `purchaseSource === 'live'` on the order or any child order.
  *   2. Any explicit live / `liveCodeSnapshot` field on order, child, or item.
  *   3. Any flat `items[]` entry matches (2) or subject tail digits (legacy).
+ *   4. Any line has `ownmallProductType === 'live'` (own-mall broadcast SKU).
  */
 export function hasLiveItem(order: unknown): boolean {
   const o = order as (OrderLoose & { [k: string]: unknown }) | null | undefined;
@@ -235,6 +375,7 @@ export function hasLiveItem(order: unknown): boolean {
   if (Array.isArray(o.items)) {
     for (const item of o.items) {
       if (!item) continue;
+      if (isOwnmallLiveLineItem(item)) return true;
       if (pickExplicitLiveCode(item) != null) return true;
       const multiLangValues = item.subjectMultiLang
         ? Object.values(item.subjectMultiLang).filter(

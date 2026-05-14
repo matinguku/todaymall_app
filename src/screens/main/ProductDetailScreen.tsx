@@ -13,8 +13,12 @@ import {
   Share,
   Platform,
   Animated,
+  InteractionManager,
   useWindowDimensions,
+  PixelRatio,
+  ActivityIndicator,
 } from 'react-native';
+import FastImage from '@d11/react-native-fast-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -28,6 +32,7 @@ import {
   pickExplicitLiveCodeFromTree,
   extractLiveCode,
   getLiveCodeForCartPayload,
+  resolveLiveCodeForOwnmallOrderLine,
 } from '../../utils/liveCode';
 import { recordLiveProduct } from '../../utils/liveProductTracker';
 
@@ -35,7 +40,6 @@ import { ProductCard, SearchButton } from '../../components';
 import { PhotoCaptureModal } from '../../components';
 import { usePlatformStore } from '../../store/platformStore';
 import { useAppSelector } from '../../store/hooks';
-import { ActivityIndicator } from 'react-native';
 import { Product } from '../../types';
 import { useProductDetailMutation } from '../../hooks/useProductDetailMutation';
 import { useRelatedRecommendationsMutation } from '../../hooks/useRelatedRecommendationsMutation';
@@ -77,6 +81,99 @@ import SearchImageIcon from '../../assets/icons/SearchImageIcon';
 
 const { width } = Dimensions.get('window');
 const IMAGE_HEIGHT = 400;
+
+const GALLERY_THUMB_QUALITY = 55;
+
+/** ~2× 60dp swatch decode target for retina without loading full SKU photos. */
+const COLOR_SWATCH_THUMB_EDGE = 120;
+const COLOR_SWATCH_THUMB_QUALITY = 58;
+
+const TAOBAO_RELATED_THUMB_QUALITY = 56;
+
+/** Memoized gallery page: CDN-sized decode + FastImage cache to limit PDP jank. */
+type PdpGallerySlideProps = {
+  uri: string;
+  widthPx: number;
+  heightPx: number;
+  thumbEdgePx: number;
+  index: number;
+  onPress: () => void;
+};
+
+const PdpGallerySlide = React.memo(function PdpGallerySlide({
+  uri,
+  widthPx,
+  heightPx,
+  thumbEdgePx,
+  index,
+  onPress,
+}: PdpGallerySlideProps) {
+  const thumbUri = useMemo(
+    () => buildCdnThumbnailUri(uri, thumbEdgePx, GALLERY_THUMB_QUALITY),
+    [uri, thumbEdgePx],
+  );
+  return (
+    <TouchableOpacity activeOpacity={0.9} onPress={onPress}>
+      <FastImage
+        source={{
+          uri: thumbUri,
+          priority: index === 0 ? FastImage.priority.high : FastImage.priority.low,
+          cache: FastImage.cacheControl.immutable,
+        }}
+        style={{ width: widthPx, height: heightPx, backgroundColor: COLORS.gray[100] }}
+        resizeMode={FastImage.resizeMode.cover}
+      />
+    </TouchableOpacity>
+  );
+});
+
+const ColorSwatchImage = React.memo(function ColorSwatchImage({
+  uri,
+  isSelected,
+}: {
+  uri: string;
+  isSelected: boolean;
+}) {
+  const thumbUri = useMemo(
+    () => buildCdnThumbnailUri(uri, COLOR_SWATCH_THUMB_EDGE, COLOR_SWATCH_THUMB_QUALITY),
+    [uri],
+  );
+  return (
+    <FastImage
+      source={{
+        uri: thumbUri,
+        priority: FastImage.priority.low,
+        cache: FastImage.cacheControl.immutable,
+      }}
+      style={[styles.colorImage, isSelected && styles.selectedColorImage] as any}
+      resizeMode={FastImage.resizeMode.cover}
+    />
+  );
+});
+
+const TaobaoRelatedThumb = React.memo(function TaobaoRelatedThumb({
+  uri,
+  thumbEdgePx,
+}: {
+  uri: string;
+  thumbEdgePx: number;
+}) {
+  const thumbUri = useMemo(
+    () => buildCdnThumbnailUri(uri, thumbEdgePx, TAOBAO_RELATED_THUMB_QUALITY),
+    [uri, thumbEdgePx],
+  );
+  return (
+    <FastImage
+      source={{
+        uri: thumbUri,
+        priority: FastImage.priority.low,
+        cache: FastImage.cacheControl.immutable,
+      }}
+      style={styles.simpleTaobaoImage as any}
+      resizeMode={FastImage.resizeMode.cover}
+    />
+  );
+});
 
 /**
  * Suppliers often emit the same dimension under different labels (e.g.
@@ -176,12 +273,33 @@ function getPdpCatalogCodeDisplay(
   return { value: catalog };
 }
 
+/** Plain text from HTML description — module scope so PDP re-renders don't re-parse unless `description` changes. */
+function stripHtmlDescriptionToPlain(html: string): string {
+  if (!html) return '';
+  return html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 const ProductDetailScreen: React.FC = () => {
   const { width: dynWidth, height: dynHeight } = useWindowDimensions();
   const pdpIsTablet = Math.min(dynWidth, dynHeight) >= 600;
   const pdpIsLandscape = dynWidth > dynHeight;
   const pdpGridCols = pdpIsTablet ? (pdpIsLandscape ? 4 : 3) : 2;
   const pdpGridCardWidth = (dynWidth - SPACING.sm * 2 - SPACING.sm * (pdpGridCols - 1)) / pdpGridCols;
+  const taobaoRelatedThumbEdge = Math.min(
+    360,
+    Math.max(200, Math.round(pdpGridCardWidth * Math.min(PixelRatio.get(), 3))),
+  );
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const {
@@ -233,6 +351,9 @@ const ProductDetailScreen: React.FC = () => {
   // from /live-commerce/sellers/:sellerId when the recommendations fetch
   // runs for live products. Used by the seller mini-card under the title.
   const [liveSellerInfo, setLiveSellerInfo] = useState<any>(null);
+  /** After first paint + idle: mount description HTML parsing and "more to love" to cut Davey/GC on open. */
+  const [belowFoldReady, setBelowFoldReady] = useState(false);
+  const scrollRelatedPrefetchAtRef = useRef(0);
 
   // Post-login auto-add-to-cart flow.
   // When a logged-out user taps "Add to Cart" we open Auth → Signup (modal)
@@ -293,10 +414,9 @@ const ProductDetailScreen: React.FC = () => {
   const [similarSearchUri, setSimilarSearchUri] = useState<string>('');
   const [isFetchingBase64, setIsFetchingBase64] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-  // Imperative handle on the image-gallery ScrollView so a color-option tap
-  // can jump it to the matching image. The gallery is a horizontal pager —
-  // each page is `dynWidth` wide.
-  const galleryScrollRef = useRef<ScrollView | null>(null);
+  // Imperative handle on the image-gallery FlatList so a color-option tap
+  // can jump it to the matching image. Each page is `dynWidth` wide.
+  const galleryScrollRef = useRef<FlatList<string> | null>(null);
   // When a variation option carries an image that is NOT already in the
   // product's gallery (apiImages), we append it as a "virtual" extra page
   // so the user still sees the image they picked. Replaced each time the
@@ -334,9 +454,8 @@ const ProductDetailScreen: React.FC = () => {
     const targetIdx = apiImages.length; // Appended page sits at the end.
     const id = setTimeout(() => {
       setSelectedImageIndex(targetIdx);
-      galleryScrollRef.current?.scrollTo({
-        x: targetIdx * dynWidth,
-        y: 0,
+      galleryScrollRef.current?.scrollToOffset({
+        offset: targetIdx * dynWidth,
         animated: true,
       });
     }, 50);
@@ -520,7 +639,21 @@ const ProductDetailScreen: React.FC = () => {
         showToast(t('product.outOfStock'), 'warning');
         return;
       }
-      const paymentItems = data.selectedItems.map((item: any) => ({
+      const lineLiveCode =
+        getLiveCodeForCartPayload(routeSource, product, routeLiveCode, productId) ||
+        resolveLiveCodeForOwnmallOrderLine(product) ||
+        undefined;
+      const selectedItems = !lineLiveCode
+        ? data.selectedItems
+        : (data.selectedItems || []).map((item: any) => ({
+            ...item,
+            liveCode: item.liveCode || lineLiveCode,
+            ownmallProductType: item.ownmallProductType || 'live',
+            productNo:
+              item.productNo ||
+              (String((product as any).productNo || '').trim() || undefined),
+          }));
+      const paymentItems = selectedItems.map((item: any) => ({
         id: item._id,
         _id: item._id,
         offerId: item.offerId,
@@ -552,7 +685,7 @@ const ProductDetailScreen: React.FC = () => {
           serviceFeePercentage: data.serviceFeePercentage,
           estimatedRuralCost: data.estimatedRuralCost,
         },
-        directPurchaseItems: data.selectedItems,
+        directPurchaseItems: selectedItems,
         selectedAddress: user?.addresses?.find(addr => addr.isDefault) || user?.addresses?.[0],
       });
     },
@@ -569,11 +702,22 @@ const ProductDetailScreen: React.FC = () => {
       return;
     }
 
-    // Get product external ID - prioritize externalId, never use MongoDB _id
-    const externalId = 
+    // Get product external ID — live listings often have no catalog offerId;
+    // fall back to live code / route id so the heart button does not falsely
+    // show "invalid product id" on live PDPs.
+    let externalId =
       (product as any).externalId?.toString() ||
       (product as any).offerId?.toString() ||
       '';
+
+    if (!externalId && isLiveSource(routeSource)) {
+      externalId =
+        String((product as any).liveCode ?? '').trim() ||
+        getLiveCodeForCartPayload(routeSource, product, routeLiveCode, productId) ||
+        product.id?.toString() ||
+        String(productId ?? offerId ?? '').trim() ||
+        '';
+    }
 
     if (!externalId) {
       showToast(t('product.invalidProductId'), 'error');
@@ -924,7 +1068,13 @@ const ProductDetailScreen: React.FC = () => {
       //   dataKeys: data ? Object.keys(data) : [],
       //   source,
       // });
-      console.log('📦 [ProductDetailScreen] Raw API response:', data);
+      if (__DEV__) {
+        const d = data as Record<string, unknown> | null;
+        console.log('[PDP] detail ok', {
+          keys: d && typeof d === 'object' ? Object.keys(d).slice(0, 20) : [],
+          offerId: (d as any)?.offerId,
+        });
+      }
       // Taobao product detail mapping
       if (source === 'taobao' && data) {
         const taobao = data;
@@ -1151,13 +1301,28 @@ const ProductDetailScreen: React.FC = () => {
           productCode: String(
             apiProduct.productCode ?? apiProduct.offerId ?? apiProduct.productId ?? '',
           ).trim(),
-          liveCode:
-            pickExplicitLiveCodeFromTree(apiProduct) ??
-            extractLiveCode(apiProduct.subject, apiProduct.subjectTrans) ??
-            '',
+          liveCode: (() => {
+            const fromApi =
+              pickExplicitLiveCodeFromTree(apiProduct) ??
+              extractLiveCode(apiProduct.subject, apiProduct.subjectTrans) ??
+              '';
+            if (fromApi) return fromApi;
+            const navLc =
+              routeLiveCode != null && String(routeLiveCode).trim() !== ''
+                ? String(routeLiveCode).trim()
+                : '';
+            if (navLc) return navLc;
+            const pid = String(productId ?? '').trim();
+            if (pid && /^\d{3,12}$/.test(pid) && !/^[a-f\d]{24}$/i.test(pid)) return pid;
+            return '';
+          })(),
           // Live-commerce internal seller id. The live channel's
           // /live-commerce/sellers/:sellerId endpoint keys off this Mongo
           // _id rather than the 1688 sellerOpenId.
+          // Own-mall API may tag broadcast SKUs; used when enriching checkout rows for /orders.
+          ownmallProductType:
+            String(apiProduct.ownmallProductType ?? apiProduct.ownmall_product_type ?? '').trim() ||
+            undefined,
           ownerSellerId: apiProduct.ownerSellerId || '',
         };
 
@@ -1221,6 +1386,16 @@ const ProductDetailScreen: React.FC = () => {
       setQuantity(product.minOrderQuantity);
     }
   }, [product?.minOrderQuantity]);
+
+  // Defer heavy below-fold subtree until transitions + first layout settle (reduces Davey on open).
+  useEffect(() => {
+    setBelowFoldReady(false);
+    if (!detailFetched || !product?.id) return;
+    const task = InteractionManager.runAfterInteractions(() => {
+      setBelowFoldReady(true);
+    });
+    return () => task.cancel?.();
+  }, [detailFetched, product?.id]);
 
   // Always fetch the full product detail in the background. If we already
   // have initialProductData (from the previous-page card payload), the screen
@@ -1490,6 +1665,15 @@ const ProductDetailScreen: React.FC = () => {
     
     return images;
   }, []);
+
+  const descriptionHtmlDerived = useMemo(() => {
+    const html = product?.description;
+    if (!html) return { images: [] as string[], plain: '' };
+    return {
+      images: extractImagesFromHtml(html),
+      plain: stripHtmlDescriptionToPlain(html),
+    };
+  }, [product?.description, extractImagesFromHtml]);
 
   // Get product images from API only (not from HTML description)
   const getApiProductImages = useCallback((currentProduct: any): string[] => {
@@ -1869,11 +2053,7 @@ const ProductDetailScreen: React.FC = () => {
           onPress={() => handleRelatedProductPress(item)}
         >
           <View style={styles.simpleTaobaoCard}>
-            <Image
-              source={{ uri: (item as any).image }}
-              style={styles.simpleTaobaoImage as any}
-              resizeMode="cover"
-            />
+            <TaobaoRelatedThumb uri={(item as any).image} thumbEdgePx={taobaoRelatedThumbEdge} />
             <Text style={styles.simpleTaobaoTitle} numberOfLines={2}>
               {resolveText((item as any).name)}
             </Text>
@@ -1897,7 +2077,7 @@ const ProductDetailScreen: React.FC = () => {
         />
       </View>
     );
-  }, [handleRelatedProductPress, isProductLiked, selectedPlatform, toggleWishlist, pdpGridCardWidth]);
+  }, [handleRelatedProductPress, isProductLiked, selectedPlatform, toggleWishlist, pdpGridCardWidth, taobaoRelatedThumbEdge]);
 
   const relatedProductsKeyExtractor = useCallback(
     (item: Product | any, index: number) =>
@@ -2037,9 +2217,7 @@ const ProductDetailScreen: React.FC = () => {
       // Login modal so returning members can continue; new users can open
       // 회원가입 (registration) from Login. Same returnParams + autoAddToCart.
       const persistedLiveCode =
-        routeLiveCode != null && String(routeLiveCode).trim() !== ''
-          ? String(routeLiveCode).trim()
-          : String((product as any).liveCode ?? '').trim() || undefined;
+        getLiveCodeForCartPayload(routeSource, product, routeLiveCode, productId) || undefined;
       const returnParams = {
         productId: (productId || offerId)?.toString?.() ?? String(productId || offerId || ''),
         offerId: offerId?.toString?.(),
@@ -2180,9 +2358,9 @@ const ProductDetailScreen: React.FC = () => {
       // Convert skuId to number if it's a string
       const skuIdValue = typeof finalSkuId === 'string' ? parseInt(finalSkuId) || 0 : finalSkuId;
       
-      // Build the request body
+      // Build the request body. Live-commerce lines include `liveCode` plus
+      // catalog `offerId` so the provider can classify the line from the response.
       const requestBody: any = {
-        offerId: parseInt(productIdForUrl.toString() || '0'),
         categoryId: parseInt((product as any).categoryId || product.category?.id || '0'),
         subject: resolveText((product as any).subject || product.name || ''),
         subjectTrans: resolveText((product as any).subjectTrans || product.name || ''),
@@ -2214,21 +2392,38 @@ const ProductDetailScreen: React.FC = () => {
         minOrderQuantity: minOrderQuantity,
       };
 
-      const cartLiveCode = getLiveCodeForCartPayload(routeSource, product, routeLiveCode);
-      if (cartLiveCode) {
-        requestBody.liveCode = cartLiveCode;
+      const cartLiveCode = getLiveCodeForCartPayload(routeSource, product, routeLiveCode, productId);
+      if (isLiveSource(routeSource) && !cartLiveCode) {
+        showToast(t('product.liveProductCodeMissing'), 'warning');
+        return;
+      }
+
+      const catalogOfferId = parseInt(productIdForUrl.toString() || '0', 10) || 0;
+      const addPayload: Record<string, unknown> = {
+        ...requestBody,
+        offerId: catalogOfferId,
+        ...(cartLiveCode ? { liveCode: cartLiveCode } : {}),
+      };
+
+      if (__DEV__ && cartLiveCode) {
+        console.log('[PDP][live] POST /cart', {
+          offerId: addPayload.offerId,
+          liveCode: addPayload.liveCode,
+          keys: Object.keys(addPayload),
+        });
       }
 
       // Local-only live tracking. Backend doesn't tag live orders, so we
       // remember the offerId on this device the moment the user commits
       // to adding a live product to the cart. BuyListScreen later
-      // cross-references each order item's offerId against this list to
+      // cross-references each order item's offerId / liveCode against this list to
       // decide whether to display the order number with an `LS` prefix.
       if (isLiveSource(routeSource)) {
         void recordLiveProduct(productIdForUrl);
+        if (cartLiveCode) void recordLiveProduct(cartLiveCode);
       }
 
-      await addToCart(requestBody);
+      await addToCart(addPayload as any);
     } catch (error: any) {
       showToast(error?.message || t('product.failedToAdd'), 'error');
     }
@@ -2359,8 +2554,13 @@ const ProductDetailScreen: React.FC = () => {
         },
       };
 
-      const directPurchaseBody: any = {
-        productId: parseInt(productIdForUrl.toString(), 10) || 0,
+      const buyNowLiveCode = getLiveCodeForCartPayload(routeSource, product, routeLiveCode, productId);
+      if (isLiveSource(routeSource) && !buyNowLiveCode) {
+        showToast(t('product.liveProductCodeMissing'), 'warning');
+        return;
+      }
+
+      const directPurchaseBase: Record<string, unknown> = {
         source: fetchSource,
         quantity: String(quantity),
         price: typeof finalPrice === 'number' ? finalPrice : parseFloat(String(finalPrice)) || 0,
@@ -2375,18 +2575,29 @@ const ProductDetailScreen: React.FC = () => {
         skuInfo: skuInfoPayload,
       };
 
-      const buyNowLiveCode = getLiveCodeForCartPayload(routeSource, product, routeLiveCode);
-      if (buyNowLiveCode) {
-        directPurchaseBody.liveCode = buyNowLiveCode;
+      const catalogProductId = parseInt(productIdForUrl.toString(), 10) || 0;
+      const directPurchaseBody: Record<string, unknown> = {
+        ...directPurchaseBase,
+        productId: catalogProductId,
+        ...(buyNowLiveCode ? { liveCode: buyNowLiveCode } : {}),
+      };
+
+      if (__DEV__ && buyNowLiveCode) {
+        console.log('[PDP][live] POST /cart/checkout/direct-purchase', {
+          productId: directPurchaseBody.productId,
+          liveCode: directPurchaseBody.liveCode,
+          keys: Object.keys(directPurchaseBody),
+        });
       }
 
       // Same local-only live tracking as handleAddToCart — see that
       // handler's comment for context.
       if (isLiveSource(routeSource)) {
         void recordLiveProduct(productIdForUrl);
+        if (buyNowLiveCode) void recordLiveProduct(buyNowLiveCode);
       }
 
-      checkoutDirectPurchase(directPurchaseBody);
+      checkoutDirectPurchase(directPurchaseBody as any);
     } catch (error: any) {
       showToast(error?.message || t('product.failedToProceedToCheckout'), 'error');
     }
@@ -2451,9 +2662,10 @@ const ProductDetailScreen: React.FC = () => {
     }
   };
 
-  const headerBg = scrollY.interpolate({
+  // White scrim via opacity so scroll-linked animation can use the native driver.
+  const headerWhiteOpacity = scrollY.interpolate({
     inputRange: [0, HEADER_SCROLL_THRESHOLD],
-    outputRange: ['rgba(255,255,255,0)', 'rgba(255,255,255,1)'],
+    outputRange: [0, 1],
     extrapolate: 'clamp',
   });
 
@@ -2481,18 +2693,26 @@ const ProductDetailScreen: React.FC = () => {
     });
 
     return (
-      <Animated.View
+      <View
         style={[
           styles.header,
           {
-            backgroundColor: headerBg,
             paddingTop: headerPaddingTop,
-            // Keep header content above the absolute background strip.
             zIndex: 2,
+            backgroundColor: 'transparent',
           },
         ]}
       >
-        {/* <StatusBar backgroundColor={headerBg}/> */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFillObject,
+            {
+              backgroundColor: COLORS.white,
+              opacity: headerWhiteOpacity,
+            },
+          ]}
+        />
         <TouchableOpacity hitSlop={BACK_NAVIGATION_HIT_SLOP} style={styles.headerButton} onPress={() => navigation.goBack()}>
           <ArrowBackIcon width={12} height={20} color={COLORS.text.primary} />
         </TouchableOpacity>
@@ -2528,7 +2748,7 @@ const ProductDetailScreen: React.FC = () => {
             <CartIcon width={24} height={24} color={COLORS.black} />
           </TouchableOpacity>
         </View>
-      </Animated.View>
+      </View>
     );
   };
 
@@ -2542,52 +2762,55 @@ const ProductDetailScreen: React.FC = () => {
         ? [...apiImages, extraVariationImage]
         : apiImages;
     const totalImages = displayImages.length;
-    const currentStat = liveStats[currentStatIndex];
-    console.log('apiImages', apiImages);
-    
+
     if (totalImages === 0) {
       return null;
     }
-    
+
+    // Decode ~screen width (capped) so we never pull full-resolution assets into the pager.
+    const thumbEdgePx = Math.min(
+      480,
+      Math.max(220, Math.round(dynWidth * Math.min(PixelRatio.get(), 3))),
+    );
+
     return (
       <View style={styles.imageGalleryContainer}>
-        <ScrollView
+        <FlatList
           ref={galleryScrollRef}
+          data={displayImages}
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
-          onScroll={(e) => {
-            const index = Math.round(e.nativeEvent.contentOffset.x / dynWidth);
-            setSelectedImageIndex(index);
-          }}
-          scrollEventThrottle={16}
-        >
-          {displayImages.map((img: string, index: number) => {
-            // Ask the CDN (Cloudinary or Alibaba) for a thumbnail roughly
-            // the size we render so the image loads at More-to-Love speed
-            // instead of fetching the full-resolution asset.
-            const thumbUri = buildCdnThumbnailUri(img, Math.min(900, Math.round(dynWidth * 2)), 70);
-            console.log('Rendering image', index, thumbUri);
-            return (
-              <TouchableOpacity
-                key={`image-${img}-${index}`}
-                activeOpacity={0.9}
-                onPress={() => {
-                  setViewerImageIndex(index);
-                  setImageViewerVisible(true);
-                }}
-              >
-                <Image
-                  source={{ uri: img }}
-                  style={[styles.productImage as any, { width: dynWidth }]}
-                  resizeMode="cover"
-                  fadeDuration={300}
-                />
-              </TouchableOpacity>
-            );
+          keyExtractor={(_, index) => `pdp-gal-${index}`}
+          getItemLayout={(_, index) => ({
+            length: dynWidth,
+            offset: dynWidth * index,
+            index,
           })}
-        </ScrollView>
-        
+          initialNumToRender={1}
+          maxToRenderPerBatch={1}
+          windowSize={2}
+          removeClippedSubviews={Platform.OS === 'android'}
+          onMomentumScrollEnd={(e) => {
+            const index = Math.round(e.nativeEvent.contentOffset.x / dynWidth);
+            setSelectedImageIndex(Math.min(Math.max(0, index), totalImages - 1));
+          }}
+          scrollEventThrottle={96}
+          renderItem={({ item: img, index }) => (
+            <PdpGallerySlide
+              uri={img}
+              widthPx={dynWidth}
+              heightPx={IMAGE_HEIGHT}
+              thumbEdgePx={thumbEdgePx}
+              index={index}
+              onPress={() => {
+                setViewerImageIndex(index);
+                setImageViewerVisible(true);
+              }}
+            />
+          )}
+        />
+
         {/* Image indicators */}
         <View style={styles.imageIndicators}>
           {displayImages.map((img: any, index: number) => (
@@ -2965,7 +3188,7 @@ const ProductDetailScreen: React.FC = () => {
         // no image, scrolling to 0 is a no-op when we're already there.
         setExtraVariationImage(null);
         setSelectedImageIndex(0);
-        galleryScrollRef.current?.scrollTo({ x: 0, y: 0, animated: true });
+        galleryScrollRef.current?.scrollToOffset({ offset: 0, animated: true });
         return;
       }
 
@@ -3010,9 +3233,8 @@ const ProductDetailScreen: React.FC = () => {
         if (idx >= 0) {
           setExtraVariationImage(null);
           setSelectedImageIndex(idx);
-          galleryScrollRef.current?.scrollTo({
-            x: idx * dynWidth,
-            y: 0,
+          galleryScrollRef.current?.scrollToOffset({
+            offset: idx * dynWidth,
             animated: true,
           });
         } else {
@@ -3052,13 +3274,7 @@ const ProductDetailScreen: React.FC = () => {
                 >
 
                   {option.image && (
-                    <Image
-                      source={{ uri: option.image }}
-                      style={[
-                        styles.colorImage,
-                        isSelected && styles.selectedColorImage,
-                      ] as any}
-                    />
+                    <ColorSwatchImage uri={option.image} isSelected={isSelected} />
                   )}
                   <Text
                     style={[
@@ -3313,40 +3529,19 @@ const ProductDetailScreen: React.FC = () => {
   const renderProductDetails = () => {
     // Use product attributes from API (productAttribute with attributeNameTrans and valueTrans)
     const attributes = product.attributes || [];
-    
-    // Extract images from HTML description
-    const descriptionImages = product.description ? extractImagesFromHtml(product.description) : [];
-    
-    // Strip HTML tags and get plain text
-    const stripHtml = (html: string) => {
-      if (!html) return '';
-      return html
-        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // Remove scripts
-        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '') // Remove styles
-        .replace(/<[^>]*>/g, ' ') // Remove HTML tags
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/\s+/g, ' ')
-        .trim();
-    };
-    
-    const plainText = product.description ? stripHtml(product.description) : '';
-    
+    const { images: descriptionImages, plain: plainText } = descriptionHtmlDerived;
+
     // Return null if no attributes and no description
     if (attributes.length === 0 && !product.description) {
       return null;
     }
-    
+
     const INITIAL_SPECS_COUNT = 5; // Show first 5 specifications initially
     const shouldShowReadMore = attributes.length > INITIAL_SPECS_COUNT;
-    const displayedSpecs = showFullSpecifications 
-      ? attributes 
+    const displayedSpecs = showFullSpecifications
+      ? attributes
       : attributes.slice(0, INITIAL_SPECS_COUNT);
-    
+
     return (
       <View style={styles.detailsContainer}>
         {/* Header with title and report link */}
@@ -3356,11 +3551,11 @@ const ProductDetailScreen: React.FC = () => {
             <Text style={styles.reportItemText}>{t('product.reportItem')}</Text>
           </TouchableOpacity>
         </View>
-        
+
         {/* Specifications Section */}
         {attributes.length > 0 && (
           <View style={styles.specificationsContainer}>
-            <Text style={styles.sectionSubtitle}>{t('product.specifications')}{" >"}</Text>
+            <Text style={styles.sectionSubtitle}>{t('product.specifications')}{' >'}</Text>
             {displayedSpecs.map((attr: any, index: number) => (
               <View key={`${attr.name || 'spec'}-${index}`} style={styles.detailRow}>
                 <Text style={styles.detailLabel}>{resolveText(attr.name)}</Text>
@@ -3374,14 +3569,12 @@ const ProductDetailScreen: React.FC = () => {
                 </Text>
               </TouchableOpacity>
             )}
-          </ View >
+          </View>
         )}
-        
+
         {/* Product Description Section */}
         {product.description && (
           <>
-            {/* {attributes.length > 0 && <View style={styles.sectionSeparator} />} */}
-            {/* <Text style={styles.sectionSubtitle}>{t('product.productDescription')}</Text> */}
             <View style={styles.htmlContentContainer}>
               {/* Display images from HTML description */}
               {descriptionImages.length > 0 && (
@@ -3396,13 +3589,13 @@ const ProductDetailScreen: React.FC = () => {
                   ))}
                 </View>
               )}
-              
+
               {/* Display plain text description */}
-              {plainText && (
+              {plainText ? (
                 <View style={styles.descriptionTextContainer}>
                   <Text style={styles.descriptionText} numberOfLines={3}>{plainText}</Text>
                 </View>
-              )}
+              ) : null}
             </View>
           </>
         )}
@@ -3446,10 +3639,9 @@ const ProductDetailScreen: React.FC = () => {
                     }}
                   >
                     <View style={styles.simpleTaobaoCard}>
-                      <Image
-                        source={{ uri: (item as any).image }}
-                        style={styles.simpleTaobaoImage as any}
-                        resizeMode="cover"
+                      <TaobaoRelatedThumb
+                        uri={(item as any).image}
+                        thumbEdgePx={taobaoRelatedThumbEdge}
                       />
                       <Text
                         style={styles.simpleTaobaoTitle}
@@ -3497,9 +3689,9 @@ const ProductDetailScreen: React.FC = () => {
             nestedScrollEnabled={true}
             columnWrapperStyle={styles.similarProductsGrid}
             removeClippedSubviews={true}
-            maxToRenderPerBatch={10}
-            windowSize={5}
-            initialNumToRender={10}
+            maxToRenderPerBatch={4}
+            windowSize={3}
+            initialNumToRender={4}
             updateCellsBatchingPeriod={50}
           />
         )}
@@ -3529,9 +3721,9 @@ const ProductDetailScreen: React.FC = () => {
           onEndReachedThreshold={0.5}
           ListFooterComponent={renderSimilarProductsFooter}
           removeClippedSubviews={true}
-          maxToRenderPerBatch={10}
-          windowSize={5}
-          initialNumToRender={10}
+          maxToRenderPerBatch={4}
+          windowSize={3}
+          initialNumToRender={4}
           updateCellsBatchingPeriod={50}
         />
     </View>
@@ -3696,9 +3888,7 @@ const ProductDetailScreen: React.FC = () => {
                 // Login first for checkout; new accounts use 회원가입 (registration)
                 // from Login. Same returnParams + autoBuyNow after auth.
                 const persistedLiveCode =
-                  routeLiveCode != null && String(routeLiveCode).trim() !== ''
-                    ? String(routeLiveCode).trim()
-                    : String((product as any).liveCode ?? '').trim() || undefined;
+                  getLiveCodeForCartPayload(routeSource, product, routeLiveCode, productId) || undefined;
                 const returnParams = {
                   productId: (productId || offerId)?.toString?.() ?? String(productId || offerId || ''),
                   offerId: offerId?.toString?.(),
@@ -3780,28 +3970,51 @@ const ProductDetailScreen: React.FC = () => {
             </Text>
           </View>
 
-          {/* Full screen image gallery */}
-          <ScrollView
+          {/* Full screen image gallery — windowed list + CDN-sized assets */}
+          <FlatList
+            key={`viewer-${viewerImageIndex}-${images.length}`}
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
-            onScroll={(e) => {
+            data={images}
+            initialScrollIndex={
+              images.length > 0 ? Math.min(viewerImageIndex, images.length - 1) : 0
+            }
+            getItemLayout={(_, index) => ({
+              length: dynWidth,
+              offset: dynWidth * index,
+              index,
+            })}
+            initialNumToRender={1}
+            maxToRenderPerBatch={2}
+            windowSize={3}
+            removeClippedSubviews={Platform.OS === 'android'}
+            keyExtractor={(_, index) => `fullscreen-${index}`}
+            onMomentumScrollEnd={(e) => {
               const index = Math.round(e.nativeEvent.contentOffset.x / dynWidth);
-              setViewerImageIndex(index);
+              setViewerImageIndex(Math.min(Math.max(0, index), images.length - 1));
             }}
-            scrollEventThrottle={16}
-            contentOffset={{ x: viewerImageIndex * dynWidth, y: 0 }}
-          >
-            {images.map((img: string, index: number) => (
-              <View key={`fullscreen-${img}-${index}`} style={[styles.fullScreenImageContainer, { width: dynWidth }]}>
-                <Image
-                  source={{ uri: img }}
-                  style={[styles.fullScreenImage as any, { width: dynWidth }]}
-                  resizeMode="contain"
-                />
-              </View>
-            ))}
-          </ScrollView>
+            renderItem={({ item: img }) => {
+              const edge = Math.min(
+                960,
+                Math.max(480, Math.round(dynWidth * Math.min(PixelRatio.get(), 3))),
+              );
+              const uri = buildCdnThumbnailUri(img, edge, 70);
+              return (
+                <View style={[styles.fullScreenImageContainer, { width: dynWidth }]}>
+                  <FastImage
+                    source={{
+                      uri,
+                      priority: FastImage.priority.normal,
+                      cache: FastImage.cacheControl.immutable,
+                    }}
+                    style={[styles.fullScreenImage as any, { width: dynWidth }]}
+                    resizeMode={FastImage.resizeMode.contain}
+                  />
+                </View>
+              );
+            }}
+          />
         </View>
       </Modal>
     );
@@ -3848,9 +4061,9 @@ const ProductDetailScreen: React.FC = () => {
             right: 0,
             // Height must match the overlaid header so the background
             // doesn't cover/underlap the system status bar area.
-            height: headerPaddingTop ,
-            backgroundColor: headerBg,
-            // Let the real header content render above this strip.
+            height: headerPaddingTop,
+            backgroundColor: COLORS.white,
+            opacity: headerWhiteOpacity,
             zIndex: 0,
           }}
         />
@@ -3861,11 +4074,11 @@ const ProductDetailScreen: React.FC = () => {
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 200 + insets.bottom }}
-        scrollEventThrottle={16}
+        scrollEventThrottle={64}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           {
-            useNativeDriver: false,
+            useNativeDriver: true,
             listener: (e: any) => {
               // Trigger related-products pagination ~one viewport ahead so
               // the next page resolves from cache (pre-warmed on the
@@ -3880,6 +4093,9 @@ const ProductDetailScreen: React.FC = () => {
                 !relatedRecommendationsLoading &&
                 !isLoadingMoreRelatedRef.current
               ) {
+                const now = Date.now();
+                if (now - scrollRelatedPrefetchAtRef.current < 220) return;
+                scrollRelatedPrefetchAtRef.current = now;
                 setRelatedProductsPage(prev => prev + 1);
               }
             },
@@ -3894,8 +4110,8 @@ const ProductDetailScreen: React.FC = () => {
         {/* {renderServiceCommitment()} */}
         {renderSellerInfo()}
         {/* {renderReviews()} */}
-        {renderProductDetails()}
-        {renderRelatedProducts()}
+        {belowFoldReady ? renderProductDetails() : null}
+        {belowFoldReady ? renderRelatedProducts() : null}
         {/* {renderSimilarProducts()} */}
       </Animated.ScrollView>
 

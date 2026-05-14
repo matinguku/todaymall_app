@@ -56,7 +56,8 @@ export interface CreateOrderRequest {
 
 /** Item shape for POST /orders/direct-purchase (from checkout selectedItems) */
 export interface DirectPurchaseOrderItem {
-  offerId: number;
+  /** Omitted when the line is identified by `liveCode` for live-commerce. */
+  offerId?: number;
   source: string;
   originalSource?: string;
   subject: string;
@@ -73,6 +74,8 @@ export interface DirectPurchaseOrderItem {
   categoryId?: number;
   previewFinalUnitPriceKRW?: number;
   designatedShooting?: DesignatedShootingItem[];
+  /** Live-commerce: broadcast / listing code when `offerId` is not used. */
+  liveCode?: string;
   [key: string]: any;
 }
 
@@ -877,16 +880,8 @@ export const orderApi = {
           error: 'No authentication token found. Please log in again.',
         };
       }
-      let requestBody = {};
-      let apiUrl = '';
       const url = `${API_BASE_URL}/orders/direct-purchase`;
-      if (request.paymentMethod !== 'billgate') {
-        requestBody = request;
-        apiUrl = `${url}?lang=en`;
-      } else {
-        requestBody = request;
-        apiUrl = `${url}?lang=en`;
-      }
+      const apiUrl = `${url}?lang=en`;
       const signatureHeaders = await buildSignatureHeaders('POST', apiUrl, request);
       console.log('🛒 CREATE DIRECT PURCHASE ORDER REQUEST URL:', apiUrl, request);
       const response = await fetch(apiUrl, {
@@ -897,7 +892,7 @@ export const orderApi = {
           'ngrok-skip-browser-warning': 'true',
           ...signatureHeaders,
         },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify(request),
       });
       const responseText = await response.text();
       console.log('🛒 CREATE DIRECT PURCHASE ORDER RESPONSE TEXT:', responseText, response);
