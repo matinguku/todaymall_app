@@ -1455,23 +1455,15 @@ export const productsApi = {
       const isOwnMall = source === 'ownmall' || source === 'companymall' || source === 'myCompany' || source === 'live-commerce' || source?.toLowerCase() === 'mycompany';
       if (isOwnMall) {
         const ownMallUrl = `${API_BASE_URL}/own-mall/products/${productId}`;
-        const ownMallResponse = await axiosGetWithTransientRetries(
-          async () => {
-            const signatureHeaders = await buildSignatureHeaders('GET', ownMallUrl);
-            return {
-              url: ownMallUrl,
-              config: {
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  'Content-Type': 'application/json',
-                  'ngrok-skip-browser-warning': 'true',
-                  ...signatureHeaders,
-                },
-              },
-            };
+        const signatureHeadersOwn = await buildSignatureHeaders('GET', ownMallUrl);
+        const ownMallResponse = await axios.get(ownMallUrl, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true',
+            ...signatureHeadersOwn,
           },
-          'OwnMall product detail',
-        );
+        });
         console.log('📦 [OwnMall Product Detail API] Response:', ownMallUrl, ownMallResponse.data);
         if (ownMallResponse.data?.status === 'success' && ownMallResponse.data?.data?.product) {
           const ownProduct = ownMallResponse.data.data.product;
@@ -1570,6 +1562,8 @@ export const productsApi = {
       });
 
       const url = `${API_BASE_URL}/products/detail?${params.toString()}`;
+
+      
       const signatureHeaders = await buildSignatureHeaders('GET', url);
       console.log('📦 [Product Detail API] Request:', {
         url,
@@ -1600,20 +1594,28 @@ export const productsApi = {
         message: 'Product detail retrieved successfully',
       };
     } catch (error: any) {
-      console.error('Get product detail error:', error.response ? {
-        status: error.response.status,
-        statusText: error.response.statusText,
-        data: error.response.data
-      } : error.request ? {
-        status: error.request.status,
-        statusText: error.request.statusText,
-        data: error.request.data
-      } : error);
+      const status = error.response?.status;
+      const isGatewayTimeout = status === 504 || status === 502 || status === 503 || error.code === 'ECONNABORTED';
+      if (isGatewayTimeout) {
+        console.warn(`[Product Detail API] Upstream ${status ?? error.code} for productId=${productId}`);
+      } else {
+        console.error('Get product detail error:', error.response ? {
+          status: error.response.status,
+          statusText: error.response.statusText,
+          data: typeof error.response.data === 'string' ? error.response.data.slice(0, 200) : error.response.data,
+        } : error.request ? {
+          status: error.request.status,
+          statusText: error.request.statusText,
+        } : error);
+      }
 
       if (error.response) {
+        const serverMessage = typeof error.response.data === 'object' ? error.response.data?.message : undefined;
         return {
           success: false,
-          message: error.response.data?.message || `Failed to get product detail. Status: ${error.response.status}`,
+          message: serverMessage || (isGatewayTimeout
+            ? 'Server is temporarily unavailable. Please try again.'
+            : `Failed to get product detail. Status: ${error.response.status}`),
           data: null,
         };
       } else if (error.request) {

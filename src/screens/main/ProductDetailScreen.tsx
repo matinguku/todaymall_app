@@ -501,6 +501,8 @@ const ProductDetailScreen: React.FC = () => {
   // stock and as an alert when the item is out of stock and the buttons
   // refuse to proceed.
   const stockPulse = useRef(new Animated.Value(1)).current;
+  /** Opacity pulse for the detail-request loading dot (red circle). */
+  const detailLoadingPulseOpacity = useRef(new Animated.Value(1)).current;
   const pulseStock = useCallback(() => {
     stockPulse.stopAnimation(() => {
       stockPulse.setValue(1);
@@ -1131,7 +1133,7 @@ const ProductDetailScreen: React.FC = () => {
   });
 
   // Product detail mutation - MUST be called before any useEffect hooks
-  const { mutate: fetchProductDetail } = useProductDetailMutation({
+  const { mutate: fetchProductDetail, isLoading: isProductDetailLoading } = useProductDetailMutation({
     onSuccess: (data, ctx) => {
       // console.log('📦 [ProductDetailScreen] Product detail fetched successfully:', {
       //   hasData: !!data,
@@ -1487,6 +1489,32 @@ const ProductDetailScreen: React.FC = () => {
       }
     },
   });
+
+  useEffect(() => {
+    if (!isProductDetailLoading) {
+      detailLoadingPulseOpacity.setValue(1);
+      return undefined;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(detailLoadingPulseOpacity, {
+          toValue: 0.35,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+        Animated.timing(detailLoadingPulseOpacity, {
+          toValue: 1,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      detailLoadingPulseOpacity.setValue(1);
+    };
+  }, [isProductDetailLoading, detailLoadingPulseOpacity]);
 
   // Update quantity when product is loaded/updated with minOrderQuantity
   useEffect(() => {
@@ -2029,7 +2057,7 @@ const ProductDetailScreen: React.FC = () => {
   }, [product, getVariationTypes, selectedVariations, selectedColor, selectedSize]);
 
   // Check if all variation types are selected
-  // IMPORTANT: This must be defined before early return to avoid hooks order issues
+  // IMPORTANT: This must stay with other hooks (before render-only helpers).
   const canAddToCart = useMemo(() => {
     // While the detail API is still loading, getVariationTypes() returns
     // [] (no variation info yet), which would otherwise make this evaluate
@@ -2323,16 +2351,11 @@ const ProductDetailScreen: React.FC = () => {
     canAddToCart,
   ]);
 
-  // Early return — MUST be after ALL hooks. No spinner: when the previous
-  // page passed `productData`, `product` is non-null on the first frame and
-  // the page renders immediately. When it didn't, we briefly render an empty
-  // background until the detail API resolves — much less jarring than a
-  // full-screen loading indicator.
-  if (!product) {
-    return <View style={styles.container} />;
-  }
+  // When `product` is still null (no card payload), we render the same PDP
+  // chrome (header, scroll shell, bottom bar slot) with skeleton content
+  // until `onSuccess` sets `product` — see main return below.
 
-  const isLiked = isProductLiked(product);
+  const isLiked = product ? isProductLiked(product) : false;
 
   const handleQuantityChange = (increment: boolean) => {
     const minOrderQuantity = (product as any)?.minOrderQuantity || 1;
@@ -2344,6 +2367,7 @@ const ProductDetailScreen: React.FC = () => {
   };
 
   const handleAddToCart = async () => {
+      if (!product) return;
       if (!isAuthenticated) {
       // Login modal so returning members can continue; new users can open
       // 회원가입 (registration) from Login. Same returnParams + autoAddToCart.
@@ -2566,14 +2590,13 @@ const ProductDetailScreen: React.FC = () => {
   };
 
   // Keep the ref pointing to the latest handleAddToCart closure so the
-  // auto-trigger useEffect (registered ABOVE the `if (!product)` early
-  // return for hook-order stability) can call into it once product data
-  // arrives. Plain assignment, not a hook — runs on every render after
-  // the early return is bypassed.
+  // auto-trigger useEffect (registered above) can call into it once product data
+  // arrives. Plain assignment, not a hook — runs on every render.
   handleAddToCartRef.current = handleAddToCart;
 
   // Handle Buy Now - same logic as handleAddToCart but navigates to Checkout
   const handleBuyNow = async () => {
+    if (!product) return;
     if (!isAuthenticated) {
       showToast(t('home.pleaseLogin'), 'warning');
       return;
@@ -2783,6 +2806,7 @@ const ProductDetailScreen: React.FC = () => {
   };
 
   const handleShare = async () => {
+    if (!product) return;
     try {
       const shareTemplate = t('product.shareMessage');
       const fallbackTemplate = 'Check out this amazing product: {productName}\nPrice: {price}\n\nShared from TodayMall';
@@ -2892,6 +2916,33 @@ const ProductDetailScreen: React.FC = () => {
       </View>
     );
   };
+
+  /** Same scroll regions as the loaded PDP, while `product` is still null. */
+  const renderPdpSkeletonBody = () => (
+    <>
+      <View style={styles.imageGalleryContainer}>
+        <View
+          style={[
+            styles.productImage,
+            {
+              width: dynWidth,
+              alignItems: 'center',
+              justifyContent: 'center',
+            },
+          ]}
+        >
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.pdpSkeletonHint}>{t('product.loadingProduct')}</Text>
+        </View>
+      </View>
+      <View style={{ paddingHorizontal: SPACING.md, paddingTop: SPACING.lg, paddingBottom: SPACING.md }}>
+        <View style={styles.pdpSkeletonLineWide} />
+        <View style={styles.pdpSkeletonLineMid} />
+        <View style={styles.pdpSkeletonLinePrice} />
+        <View style={styles.pdpSkeletonBlock} />
+      </View>
+    </>
+  );
 
   const renderImageGallery = () => {
     // Use only API images (not from HTML description). Append the
@@ -3871,7 +3922,26 @@ const ProductDetailScreen: React.FC = () => {
   );
   };
 
-  const renderBottomBar = () => { 
+  const renderBottomBar = () => {
+    if (!product) {
+      return (
+        <View style={[styles.bottomBar, { paddingBottom: SPACING.lg + insets.bottom, opacity: 0.92 }]}>
+          <View style={styles.pdpBottomBarSkeletonRow}>
+            <View style={[styles.pdpSkeletonPill, { flex: 1, maxWidth: 120 }]} />
+            <View style={[styles.pdpSkeletonPill, { flex: 1, marginHorizontal: SPACING.md }]} />
+            <View style={[styles.pdpSkeletonPill, { width: 44, height: 44, borderRadius: 22 }]} />
+          </View>
+          <View style={[styles.mainActionRow, { justifyContent: 'center', marginTop: SPACING.sm }]}>
+            <View style={[styles.addToCartButton, styles.disabledButton, { flex: 1, marginRight: SPACING.sm }]}>
+              <ActivityIndicator size="small" color={COLORS.text.secondary} />
+            </View>
+            <View style={[styles.buyNowButton, styles.disabledButton, { flex: 1 }]}>
+              <ActivityIndicator size="small" color={COLORS.text.secondary} />
+            </View>
+          </View>
+        </View>
+      );
+    }
     const companyName = (product as any).metadata?.original1688Data?.companyName || 
                         product.seller?.name || 
                         'Store';
@@ -4243,21 +4313,27 @@ const ProductDetailScreen: React.FC = () => {
           }
         )}
       >
-        {renderImageGallery()}
-        {renderProductInfo()}
-        {/* {renderRatingRow()} */}
-        {renderPriceRow()}
-        {renderAllVariations()}
-        {/* {renderServiceCommitment()} */}
-        {renderSellerInfo()}
-        {/* {renderReviews()} */}
-        {belowFoldReady ? renderProductDetails() : null}
-        {belowFoldReady ? renderRelatedProducts() : null}
-        {/* {renderSimilarProducts()} */}
+        {product ? (
+          <>
+            {renderImageGallery()}
+            {renderProductInfo()}
+            {/* {renderRatingRow()} */}
+            {renderPriceRow()}
+            {renderAllVariations()}
+            {/* {renderServiceCommitment()} */}
+            {renderSellerInfo()}
+            {/* {renderReviews()} */}
+            {belowFoldReady ? renderProductDetails() : null}
+            {belowFoldReady ? renderRelatedProducts() : null}
+            {/* {renderSimilarProducts()} */}
+          </>
+        ) : (
+          renderPdpSkeletonBody()
+        )}
       </Animated.ScrollView>
 
       {renderBottomBar()}
-      {renderImageViewer()}
+      {product ? renderImageViewer() : null}
 
       {/* Similar product image search modal */}
       {similarSearchVisible && (
@@ -4269,17 +4345,19 @@ const ProductDetailScreen: React.FC = () => {
         />
       )}
 
-      <PhotoCaptureModal
-        visible={photoCaptureVisible}
-        onClose={() => setPhotoCaptureVisible(false)}
-        onConfirm={handlePhotoCaptureConfirm}
-        product={{
-          id: product.id,
-          name: product.name,
-          image: product.images?.[0] || product.image,
-          price: product.price,
-        }}
-      />
+      {product ? (
+        <PhotoCaptureModal
+          visible={photoCaptureVisible}
+          onClose={() => setPhotoCaptureVisible(false)}
+          onConfirm={handlePhotoCaptureConfirm}
+          product={{
+            id: product.id,
+            name: product.name,
+            image: product.images?.[0] || product.image,
+            price: product.price,
+          }}
+        />
+      ) : null}
 
       {/* Unfollow Confirmation Modal */}
       <Modal
@@ -4317,6 +4395,20 @@ const ProductDetailScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+
+      {isProductDetailLoading ? (
+        <Animated.View
+          pointerEvents="none"
+          accessibilityRole="progressbar"
+          accessibilityLabel={t('product.loadingProduct')}
+          style={[
+            styles.pdpDetailLoadingIndicator,
+            {
+              opacity: detailLoadingPulseOpacity,
+            },
+          ]}
+        />
+      ) : null}
     </View>
   );
 };
@@ -5159,6 +5251,68 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.gray[200],
     ...SHADOWS.lg,
+  },
+  pdpSkeletonHint: {
+    marginTop: SPACING.md,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
+  },
+  pdpSkeletonLineWide: {
+    height: 20,
+    width: '88%',
+    backgroundColor: COLORS.gray[200],
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  pdpSkeletonLineMid: {
+    height: 16,
+    width: '55%',
+    marginTop: SPACING.sm,
+    backgroundColor: COLORS.gray[150],
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  pdpSkeletonLinePrice: {
+    height: 26,
+    width: '38%',
+    marginTop: SPACING.md,
+    backgroundColor: COLORS.gray[200],
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  pdpSkeletonBlock: {
+    height: 112,
+    width: '100%',
+    marginTop: SPACING.lg,
+    backgroundColor: COLORS.gray[100],
+    borderRadius: BORDER_RADIUS.md,
+  },
+  pdpBottomBarSkeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.md,
+  },
+  pdpSkeletonPill: {
+    height: 40,
+    backgroundColor: COLORS.gray[100],
+    borderRadius: BORDER_RADIUS.lg,
+  },
+  /** Fixed red dot while GET product detail is in flight (pulses via opacity). */
+  pdpDetailLoadingIndicator: {
+    position: 'absolute',
+    width: 30,
+    height: 30,
+    borderRadius: 20,
+    backgroundColor: COLORS.red,
+    borderWidth: 2,
+    borderColor: COLORS.white,
+    bottom: 220,
+    left: '50%',
+    marginLeft: -12,
+    zIndex: 50,
+    elevation: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.28,
+    shadowRadius: 2,
   },
   topActionRow: {
     flexDirection: 'row',
