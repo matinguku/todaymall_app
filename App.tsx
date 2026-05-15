@@ -13,6 +13,7 @@ import { Provider } from 'react-redux';
 import { store } from './src/store';
 import { prefetchHome } from './src/utils/homePrefetch';
 import { usePlatformStore } from './src/store/platformStore';
+import { probeTranslateEndpoint } from './src/services/translateApi';
 
 // Kick off home-screen API calls before React mounts so HomeScreen can render
 // with cached data on its first paint. Locale comes from the redux store
@@ -20,6 +21,11 @@ import { usePlatformStore } from './src/store/platformStore';
 const initialPlatform = usePlatformStore.getState().selectedPlatform;
 const initialLocale = store.getState().i18n.locale || 'en';
 prefetchHome({ platform: initialPlatform, country: initialLocale });
+
+// Dev-only: one-shot probe of /v1/translate so the backend team can see at
+// app boot whether the route is deployed. No-op in production. See
+// translateApi.ts → probeTranslateEndpoint for the log format.
+void probeTranslateEndpoint();
 
 // Using system fonts - no custom font loading needed
 // LogBox / console.error filtering: see setupLogBox.ts (imported first from index.ts)

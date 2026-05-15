@@ -20,7 +20,6 @@ import { productsApi } from '../../../services/productsApi';
 import { wishlistApi } from '../../../services/wishlistApi';
 import { useToast } from '../../../context/ToastContext';
 import { formatKRWDirect } from '../../../utils/i18nHelpers';
-import { translateBatch } from '../../../services/translateApi';
 
 interface ViewedProduct {
   productId: string;
@@ -50,9 +49,8 @@ const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = 
     return value || key;
   };
 
-  // Field-name fallbacks so live (own-mall) entries — which use
-  // `imageUrl`/`titleKo`/`titleEn`/`titleZh` — render the same as 1688
-  // entries that use `photoUrl`/`title`.
+  // Field-name fallbacks so live (own-mall) entries — which may use
+  // `imageUrl` — render the same as 1688 entries that use `photoUrl`.
   const getViewedImage = (item: any): string =>
     item?.photoUrl ||
     item?.imageUrl ||
@@ -62,15 +60,32 @@ const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = 
     item?.productImageUrl ||
     item?.productImage ||
     '';
-  const getRawTitle = (item: any): string =>
-    item?.titleKo || item?.titleEn || item?.titleZh || item?.subject || item?.name || item?.title || '';
+  // The recently-viewed API returns a multilingual title object
+  // (`titles: { en, ko, zh }`) plus a single `titleTrans` string already
+  // translated to the requested `lang=` (defaults to the user's locale).
+  // Prefer the multilingual object first since it lets us switch locale
+  // without refetching; fall back to titleTrans, then the source title.
   const getViewedTitle = (item: any): string => {
-    const raw = locale === 'ko'
-      ? (item?.titleKo || item?.titleEn || item?.titleZh || item?.subject || item?.name || item?.title || '')
-      : locale === 'zh'
-        ? (item?.titleZh || item?.titleEn || item?.titleKo || item?.subject || item?.name || item?.title || '')
-        : (item?.titleEn || item?.titleKo || item?.titleZh || item?.subject || item?.name || item?.title || '');
-    return translatedTitles[raw] || raw;
+    const titles = item?.titles;
+    if (titles && typeof titles === 'object') {
+      const fromMulti =
+        locale === 'ko'
+          ? titles.ko || titles.en || titles.zh
+          : locale === 'zh'
+            ? titles.zh || titles.en || titles.ko
+            : titles.en || titles.ko || titles.zh;
+      if (fromMulti) return fromMulti;
+    }
+    return (
+      item?.titleTrans ||
+      item?.titleKo ||
+      item?.titleEn ||
+      item?.titleZh ||
+      item?.subject ||
+      item?.name ||
+      item?.title ||
+      ''
+    );
   };
   const getViewedPrice = (item: any): number =>
     item?.price ?? item?.salePriceKrw ?? item?.priceKrw ?? item?.productPrice ?? 0;
@@ -85,7 +100,6 @@ const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = 
   const filterButtonRef = useRef<any>(null);
   const [filterButtonLayout, setFilterButtonLayout] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [viewedProducts, setViewedProducts] = useState<ViewedProduct[]>([]);
-  const [translatedTitles, setTranslatedTitles] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -95,50 +109,12 @@ const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = 
   const [loadingMore, setLoadingMore] = useState(false);
   const isLoadingMoreRef = useRef(false);
 
-  // Fetch viewed products on mount
+  // Fetch viewed products on mount and whenever the locale changes so the
+  // server returns titles in the active language.
   useEffect(() => {
     fetchViewedProducts(1, true);
-  }, []);
-
-  // Translate non-localized titles into the active locale. Backend-side titleKo
-  // is preferred when present; this only fills gaps (e.g. legacy 1688 entries
-  // that arrive with a single Chinese `title`).
-  useEffect(() => {
-    if (locale !== 'ko' && locale !== 'zh' && locale !== 'en') return;
-    if (viewedProducts.length === 0) return;
-
-    const cjkRe = /[一-鿿]/;
-    const hangulRe = /[가-힯]/;
-    const needsTranslation = (text: string): boolean => {
-      if (!text) return false;
-      if (locale === 'ko' && hangulRe.test(text) && !cjkRe.test(text)) return false;
-      if (locale === 'zh' && cjkRe.test(text) && !hangulRe.test(text)) return false;
-      return locale === 'ko' ? cjkRe.test(text) : true;
-    };
-
-    const targets = Array.from(new Set(
-      viewedProducts
-        .map((p) => getRawTitle(p))
-        .filter((t) => t && !translatedTitles[t] && needsTranslation(t)),
-    ));
-    if (targets.length === 0) return;
-
-    let cancelled = false;
-    translateBatch(targets, locale as 'ko' | 'zh' | 'en', 'zh').then((results) => {
-      if (cancelled) return;
-      setTranslatedTitles((prev) => {
-        const next = { ...prev };
-        targets.forEach((src, i) => {
-          const out = results[i];
-          if (out && out !== src) next[src] = out;
-        });
-        return next;
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [viewedProducts, locale]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locale]);
 
   // Refetch on screen focus so newly-viewed items (e.g. live products just
   // opened in ProductDetail) appear without remounting.
@@ -165,7 +141,10 @@ const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = 
       }
       
       const limit = 20;
-      const response = await productsApi.getRecentlyViewedProducts(limit);
+      const response = await productsApi.getRecentlyViewedProducts(
+        limit,
+        locale as 'ko' | 'en' | 'zh',
+      );
       
       if (response.success && response.data) {
         const newProducts = response.data.items;
@@ -1050,11 +1029,11 @@ const styles = StyleSheet.create({
   productPrice: {
     fontSize: FONTS.sizes.sm,
     fontWeight: '700',
-    color: COLORS.red,
+    color: COLORS.black,
   },
   productTitle: {
     fontSize: FONTS.sizes.xs,
-    color: COLORS.red,
+    color: COLORS.black,
     fontWeight: '400',
     lineHeight: 16,
   },

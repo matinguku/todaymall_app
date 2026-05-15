@@ -1847,7 +1847,8 @@ export const productsApi = {
 
   // Get recently viewed products
   getRecentlyViewedProducts: async (
-    limit: number = 20
+    limit: number = 20,
+    lang?: 'ko' | 'en' | 'zh',
   ): Promise<ApiResponse<{
     items: Array<{
       productId: string;
@@ -1855,13 +1856,17 @@ export const productsApi = {
       viewedAt: string;
       photoUrl: string;
       title: string;
+      titleTrans?: string;
+      titles?: { en?: string; ko?: string; zh?: string };
       price: number;
       platform: string;
     }>;
   }>> => {
     try {
       const token = await getStoredToken();
-      const url = `${API_BASE_URL}/products/recently-viewed?limit=${limit}`;
+      const params = new URLSearchParams({ limit: String(limit) });
+      if (lang) params.set('lang', lang);
+      const url = `${API_BASE_URL}/products/recently-viewed?${params.toString()}`;
       const signatureHeaders = await buildSignatureHeaders('GET', url);
       const response = await axios.get(url, {
         headers: {
