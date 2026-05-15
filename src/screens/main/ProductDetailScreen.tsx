@@ -36,7 +36,7 @@ import {
   sanitizeLiveCodeForApi,
   isStrictBackendLiveCode,
 } from '../../utils/liveCode';
-import { recordLiveProduct } from '../../utils/liveProductTracker';
+import { recordLiveProduct, recordLiveProductCode } from '../../utils/liveProductTracker';
 
 import { ProductCard, SearchButton } from '../../components';
 import { PhotoCaptureModal } from '../../components';
@@ -2585,9 +2585,18 @@ const ProductDetailScreen: React.FC = () => {
       // to adding a live product to the cart. BuyListScreen later
       // cross-references each order item's offerId / liveCode against this list to
       // decide whether to display the order number with an `LS` prefix.
+      //
+      // We also store the offerId→liveCode pair so the cart-checkout flow
+      // can re-attach `liveCode` to each line when the server's cart-line
+      // response drops the field. Without this, the eventual /orders POST
+      // can't tag the order as live and you don't get the `LS` prefix.
       if (isLiveSource(routeSource)) {
         void recordLiveProduct(productIdForUrl);
-        if (cartLiveCode) void recordLiveProduct(cartLiveCode);
+        if (cartLiveCode) {
+          void recordLiveProduct(cartLiveCode);
+          void recordLiveProductCode(catalogOfferId, cartLiveCode);
+          void recordLiveProductCode(productIdForUrl, cartLiveCode);
+        }
       }
 
       await addToCart(addPayload as any);

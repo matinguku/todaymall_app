@@ -1138,11 +1138,16 @@ const PaymentScreen: React.FC = () => {
         orderId: orderObjectId,
         onResult: (result: BillgateResult) => {
           if (result.status === 'success') {
-            showToast(orderNumber ? `Order ${orderNumber} paid` : 'Payment completed', 'success');
+            showToast(
+              orderNumber
+                ? t('payment.orderPaid').replace('{orderNumber}', orderNumber)
+                : t('payment.paymentCompleted'),
+              'success',
+            );
           } else if (result.status === 'cancel') {
-            showToast(t('payment.paymentCancelled') || 'Payment cancelled', 'info');
+            showToast(t('payment.paymentCancelled'), 'info');
           } else {
-            showToast(result.message || 'Payment failed. Please try again.', 'error');
+            showToast(result.message || t('payment.paymentFailed'), 'error');
           }
           navigation.reset({ index: 0, routes: [{ name: 'BuyList' as never }] });
         },
@@ -1159,11 +1164,16 @@ const PaymentScreen: React.FC = () => {
           orderId: orderObjectId,
           onResult: (result: BillgateResult) => {
             if (result.status === 'success') {
-              showToast(orderNumber ? `Order ${orderNumber} paid` : 'Payment completed', 'success');
+              showToast(
+                orderNumber
+                  ? t('payment.orderPaid').replace('{orderNumber}', orderNumber)
+                  : t('payment.paymentCompleted'),
+                'success',
+              );
             } else if (result.status === 'cancel') {
-              showToast(t('payment.paymentCancelled') || 'Payment cancelled', 'info');
+              showToast(t('payment.paymentCancelled'), 'info');
             } else {
-              showToast(result.message || 'Payment failed. Please try again.', 'error');
+              showToast(result.message || t('payment.paymentFailed'), 'error');
             }
             navigation.reset({ index: 0, routes: [{ name: 'BuyList' as never }] });
           },
@@ -1172,21 +1182,26 @@ const PaymentScreen: React.FC = () => {
       }
 
       Alert.alert(
-        'Payment start failed',
-        prepared.error || 'Order was created, but Billgate payment data was not returned.',
+        t('payment.paymentStartFailedTitle'),
+        prepared.error || t('payment.paymentStartFailedNoData'),
       );
       return;
     }
 
     if (selectedMethod === 'credit_card' || selectedMethod === 'newcard' || selectedMethod === 'kakaopay' || selectedMethod === 'naverpay') {
       Alert.alert(
-        'Payment start failed',
-        'Order was created, but Billgate payment could not be started from this response.',
+        t('payment.paymentStartFailedTitle'),
+        t('payment.paymentStartFailedNoResponse'),
       );
       return;
     }
 
-    showToast(orderNumber ? `Order ${orderNumber} created` : 'Order created successfully', 'success');
+    showToast(
+      orderNumber
+        ? t('payment.orderCreated').replace('{orderNumber}', orderNumber)
+        : t('payment.orderCreatedGeneric'),
+      'success',
+    );
     navigation.reset({ index: 0, routes: [{ name: 'BuyList' as never }] });
   };
 

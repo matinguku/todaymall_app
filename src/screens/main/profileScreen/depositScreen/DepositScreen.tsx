@@ -26,7 +26,13 @@ import { logDevApiFailure } from '../../../../utils/devLog';
 interface Transaction {
   id: number;
   type: 'charge' | 'discharge';
+  /** Raw API transaction type (recharge/withdraw/payment/refund) — kept so
+   * the UI can render payment-only affordances like "amount after change". */
+  rawType?: string;
   amount: number;
+  /** Deposit balance immediately after the transaction was applied. Server
+   * may publish this under several field names; we normalize at fetch-time. */
+  balanceAfter?: number;
   date: string;
   time: string;
   description: string;
@@ -40,7 +46,34 @@ interface DepositScreenProps {
 
 const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbeddedBack }) => {
   const navigation = useNavigation();
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+
+  // Some deposit transactions (notably withdrawal-cancellations) arrive with
+  // `description` as a multilingual object `{ ko, en, zh }`. Rendering an
+  // object as a React child crashes the ErrorBoundary with "Objects are not
+  // valid as a React child (found: object with keys {ko, en, zh})". Resolve
+  // to the active-locale string at map-time so `Transaction.description`
+  // stays a plain string everywhere downstream (filter, render, search).
+  const resolveDescription = useCallback((value: unknown): string => {
+    if (value == null) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'object') {
+      const o = value as Record<string, unknown>;
+      const pick = (k: string) => (typeof o[k] === 'string' ? (o[k] as string) : '');
+      return pick(locale) || pick('ko') || pick('en') || pick('zh') || '';
+    }
+    return String(value);
+  }, [locale]);
+
+  // Map server transaction status strings (`completed`, `pending`, `failed`,
+  // `cancelled`, etc.) to the active-locale label. Unknown statuses fall
+  // back to the raw string so the UI still shows something useful.
+  const localizeStatus = useCallback((value: unknown): string => {
+    if (typeof value !== 'string' || !value) return '';
+    const key = `deposit.status.${value.toLowerCase()}`;
+    const localized = t(key);
+    return localized === key ? value : localized;
+  }, [t]);
   const [searchQuery, setSearchQuery] = useState('');
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
@@ -103,13 +136,29 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
           // Determine charge vs discharge: positive amount or recharge/refund type = charge
           const amt = t.amount || 0;
           const isCharge = amt > 0 || t.type === 'recharge' || t.type === 'refund';
+          // Server may publish the post-transaction balance under several
+          // names; accept the first numeric one we find. Used only for the
+          // "amount after change" line on payment rows.
+          const rawBalanceAfter =
+            t.balanceAfter ??
+            t.afterBalance ??
+            t.balance_after ??
+            t.remainingBalance ??
+            t.newBalance ??
+            t.balance;
+          const balanceAfter =
+            typeof rawBalanceAfter === 'number' && Number.isFinite(rawBalanceAfter)
+              ? rawBalanceAfter
+              : undefined;
           return {
             id: idx + 1,
             type: isCharge ? 'charge' as const : 'discharge' as const,
+            rawType: typeof t.type === 'string' ? t.type : undefined,
             amount: Math.abs(amt),
+            balanceAfter,
             date: date.toISOString().split('T')[0],
             time: date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
-            description: t.description || t.type || '',
+            description: resolveDescription(t.description) || (typeof t.type === 'string' ? t.type : ''),
             status: t.status || 'completed',
           };
         });
@@ -482,7 +531,12 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
                     <Text style={[styles.transactionAmount, transaction.type === 'charge' ? styles.chargeAmount : styles.dischargeAmount]}>
                       {transaction.type === 'charge' ? '+' : '-'}₩{transaction.amount.toLocaleString()}
                     </Text>
-                    <Text style={styles.transactionStatus}>{transaction.status}</Text>
+                    {transaction.rawType === 'payment' && transaction.balanceAfter != null && (
+                      <Text style={styles.balanceAfterText}>
+                        {t('deposit.amountAfterChange')}: ₩{transaction.balanceAfter.toLocaleString()}
+                      </Text>
+                    )}
+                    <Text style={styles.transactionStatus}>{localizeStatus(transaction.status)}</Text>
                   </View>
                 </View>
               ))}
@@ -958,6 +1012,11 @@ const styles = StyleSheet.create({
   transactionAmount: {
     fontSize: FONTS.sizes.base,
     fontWeight: '700',
+  },
+  balanceAfterText: {
+    fontSize: 11,
+    color: COLORS.text.secondary,
+    marginTop: 2,
   },
   chargeAmount: {
     color: COLORS.red,

@@ -35,6 +35,7 @@ import { useDeleteFromWishlistMutation } from '../../hooks/useDeleteFromWishlist
 import { useRecommendationsMutation } from '../../hooks/useRecommendationsMutation';
 import { Product } from '../../types';
 import { formatPriceKRW, getLocalizedText } from '../../utils/i18nHelpers';
+import { loadLiveProductCodeMap } from '../../utils/liveProductTracker';
 import { FlatList } from 'react-native';
 import PrivacyIcon from '../../assets/icons/PrivacyIcon';
 import PackageIcon from '../../assets/icons/PackageIcon';
@@ -316,9 +317,44 @@ const CartScreen: React.FC = () => {
   });
 
   const { mutate: checkoutCart, isLoading: isCheckingOut } = useCheckoutCartMutation({
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       if (data.selectedItems && data.selectedItems.length > 0) {
-        const paymentItems = data.selectedItems.map((item: any) => ({
+        // Carry `liveCode` from every live-commerce cart line all the way to
+        // Payment + the eventual /orders/direct-purchase call. Without this
+        // the cart→checkout→order path drops the field and the server can't
+        // tag the order with the `LS` prefix (matches PDP Buy Now behavior).
+        //
+        // The server-side cart-line schema currently drops the `liveCode`
+        // field on storage, so `item.liveCode` from the checkout response
+        // is usually empty for live products. Consult the local
+        // `offerId → liveCode` map written by Add-to-Cart on this device.
+        const liveCodeMap = await loadLiveProductCodeMap();
+        const lookupLocalLiveCode = (item: any): string | undefined => {
+          const keys = [item?.offerId, item?.productId, item?.product?.id, item?._id]
+            .map((v) => (v == null ? '' : String(v).trim()))
+            .filter(Boolean);
+          for (const k of keys) {
+            const found = liveCodeMap.get(k);
+            if (found) return found;
+          }
+          return undefined;
+        };
+        const selectedItemsWithLive = data.selectedItems.map((item: any) => {
+          const lineLiveCode =
+            item?.liveCode ||
+            item?.skuInfo?.liveCode ||
+            item?.product?.liveCode ||
+            lookupLocalLiveCode(item) ||
+            undefined;
+          if (!lineLiveCode) return item;
+          return {
+            ...item,
+            liveCode: lineLiveCode,
+            ownmallProductType: item.ownmallProductType || 'live',
+          };
+        });
+
+        const paymentItems = selectedItemsWithLive.map((item: any) => ({
           id: item._id,
           _id: item._id,
           offerId: item.offerId,
@@ -330,14 +366,15 @@ const CartScreen: React.FC = () => {
           skuInfo: item.skuInfo,
           companyName: resolveText(item.companyName) || '',
           sellerOpenId: item.sellerOpenId,
+          ...(item.liveCode ? { liveCode: item.liveCode } : {}),
         }));
-        
+
         // Calculate total price from selected items
-        const paymentTotalPrice = data.selectedItems.reduce((sum: number, item: any) => {
+        const paymentTotalPrice = selectedItemsWithLive.reduce((sum: number, item: any) => {
           const price = item.previewFinalUnitPriceKRW || parseFloat(item.skuInfo?.price || '0');
           return sum + (price * item.quantity);
         }, 0);
-        
+
         // Navigate to payment screen with full checkout API response data
         (navigation as any).navigate('Payment', {
           items: paymentItems,
@@ -357,7 +394,7 @@ const CartScreen: React.FC = () => {
             serviceFeePercentage: data.serviceFeePercentage,
             estimatedRuralCost: data.estimatedRuralCost,
           },
-          directPurchaseItems: data.selectedItems,
+          directPurchaseItems: selectedItemsWithLive,
         });
       } else {
         showToast(t('cart.selectItems'), 'warning');

@@ -21,6 +21,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORAGE_KEY = 'TM_LIVE_PRODUCT_IDS';
+// Separate keyspace for the offerId→liveCode map so the existing flat-set
+// storage keeps working unchanged (no migration on upgrade).
+const LIVE_CODE_MAP_KEY = 'TM_LIVE_PRODUCT_CODE_MAP';
 const MAX_ENTRIES = 1000;
 
 function normalizeId(productId: unknown): string {
@@ -45,6 +48,61 @@ export async function recordLiveProduct(productId: unknown): Promise<void> {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(capped));
   } catch {
     // best-effort tracking; ignore storage failures
+  }
+}
+
+/**
+ * Record an `offerId → liveCode` mapping locally. Called the moment a live
+ * product is added to the cart, so we can later re-attach the `liveCode`
+ * when navigating to checkout even if the server cart-line schema drops
+ * the field. The cap matches MAX_ENTRIES; eviction is FIFO via Map order.
+ * Best-effort: storage failures are swallowed.
+ */
+export async function recordLiveProductCode(
+  offerId: unknown,
+  liveCode: unknown,
+): Promise<void> {
+  const id = normalizeId(offerId);
+  const code = normalizeId(liveCode);
+  if (!id || !code) return;
+  try {
+    const raw = await AsyncStorage.getItem(LIVE_CODE_MAP_KEY);
+    const obj: Record<string, string> = raw ? JSON.parse(raw) : {};
+    if (obj[id] === code) return;
+    obj[id] = code;
+    const keys = Object.keys(obj);
+    if (keys.length > MAX_ENTRIES) {
+      const overflow = keys.length - MAX_ENTRIES;
+      for (let i = 0; i < overflow; i += 1) {
+        delete obj[keys[i]];
+      }
+    }
+    await AsyncStorage.setItem(LIVE_CODE_MAP_KEY, JSON.stringify(obj));
+  } catch {
+    // best-effort tracking; ignore storage failures
+  }
+}
+
+/**
+ * Returns the locally-recorded `offerId → liveCode` map (newest writes
+ * win). Used by the cart-checkout flow to back-fill `liveCode` onto cart
+ * lines when the server cart-line response is missing the field.
+ * Returns an empty map on storage error.
+ */
+export async function loadLiveProductCodeMap(): Promise<Map<string, string>> {
+  try {
+    const raw = await AsyncStorage.getItem(LIVE_CODE_MAP_KEY);
+    if (!raw) return new Map();
+    const obj = JSON.parse(raw);
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return new Map();
+    const out = new Map<string, string>();
+    for (const k of Object.keys(obj)) {
+      const v = (obj as Record<string, unknown>)[k];
+      if (typeof v === 'string' && v) out.set(String(k), v);
+    }
+    return out;
+  } catch {
+    return new Map();
   }
 }
 
