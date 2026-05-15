@@ -54,6 +54,7 @@ import { formatPriceKRW, getLocalizedText } from '../../utils/i18nHelpers';
 import {
   buildAlibabaImageLoadAttempts,
   buildCdnThumbnailUri,
+  buildProductDisplayImageUri,
 } from '../../utils/productImage';
 import { warmRelatedPage } from '../../utils/relatedPrefetch';
 import { useWishlistStatus } from '../../hooks/useWishlistStatus';
@@ -705,9 +706,9 @@ const ProductDetailScreen: React.FC = () => {
         // Backend dropped every item from the direct-purchase request —
         // typically because the product (or its SKU) was unlisted by
         // the seller between the user opening the page and tapping Buy
-        // Now. Surface an "unavailable" toast and stay on the product
-        // detail page; do NOT navigate to Payment or back to the seller
-        // page on this error.
+        // Now. Bounce back from the optimistically-opened Payment page
+        // and surface an "unavailable" toast.
+        if (navigation.canGoBack()) navigation.goBack();
         showToast(t('product.outOfStock'), 'warning');
         return;
       }
@@ -739,6 +740,9 @@ const ProductDetailScreen: React.FC = () => {
         sellerOpenId: item.sellerOpenId,
       }));
       const totalAmount = data.productTotalKRW ?? paymentItems.reduce((sum: number, i: any) => sum + (i.price * i.quantity), 0);
+      // Optimistic navigation already pushed Payment with placeholder data;
+      // update its params in place so the screen rerenders with the real
+      // checkoutData/coupons/shipping totals.
       navigation.navigate('Payment', {
         items: paymentItems,
         totalAmount,
@@ -759,9 +763,12 @@ const ProductDetailScreen: React.FC = () => {
         },
         directPurchaseItems: selectedItems,
         selectedAddress: user?.addresses?.find(addr => addr.isDefault) || user?.addresses?.[0],
+        pendingCheckout: false,
       });
     },
     onError: (error) => {
+      // Bounce back from the optimistically-opened Payment page on failure.
+      if (navigation.canGoBack()) navigation.goBack();
       showToast(error || t('product.failedToProceed'), 'error');
       autoBuyTriggeredRef.current = false;
     },
@@ -2761,7 +2768,37 @@ const ProductDetailScreen: React.FC = () => {
         if (buyNowLiveCode) void recordLiveProduct(buyNowLiveCode);
       }
 
+      // Fire the network request FIRST so it overlaps with the
+      // navigation transition (the screen-push animation takes ~250-300ms
+      // on Android — wasted time if we wait to send the POST until after
+      // navigation). The mutation's onSuccess will call
+      // navigation.navigate('Payment', ...) again with the same key —
+      // React Navigation merges the params, so Payment rerenders with
+      // the real checkoutData when it lands.
       checkoutDirectPurchase(directPurchaseBody as any);
+
+      const optimisticUnitPrice =
+        typeof finalPrice === 'number' ? finalPrice : parseFloat(String(finalPrice)) || 0;
+      const optimisticItem = {
+        id: productIdForUrl.toString(),
+        _id: undefined,
+        offerId: offerId?.toString() ?? productIdForUrl.toString(),
+        name: resolveText((product as any).subjectTrans || product.name || (product as any).subject || ''),
+        price: optimisticUnitPrice,
+        quantity,
+        image: product.images?.[0] || product.image || '',
+        source: fetchSource,
+        skuInfo: skuInfoPayload,
+        companyName: resolveText(product.seller?.name || (product as any).companyName || ''),
+        sellerOpenId: product.seller?.id || (product as any).sellerOpenId || '',
+      };
+      navigation.navigate('Payment', {
+        items: [optimisticItem],
+        totalAmount: optimisticUnitPrice * quantity,
+        fromCart: false,
+        selectedAddress: user?.addresses?.find(addr => addr.isDefault) || user?.addresses?.[0],
+        pendingCheckout: true,
+      });
     } catch (error: any) {
       showToast(error?.message || t('product.failedToProceedToCheckout'), 'error');
     }
@@ -3774,9 +3811,11 @@ const ProductDetailScreen: React.FC = () => {
                   {descriptionImages.map((imgUrl: string, index: number) => (
                     <Image
                       key={index}
-                      source={{ uri: imgUrl }}
+                      source={{ uri: buildProductDisplayImageUri(imgUrl, 600, 75) }}
                       style={styles.descriptionImage as any}
                       resizeMode="contain"
+                      resizeMethod={Platform.OS === 'android' ? 'resize' : undefined}
+                      fadeDuration={0}
                     />
                   ))}
                 </View>
@@ -3804,12 +3843,16 @@ const ProductDetailScreen: React.FC = () => {
       return null;
     }
 
+    const displayRelatedProducts = isLiveSource(routeSource)
+      ? relatedProducts.slice(0, 20)
+      : relatedProducts;
+
     return (
       <View style={styles.similarProductsContainer}>
         <Text style={styles.similarProductsTitle}>{t('home.moreToLove')}</Text>
         {(
           <FlatList
-            data={relatedProducts}
+            data={displayRelatedProducts}
             renderItem={({ item }) => {
               // Taobao case: show only image, name and price as requested
               if (selectedPlatform === 'taobao') {
@@ -4298,11 +4341,13 @@ const ProductDetailScreen: React.FC = () => {
               if (!layoutMeasurement || !contentOffset || !contentSize) return;
               const distanceFromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
               const threshold = Math.max(600, layoutMeasurement.height);
+              const liveCapReached = isLiveSource(routeSource) && relatedProducts.length >= 20;
               if (
                 distanceFromBottom < threshold &&
                 relatedProductsHasMore &&
                 !relatedRecommendationsLoading &&
-                !isLoadingMoreRelatedRef.current
+                !isLoadingMoreRelatedRef.current &&
+                !liveCapReached
               ) {
                 const now = Date.now();
                 if (now - scrollRelatedPrefetchAtRef.current < 220) return;
@@ -4409,6 +4454,7 @@ const ProductDetailScreen: React.FC = () => {
           ]}
         />
       ) : null}
+
     </View>
   );
 };
@@ -5294,6 +5340,25 @@ const styles = StyleSheet.create({
     height: 40,
     backgroundColor: COLORS.gray[100],
     borderRadius: BORDER_RADIUS.lg,
+  },
+  /** Full-screen blocking overlay while POST /cart/checkout/direct-purchase is in flight (Buy Now). */
+  buyNowOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 100,
+    elevation: 24,
+  },
+  buyNowOverlayText: {
+    marginTop: SPACING.md,
+    color: COLORS.white,
+    fontSize: FONTS.sizes.md,
+    fontWeight: '600',
   },
   /** Fixed red dot while GET product detail is in flight (pulses via opacity). */
   pdpDetailLoadingIndicator: {

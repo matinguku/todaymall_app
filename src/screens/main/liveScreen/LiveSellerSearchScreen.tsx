@@ -129,10 +129,8 @@ const LiveSellerSearchScreen: React.FC = () => {
   // identical (search input, '전체 상품' category dropdown, filter tabs,
   // date dropdown).
   const [productSearchQuery, setProductSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [activeFilter, setActiveFilter] = useState<FilterTab>('bestMatch');
-  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [showDateDropdown, setShowDateDropdown] = useState(false);
 
   // Fallback: load from live commerce main data when no search query
@@ -318,14 +316,6 @@ const LiveSellerSearchScreen: React.FC = () => {
     return out;
   }, [displaySellers, locale]);
 
-  const productCategories = useMemo(() => {
-    const cats = new Set<string>();
-    allLiveProducts.forEach((p) => {
-      if (p.category) cats.add(p.category);
-    });
-    return ['all', ...Array.from(cats)];
-  }, [allLiveProducts]);
-
   const dateGroups = useMemo(() => {
     const set = new Set<string>();
     allLiveProducts.forEach((p) => {
@@ -353,9 +343,6 @@ const LiveSellerSearchScreen: React.FC = () => {
         String(p.title || p.name || '').toLowerCase().includes(keyword),
       );
     }
-    if (selectedCategory !== 'all') {
-      result = result.filter((p) => p.category === selectedCategory);
-    }
     if (selectedDate !== 'all') {
       result = result.filter((p) => p.liveDate === selectedDate);
     }
@@ -370,7 +357,7 @@ const LiveSellerSearchScreen: React.FC = () => {
         break;
     }
     return result;
-  }, [allLiveProducts, productSearchQuery, selectedCategory, selectedDate, activeFilter]);
+  }, [allLiveProducts, productSearchQuery, selectedDate, activeFilter]);
 
   const isLoading = isSearching || isLoadingFallback;
 
@@ -596,59 +583,6 @@ const LiveSellerSearchScreen: React.FC = () => {
       <View style={{backgroundColor: '#FFFFFFA1', paddingBottom: SPACING.sm, flex: 1}}>
         {searchMode === 'products' ? (
           <>
-            {/* Category pill + product search input */}
-            <View style={styles.productSearchRow}>
-              <View style={styles.categoryDropdownContainer}>
-                <TouchableOpacity
-                  style={styles.categoryDropdown}
-                  onPress={() => setShowCategoryDropdown(!showCategoryDropdown)}
-                >
-                  <Text style={styles.categoryDropdownText} numberOfLines={1}>
-                    {selectedCategory === 'all' ? (t('live.allItems') || '전체 상품') : selectedCategory}
-                  </Text>
-                  <ArrowDropDownIcon width={16} height={16} color={COLORS.text.primary} />
-                </TouchableOpacity>
-                {showCategoryDropdown && (
-                  <View style={styles.categoryDropdownMenuInline}>
-                    {productCategories.map((cat) => (
-                      <TouchableOpacity
-                        key={cat}
-                        style={[
-                          styles.categoryDropdownItem,
-                          selectedCategory === cat && styles.categoryDropdownItemActive,
-                        ]}
-                        onPress={() => {
-                          setSelectedCategory(cat);
-                          setShowCategoryDropdown(false);
-                        }}
-                      >
-                        <Text
-                          style={[
-                            styles.categoryDropdownItemText,
-                            selectedCategory === cat && styles.categoryDropdownItemTextActive,
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {cat === 'all' ? (t('live.allItems') || '전체 상품') : cat}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-              </View>
-              <View style={styles.productSearchInputWrap}>
-                <SearchIcon width={16} height={16} color={COLORS.text.secondary} />
-                <TextInput
-                  style={styles.productSearchInput}
-                  value={productSearchQuery}
-                  onChangeText={setProductSearchQuery}
-                  placeholder={t('live.searchNow')}
-                  placeholderTextColor={COLORS.text.secondary}
-                  returnKeyType="search"
-                />
-              </View>
-            </View>
-
             {/* Date dropdown — below search row; opens modal. Hidden when no dates. */}
             {dateGroups.length > 1 && (
               <TouchableOpacity
@@ -829,7 +763,12 @@ const styles = StyleSheet.create({
     zIndex: 0,
   },
   safeArea: {
-    zIndex: 1,
+    // High zIndex + elevation so popovers anchored inside this header
+    // (search-mode menu, in-header category menu) paint above the
+    // white-tinted body view that follows as a sibling. On Android,
+    // elevation drives stacking; on iOS, zIndex within the same parent.
+    zIndex: 20,
+    elevation: 20,
   },
 
   // ─── Header ─────────────────────────────────────────────
@@ -921,12 +860,50 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderRadius: BORDER_RADIUS.md,
     paddingVertical: SPACING.xs,
-    elevation: 6,
+    elevation: 24,
     shadowColor: '#000',
     shadowOpacity: 0.2,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
-    zIndex: 50,
+    zIndex: 1000,
+  },
+  headerCategoryDropdownContainer: {
+    position: 'relative',
+    marginRight: SPACING.xs,
+    zIndex: 999,
+  },
+  headerCategoryDropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#00000044',
+    paddingHorizontal: SPACING.sm,
+    height: 40,
+    gap: SPACING.xs,
+    minWidth: 90,
+    justifyContent: 'space-between',
+  },
+  headerCategoryDropdownText: {
+    fontSize: FONTS.sizes.xs,
+    fontWeight: '600',
+    color: COLORS.white,
+  },
+  headerCategoryDropdownMenu: {
+    position: 'absolute',
+    top: 42,
+    left: 0,
+    minWidth: 140,
+    maxHeight: 280,
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    paddingVertical: SPACING.xs,
+    elevation: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    zIndex: 1000,
   },
   searchModeMenuItem: {
     paddingHorizontal: SPACING.md,
@@ -1236,6 +1213,7 @@ const styles = StyleSheet.create({
   filterTabsContainer: {
     flexDirection: 'row',
     paddingHorizontal: SPACING.md,
+    marginTop: SPACING.lg,
     marginBottom: SPACING.smmd,
     gap: SPACING.md,
   },

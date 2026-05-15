@@ -1326,6 +1326,7 @@ For return assistance, please contact our customer service team with your order 
     },
     payment: {
       paymentMethod: 'Payment method',
+      calculatingTotals: 'Calculating totals...',
       selectPaymentMethod: 'Select Payment Method',
       bank: 'Bank',
       creditCard: 'Credit Card',
@@ -3009,6 +3010,7 @@ Supports credit and check cards from various banks for recharging and payments.`
     },
     payment: {
       paymentMethod: '支付方式',
+      calculatingTotals: '正在计算总额...',
       selectPaymentMethod: '选择支付方式',
       bank: '银行转账',
       creditCard: '信用卡',
@@ -4969,6 +4971,7 @@ Supports credit and check cards from various banks for recharging and payments.`
     },
     payment: {
       paymentMethod: '결제 수단',
+      calculatingTotals: '결제 금액 계산 중...',
       selectPaymentMethod: '결제 수단 선택',
       bank: '무통장',
       creditCard: '신용카드',

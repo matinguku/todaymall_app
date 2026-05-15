@@ -19,6 +19,8 @@ import { translations } from '../../../i18n/translations';
 import { productsApi } from '../../../services/productsApi';
 import { wishlistApi } from '../../../services/wishlistApi';
 import { useToast } from '../../../context/ToastContext';
+import { formatKRWDirect } from '../../../utils/i18nHelpers';
+import { translateBatch } from '../../../services/translateApi';
 
 interface ViewedProduct {
   productId: string;
@@ -60,11 +62,15 @@ const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = 
     item?.productImageUrl ||
     item?.productImage ||
     '';
+  const getRawTitle = (item: any): string =>
+    item?.titleKo || item?.titleEn || item?.titleZh || item?.subject || item?.name || item?.title || '';
   const getViewedTitle = (item: any): string => {
-    if (item?.title) return item.title;
-    if (locale === 'ko') return item?.titleKo || item?.titleEn || item?.titleZh || item?.subject || item?.name || '';
-    if (locale === 'zh') return item?.titleZh || item?.titleEn || item?.titleKo || item?.subject || item?.name || '';
-    return item?.titleEn || item?.titleKo || item?.titleZh || item?.subject || item?.name || '';
+    const raw = locale === 'ko'
+      ? (item?.titleKo || item?.titleEn || item?.titleZh || item?.subject || item?.name || item?.title || '')
+      : locale === 'zh'
+        ? (item?.titleZh || item?.titleEn || item?.titleKo || item?.subject || item?.name || item?.title || '')
+        : (item?.titleEn || item?.titleKo || item?.titleZh || item?.subject || item?.name || item?.title || '');
+    return translatedTitles[raw] || raw;
   };
   const getViewedPrice = (item: any): number =>
     item?.price ?? item?.salePriceKrw ?? item?.priceKrw ?? item?.productPrice ?? 0;
@@ -79,6 +85,7 @@ const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = 
   const filterButtonRef = useRef<any>(null);
   const [filterButtonLayout, setFilterButtonLayout] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [viewedProducts, setViewedProducts] = useState<ViewedProduct[]>([]);
+  const [translatedTitles, setTranslatedTitles] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -92,6 +99,46 @@ const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = 
   useEffect(() => {
     fetchViewedProducts(1, true);
   }, []);
+
+  // Translate non-localized titles into the active locale. Backend-side titleKo
+  // is preferred when present; this only fills gaps (e.g. legacy 1688 entries
+  // that arrive with a single Chinese `title`).
+  useEffect(() => {
+    if (locale !== 'ko' && locale !== 'zh' && locale !== 'en') return;
+    if (viewedProducts.length === 0) return;
+
+    const cjkRe = /[一-鿿]/;
+    const hangulRe = /[가-힯]/;
+    const needsTranslation = (text: string): boolean => {
+      if (!text) return false;
+      if (locale === 'ko' && hangulRe.test(text) && !cjkRe.test(text)) return false;
+      if (locale === 'zh' && cjkRe.test(text) && !hangulRe.test(text)) return false;
+      return locale === 'ko' ? cjkRe.test(text) : true;
+    };
+
+    const targets = Array.from(new Set(
+      viewedProducts
+        .map((p) => getRawTitle(p))
+        .filter((t) => t && !translatedTitles[t] && needsTranslation(t)),
+    ));
+    if (targets.length === 0) return;
+
+    let cancelled = false;
+    translateBatch(targets, locale as 'ko' | 'zh' | 'en', 'zh').then((results) => {
+      if (cancelled) return;
+      setTranslatedTitles((prev) => {
+        const next = { ...prev };
+        targets.forEach((src, i) => {
+          const out = results[i];
+          if (out && out !== src) next[src] = out;
+        });
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewedProducts, locale]);
 
   // Refetch on screen focus so newly-viewed items (e.g. live products just
   // opened in ProductDetail) appear without remounting.
@@ -528,7 +575,7 @@ const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = 
           )}
         </View>
         <View style={styles.productInfo}>
-          <Text style={styles.productPrice}>¥{getViewedPrice(item)}</Text>
+          <Text style={styles.productPrice}>{formatKRWDirect(getViewedPrice(item))}</Text>
           <Text style={styles.productTitle} numberOfLines={1} ellipsizeMode="tail">
             {getViewedTitle(item)}
           </Text>
@@ -578,7 +625,7 @@ const ViewedProductsScreen: React.FC<ViewedProductsScreenProps> = ({ embedded = 
         <FlatList
           data={products}
           renderItem={renderProductItem}
-          keyExtractor={(product) => product.productId}
+          keyExtractor={(product, index) => `${product.productId}:${product.viewedAt}:${index}`}
           numColumns={3}
           scrollEnabled={false}
           columnWrapperStyle={styles.productRow}
@@ -859,7 +906,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     paddingTop: SPACING.md,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.background,
     // borderBottomWidth: 1,
     // borderBottomColor: COLORS.gray[200],
   },

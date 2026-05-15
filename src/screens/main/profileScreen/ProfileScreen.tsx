@@ -536,21 +536,21 @@ const ProfileScreen: React.FC = () => {
     return text;
   };
 
-  /** Open BuyList (stack or tablet embedded) with optional progressStatus whitelist. */
+  /** Open BuyList (stack or tablet embedded) with optional progressStatus whitelist and initial tab. */
   const openMyOrdersBuyList = useCallback(
-    (statusWhitelist: readonly string[] | null | undefined) => {
+    (statusWhitelist: readonly string[] | null | undefined, initialTab: string = 'all') => {
       const wl = statusWhitelist?.length ? [...statusWhitelist] : undefined;
       if (pIsTabletLandscape) {
         setTabletSection('orders');
-        setEmbeddedOrdersInitialTab('all');
+        setEmbeddedOrdersInitialTab(initialTab);
         setEmbeddedOrdersStatusWhitelist(wl ?? null);
         setEmbeddedOrdersOpen(true);
         return;
       }
       if (wl) {
-        (navigation as any).navigate('BuyList', { initialTab: 'all', statusWhitelist: wl });
+        (navigation as any).navigate('BuyList', { initialTab, statusWhitelist: wl });
       } else {
-        (navigation as any).navigate('BuyList', { initialTab: 'all' });
+        (navigation as any).navigate('BuyList', { initialTab });
       }
     },
     [navigation, pIsTabletLandscape],
@@ -1000,28 +1000,28 @@ const ProfileScreen: React.FC = () => {
           <View style={styles.myOrderContent}>
             <TouchableOpacity
               style={[styles.myOrderItem, styles.myOrderItemFour]}
-              onPress={() => openMyOrdersBuyList(MY_ORDERS_PAYMENT_COMPLETED_STATUSES)}
+              onPress={() => openMyOrdersBuyList(MY_ORDERS_PAYMENT_COMPLETED_STATUSES, 'purchase_agency')}
             >
               <Text style={styles.myOrderItemCount}>{myOrderDashCounts.paymentCompleted}</Text>
               <Text style={styles.myOrderItemText}>{t('profile.paymentCompletedCard')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.myOrderItem, styles.myOrderItemFour]}
-              onPress={() => openMyOrdersBuyList(MY_ORDERS_WAREHOUSE_STATUSES)}
+              onPress={() => openMyOrdersBuyList(MY_ORDERS_WAREHOUSE_STATUSES, 'warehouse')}
             >
               <Text style={styles.myOrderItemCount}>{myOrderDashCounts.awaitingShipmentPayment}</Text>
               <Text style={styles.myOrderItemText}>{t('profile.awaitingShipmentPaymentCard')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.myOrderItem, styles.myOrderItemFour]}
-              onPress={() => openMyOrdersBuyList(MY_ORDERS_INTERNATIONAL_SHIPPING_STATUSES)}
+              onPress={() => openMyOrdersBuyList(MY_ORDERS_INTERNATIONAL_SHIPPING_STATUSES, 'international_shipping')}
             >
               <Text style={styles.myOrderItemCount}>{myOrderDashCounts.internationalShipping}</Text>
               <Text style={styles.myOrderItemText}>{t('profile.internationalShippingCard')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.myOrderItem, styles.myOrderItemFour]}
-              onPress={() => openMyOrdersBuyList(null)}
+              onPress={() => openMyOrdersBuyList(null, 'all')}
             >
               <Text style={styles.myOrderItemCount}>{myOrderDashCounts.viewAll}</Text>
               <Text style={styles.myOrderItemText}>{t('profile.viewAllOrdersCard')}</Text>
@@ -1648,28 +1648,28 @@ const ProfileScreen: React.FC = () => {
                 <View style={styles.myOrderContent}>
                   <TouchableOpacity
                     style={[styles.myOrderItem, styles.myOrderItemFour]}
-                    onPress={() => openMyOrdersBuyList(MY_ORDERS_PAYMENT_COMPLETED_STATUSES)}
+                    onPress={() => openMyOrdersBuyList(MY_ORDERS_PAYMENT_COMPLETED_STATUSES, 'purchase_agency')}
                   >
                     <Text style={styles.myOrderItemCount}>{myOrderDashCounts.paymentCompleted}</Text>
                     <Text style={styles.myOrderItemText}>{t('profile.paymentCompletedCard')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.myOrderItem, styles.myOrderItemFour]}
-                    onPress={() => openMyOrdersBuyList(MY_ORDERS_WAREHOUSE_STATUSES)}
+                    onPress={() => openMyOrdersBuyList(MY_ORDERS_WAREHOUSE_STATUSES, 'warehouse')}
                   >
                     <Text style={styles.myOrderItemCount}>{myOrderDashCounts.awaitingShipmentPayment}</Text>
                     <Text style={styles.myOrderItemText}>{t('profile.awaitingShipmentPaymentCard')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.myOrderItem, styles.myOrderItemFour]}
-                    onPress={() => openMyOrdersBuyList(MY_ORDERS_INTERNATIONAL_SHIPPING_STATUSES)}
+                    onPress={() => openMyOrdersBuyList(MY_ORDERS_INTERNATIONAL_SHIPPING_STATUSES, 'international_shipping')}
                   >
                     <Text style={styles.myOrderItemCount}>{myOrderDashCounts.internationalShipping}</Text>
                     <Text style={styles.myOrderItemText}>{t('profile.internationalShippingCard')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.myOrderItem, styles.myOrderItemFour]}
-                    onPress={() => openMyOrdersBuyList(null)}
+                    onPress={() => openMyOrdersBuyList(null, 'all')}
                   >
                     <Text style={styles.myOrderItemCount}>{myOrderDashCounts.viewAll}</Text>
                     <Text style={styles.myOrderItemText}>{t('profile.viewAllOrdersCard')}</Text>

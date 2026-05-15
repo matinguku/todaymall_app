@@ -13,6 +13,7 @@ import {
   Linking,
   PanResponder,
   Platform,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
@@ -220,7 +221,10 @@ const getViewerCount = (item: any) => {
 };
 
 // ─── Header ───────────────────────────────────────────────
-const LiveHeader: React.FC<{ onSearchPress?: () => void }> = ({ onSearchPress }) => (
+const LiveHeader: React.FC<{
+  onSearchPress?: () => void;
+  compactSearchOpacity?: Animated.AnimatedInterpolation<number>;
+}> = ({ onSearchPress, compactSearchOpacity }) => (
   <View style={styles.header}>
     <View style={styles.headerLeft}>
       <View style={styles.broadcastIconContainer}>
@@ -232,7 +236,24 @@ const LiveHeader: React.FC<{ onSearchPress?: () => void }> = ({ onSearchPress })
         <Text style={styles.headerSubtitle}>CHANNAL</Text>
       </View>
     </View>
-    <LanguageButton />
+    <View style={styles.headerRightCluster}>
+      {compactSearchOpacity ? (
+        <Animated.View
+          pointerEvents="box-none"
+          style={[styles.liveCompactSearchSlot, { opacity: compactSearchOpacity }]}
+        >
+          <TouchableOpacity
+            style={styles.liveCompactSearchBtn}
+            onPress={onSearchPress}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+          >
+            <SearchIcon width={22} height={22} color={COLORS.white} />
+          </TouchableOpacity>
+        </Animated.View>
+      ) : null}
+      <LanguageButton />
+    </View>
   </View>
 );
 
@@ -626,7 +647,9 @@ const TopSellerItem: React.FC<{ seller: any; onPress?: () => void }> = ({ seller
 
   return (
     <TouchableOpacity style={styles.topSellerItem} activeOpacity={0.7} onPress={onPress}>
-      <Image source={{ uri: avatar }} style={styles.topSellerAvatar} />
+      <View style={styles.topSellerAvatarRing}>
+        <Image source={{ uri: avatar }} style={styles.topSellerAvatar} />
+      </View>
       <View style={styles.topSellerInfo}>
         <Text style={styles.topSellerName} numberOfLines={1}>{name}</Text>
         <Text style={styles.topSellerSold}>{t('live.soldLabel')}: <Text style={styles.topSellerSoldBold}>{totalSold.toLocaleString()}</Text></Text>
@@ -1348,7 +1371,9 @@ const TabletTopSellerRow: React.FC<{ seller: any; rank: number; onPress?: () => 
   const totalSold = seller?.totalItemsSold ?? sellerObj?.totalItemsSold ?? seller?.totalSold ?? 0;
   return (
     <TouchableOpacity style={styles.tabletTSRow} activeOpacity={0.7} onPress={onPress}>
-      <Image source={{ uri: avatar }} style={styles.tabletTSAvatar} />
+      <View style={styles.tabletTSAvatarRing}>
+        <Image source={{ uri: avatar }} style={styles.tabletTSAvatar} />
+      </View>
       <Text style={styles.tabletTSName} numberOfLines={1}>{name}</Text>
       <Text style={styles.tabletTSSold}>{totalSold.toLocaleString()}</Text>
       <View style={styles.tabletTSBadge}>
@@ -1365,6 +1390,88 @@ const LiveScreen: React.FC = () => {
   const locale = useAppSelector((s) => s.i18n.locale) as 'en' | 'ko' | 'zh';
   const { t } = useTranslation();
   const [searchText, setSearchText] = useState('');
+
+  // Scroll-driven search-row collapse — mirrors HomeScreen pattern so the
+  // Live page behaves the same way: pull down → search bar visible; scroll
+  // down sustained ~28px → search bar slides up out of view; scroll back
+  // up → it reappears.
+  const SEARCH_ROW_CLIP_HEIGHT = 44;
+  const ACCUMULATED_FLIP_DISTANCE = 28;
+  const PER_FRAME_NOISE_FLOOR = 1.5;
+  const HIDE_ENGAGE_OFFSET = 12;
+  const searchHidden = useRef(new Animated.Value(0)).current;
+  const lastScrollYRef = useRef(0);
+  const accumulatedTravelRef = useRef(0);
+  const searchHiddenStateRef = useRef(false);
+  const liveCollapseTranslate = searchHidden.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -SEARCH_ROW_CLIP_HEIGHT],
+    extrapolate: 'clamp',
+  });
+  const liveSearchOpacity = searchHidden.interpolate({
+    inputRange: [0, 0.55],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+  const liveCompactSearchOpacity = searchHidden.interpolate({
+    inputRange: [0.12, 0.88],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+  const handleLiveScroll = useCallback((event: any) => {
+    if (!event || !event.nativeEvent) return;
+    const { contentOffset } = event.nativeEvent;
+    if (!contentOffset) return;
+    const scrollPosition = contentOffset.y;
+    const prevY = lastScrollYRef.current;
+    const delta = scrollPosition - prevY;
+    lastScrollYRef.current = scrollPosition;
+    const nearTop = scrollPosition <= HIDE_ENGAGE_OFFSET;
+    if (nearTop) {
+      accumulatedTravelRef.current = 0;
+      if (searchHiddenStateRef.current) {
+        searchHiddenStateRef.current = false;
+        Animated.timing(searchHidden, {
+          toValue: 0,
+          duration: 180,
+          useNativeDriver: false,
+        }).start();
+      }
+      return;
+    }
+    if (Math.abs(delta) < PER_FRAME_NOISE_FLOOR) return;
+    if (
+      (delta > 0 && accumulatedTravelRef.current < 0) ||
+      (delta < 0 && accumulatedTravelRef.current > 0)
+    ) {
+      accumulatedTravelRef.current = 0;
+    }
+    accumulatedTravelRef.current += delta;
+    if (
+      accumulatedTravelRef.current >= ACCUMULATED_FLIP_DISTANCE &&
+      !searchHiddenStateRef.current
+    ) {
+      searchHiddenStateRef.current = true;
+      accumulatedTravelRef.current = 0;
+      Animated.timing(searchHidden, {
+        toValue: 1,
+        duration: 180,
+        useNativeDriver: false,
+      }).start();
+    } else if (
+      accumulatedTravelRef.current <= -ACCUMULATED_FLIP_DISTANCE &&
+      searchHiddenStateRef.current
+    ) {
+      searchHiddenStateRef.current = false;
+      accumulatedTravelRef.current = 0;
+      Animated.timing(searchHidden, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [searchHidden]);
+
   const { width: dynWidth, height: dynHeight } = useWindowDimensions();
   const isTablet = dynWidth >= 600;
   /** Upright tablet: carousel full width; schedule + top seller in one horizontal row (~40% each). */
@@ -1667,27 +1774,52 @@ const LiveScreen: React.FC = () => {
       />
 
       {/* Red Header */}
-      <LiveHeader onSearchPress={() => navigation.navigate('LiveSellerSearch')} />
+      <LiveHeader
+        onSearchPress={() => navigation.navigate('LiveSellerSearch')}
+        compactSearchOpacity={liveCompactSearchOpacity}
+      />
 
-      {/* Fixed sub-header (search + notice), not scrolled */}
+      {/* Fixed sub-header (search + notice), not scrolled. */}
       <View style={styles.fixedHeaderSubSection}>
-        <SearchBar
-          searchText={searchText}
-          onChangeText={setSearchText}
-          // Routes by the dropdown's current mode. The receiving screen
-          // (LiveSellerSearchScreen) reads `searchMode` and renders its
-          // own dropdown with the same selection so the user keeps
-          // context across navigation. Default mode is 'products'.
-          onSearch={(mode) =>
-            navigation.navigate('LiveSellerSearch', {
-              query: searchText,
-              searchMode: mode,
-            })
-          }
-          t={t}
-        />
+        <Animated.View
+          style={[styles.liveSearchRowClip, { height: SEARCH_ROW_CLIP_HEIGHT }]}
+        >
+          <Animated.View
+            style={{
+              opacity: liveSearchOpacity,
+              transform: [{ translateY: liveCollapseTranslate }],
+            }}
+          >
+            <SearchBar
+              searchText={searchText}
+              onChangeText={setSearchText}
+              // Routes by the dropdown's current mode. The receiving screen
+              // (LiveSellerSearchScreen) reads `searchMode` and renders its
+              // own dropdown with the same selection so the user keeps
+              // context across navigation. Default mode is 'products'.
+              onSearch={(mode) =>
+                navigation.navigate('LiveSellerSearch', {
+                  query: searchText,
+                  searchMode: mode,
+                })
+              }
+              t={t}
+            />
+          </Animated.View>
+        </Animated.View>
         {liveCommerceData && liveSellerPillRows.length > 0 && (
-          <View style={styles.sellerPillsRow}>
+          <Animated.View
+            style={[
+              styles.sellerPillsRow,
+              {
+                transform: [{ translateY: liveCollapseTranslate }],
+                // Shrink the layout space this row occupies in lockstep with
+                // the search-row collapse so the ScrollView body below
+                // claims the freed pixels and gains that much visible area.
+                marginBottom: liveCollapseTranslate,
+              },
+            ]}
+          >
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -1730,7 +1862,7 @@ const LiveScreen: React.FC = () => {
             >
               <LiveSellerPillsMenuIcon width={NEXT_BATON_ICON_SIZE} height={NEXT_BATON_ICON_SIZE} color={COLORS.white} />
             </TouchableOpacity>
-          </View>
+          </Animated.View>
         )}
         {/* <NoticeBanner t={t} /> */}
       </View>
@@ -1748,6 +1880,8 @@ const LiveScreen: React.FC = () => {
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
+        onScroll={handleLiveScroll}
+        scrollEventThrottle={16}
       >
         {/* Error */}
         {isError && (
@@ -2203,6 +2337,26 @@ const styles = StyleSheet.create({
   },
 
   // Search Bar
+  liveSearchRowClip: {
+    overflow: 'hidden',
+    width: '100%',
+  },
+  headerRightCluster: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  liveCompactSearchSlot: {
+    marginRight: SPACING.xs,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  liveCompactSearchBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   searchBarContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2624,12 +2778,22 @@ const styles = StyleSheet.create({
     maxWidth: 200,
     gap: SPACING.sm,
   },
-  topSellerAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: COLORS.gray[200],
+  topSellerAvatarRing: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#FFFCE5',
+    borderWidth: 2,
+    borderColor: '#FFE600',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: SPACING.xs,
+  },
+  topSellerAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.gray[200],
   },
   topSellerInfo: {
     alignItems: 'flex-start',
@@ -3111,10 +3275,20 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xssm,
     gap: SPACING.xs,
   },
+  tabletTSAvatarRing: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFCE5',
+    borderWidth: 2,
+    borderColor: '#FFE600',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   tabletTSAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: COLORS.gray[200],
   },
   tabletTSName: {

@@ -98,16 +98,17 @@ interface PaymentScreenParams {
 const PaymentScreen: React.FC = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const params = route.params as PaymentScreenParams;
-  const { 
-    items = [], 
-    totalAmount = 0, 
+  const params = route.params as PaymentScreenParams & { pendingCheckout?: boolean };
+  const {
+    items = [],
+    totalAmount = 0,
     fromCart = false,
     estimatedShippingCost: paramShipping = 0,
     estimatedShippingCostBySeller: paramShippingBySeller = {},
     checkoutData,
     directPurchaseItems,
   } = params;
+  const pendingCheckout = !!params.pendingCheckout;
   const estimatedShippingCost = checkoutData?.estimatedShippingCost ?? paramShipping;
   const estimatedShippingCostBySeller = checkoutData?.estimatedShippingCostBySeller ?? paramShippingBySeller;
   const insets = useSafeAreaInsets();
@@ -1224,6 +1225,14 @@ const PaymentScreen: React.FC = () => {
 
   const handleConfirm = () => {
     console.log("Handle confirm clicked");
+    if (pendingCheckout) {
+      // Optimistic navigation from Buy Now: the real
+      // /cart/checkout/direct-purchase response hasn't landed yet, so we
+      // don't have authoritative totals/shipping/coupons. Block submit
+      // until the banner clears (params.pendingCheckout flips to false).
+      Alert.alert('', t('payment.calculatingTotals') || t('product.loadingProduct'));
+      return;
+    }
     if (!selectedAddress) {
       Alert.alert('Error', 'Please select a delivery address');
       return;
@@ -1469,8 +1478,17 @@ const PaymentScreen: React.FC = () => {
   return (
     <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
       {renderHeader()}
-      
-      <ScrollView 
+
+      {pendingCheckout ? (
+        <View style={styles.pendingCheckoutBanner}>
+          <ActivityIndicator size="small" color={COLORS.primary} />
+          <Text style={styles.pendingCheckoutBannerText}>
+            {t('payment.calculatingTotals') || t('product.loadingProduct')}
+          </Text>
+        </View>
+      ) : null}
+
+      <ScrollView
         style={styles.scrollView} 
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
@@ -1753,6 +1771,20 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.white,
     paddingBottom: 100,
+  },
+  pendingCheckoutBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: COLORS.gray[100],
+  },
+  pendingCheckoutBannerText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.text.secondary,
+    fontWeight: '500',
   },
   header: {
     flexDirection: 'row',
