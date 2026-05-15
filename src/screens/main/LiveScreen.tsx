@@ -32,7 +32,6 @@ import BrandIcon from '../../assets/icons/BrandIcon';
 import LiveIcon from '../../assets/icons/LiveIcon';
 import SensorsIcon from '../../assets/icons/SensorsIcon';
 import SellerMarkIcon from '../../assets/icons/SellerMarkIcon';
-import PartnerShareIcon from '../../assets/icons/PartnerShareIcon';
 import LiveSellerPillsMenuIcon from '../../assets/icons/LiveSellerPillsMenuIcon';
 import LiveSellerPillsNextLabelIcon from '../../assets/icons/LiveSellerPillsNextLabelIcon';
 import LiveCarouselBottomFade, {
@@ -1197,7 +1196,11 @@ const PointPartnerSellerCard: React.FC<{
               activeOpacity={0.8}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <PartnerShareIcon width={40} height={40} />
+              <Image
+                source={require('../../assets/icons/TikTok.png')}
+                style={{ width: 40, height: 40 }}
+                resizeMode="contain"
+              />
             </TouchableOpacity>
           )}
         </View>
