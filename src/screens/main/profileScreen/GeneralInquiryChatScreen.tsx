@@ -649,21 +649,30 @@ const GeneralInquiryChatScreen: React.FC = () => {
             </View>
           )}
 
-          {/* Pending Attachments Preview */}
+          {/* Pending Attachments Preview — height clamped so the strip
+              fits the thumbnail + padding and the surrounding column
+              collapses downward toward the input bar instead of letting
+              this band stretch to fill the flex space above it. */}
           {pendingAttachments.length > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: COLORS.white }}>
-              {pendingAttachments.map((att, idx) => (
-                <View key={`pending-${idx}`} style={{ marginRight: 8, position: 'relative' }}>
-                  <Image source={{ uri: att.uri }} style={{ width: 60, height: 60, borderRadius: 8 }} resizeMode="cover" />
-                  <TouchableOpacity
-                    style={{ position: 'absolute', top: -6, right: -6, backgroundColor: COLORS.red || '#FF0000', borderRadius: 10, width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}
-                    onPress={() => setPendingAttachments((prev) => prev.filter((_, i) => i !== idx))}
-                  >
-                    <Icon name="close" size={12} color={COLORS.white} />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </ScrollView>
+            <View style={{ height: 72, backgroundColor: COLORS.white }}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 6, alignItems: 'center' }}
+              >
+                {pendingAttachments.map((att, idx) => (
+                  <View key={`pending-${idx}`} style={{ marginRight: 8, position: 'relative' }}>
+                    <Image source={{ uri: att.uri }} style={{ width: 60, height: 60, borderRadius: 8 }} resizeMode="cover" />
+                    <TouchableOpacity
+                      style={{ position: 'absolute', top: -6, right: -6, backgroundColor: COLORS.red || '#FF0000', borderRadius: 10, width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}
+                      onPress={() => setPendingAttachments((prev) => prev.filter((_, i) => i !== idx))}
+                    >
+                      <Icon name="close" size={12} color={COLORS.white} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
           )}
 
           {/* Message input */}

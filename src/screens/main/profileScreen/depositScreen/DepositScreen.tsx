@@ -735,9 +735,9 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
               />
 
               {/* Error Message */}
-              <Text style={styles.warningText}>
+              {/* <Text style={styles.warningText}>
                 {t('deposit.accountHolderWarning')}
-              </Text>
+              </Text> */}
 
               {/* Submit Button */}
               <TouchableOpacity
@@ -776,7 +776,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.background,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },

@@ -735,7 +735,7 @@ const MessageScreen: React.FC<MessageScreenProps> = ({ initialTabOverride, onEmb
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.background,
   },
 
   // Header
@@ -745,7 +745,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.sm,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.background,
   },
   headerTitle: {
     fontSize: FONTS.sizes.lg,
@@ -766,7 +766,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderBottomWidth: 1,
     borderBottomColor: COLORS.gray[200],
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.background,
   },
   tab: {
     flexDirection: 'row',

@@ -927,6 +927,16 @@ const ProductDetailScreen: React.FC = () => {
   const [photoCaptureVisible, setPhotoCaptureVisible] = useState(false);
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [relatedProductsPage, setRelatedProductsPage] = useState(1);
+  // Description-image lazy reveal. The layout reserves space for every image
+  // up front (each placeholder is `descriptionImage` height = 300), but only
+  // the first `descriptionImagesRevealed` rows actually download a bitmap.
+  // Bumped in batches of 5 by the ScrollView's onScroll listener as the user
+  // approaches the description block.
+  const [descriptionImagesRevealed, setDescriptionImagesRevealed] = useState(0);
+  // Top-Y of the description container in the ScrollView's coordinate space,
+  // captured via onLayout. Used by the scroll listener to decide which row
+  // the user is approaching without needing per-row refs.
+  const descriptionContainerYRef = useRef<number>(Number.POSITIVE_INFINITY);
   const [relatedProductsHasMore, setRelatedProductsHasMore] = useState(true);
   // Tracks the page number used for the in-flight related-products fetch so
   // onSuccess knows whether to replace (page 1) or append (page > 1).
@@ -1782,6 +1792,11 @@ const ProductDetailScreen: React.FC = () => {
     setRelatedProducts([]);
     relatedProductsPageRef.current = 1;
     isLoadingMoreRelatedRef.current = false;
+    // Reset the lazy-reveal counter so the new product starts with all
+    // description-image rows as placeholders. The scroll listener will
+    // reveal the first batch once the user nears the description block.
+    setDescriptionImagesRevealed(0);
+    descriptionContainerYRef.current = Number.POSITIVE_INFINITY;
 
     if (isLive) {
       fetchSellerOffersAsRelated(1);
@@ -3824,17 +3839,43 @@ const ProductDetailScreen: React.FC = () => {
             <View style={styles.htmlContentContainer}>
               {/* Display images from HTML description */}
               {descriptionImages.length > 0 && (
-                <View style={styles.descriptionImagesContainer}>
-                  {descriptionImages.map((imgUrl: string, index: number) => (
-                    <Image
-                      key={index}
-                      source={{ uri: buildProductDisplayImageUri(imgUrl, 600, 75) }}
-                      style={styles.descriptionImage as any}
-                      resizeMode="contain"
-                      resizeMethod={Platform.OS === 'android' ? 'resize' : undefined}
-                      fadeDuration={0}
-                    />
-                  ))}
+                <View
+                  style={styles.descriptionImagesContainer}
+                  onLayout={(e) => {
+                    // Capture the container's Y so the scroll listener can
+                    // tell which image-row index the user is currently near
+                    // without needing per-row refs. Each row's height is
+                    // fixed (`descriptionImage.height` = 300 + marginBottom).
+                    descriptionContainerYRef.current = e.nativeEvent.layout.y;
+                  }}
+                >
+                  {descriptionImages.map((imgUrl: string, index: number) => {
+                    // Layout space is reserved for every image up front
+                    // (the gray placeholder uses the same `descriptionImage`
+                    // style → height: 300), but only the first
+                    // `descriptionImagesRevealed` rows actually download a
+                    // bitmap. Rows past the reveal cursor stay as gray
+                    // placeholders until the scroll listener bumps the
+                    // counter when the user gets close to them.
+                    if (index >= descriptionImagesRevealed) {
+                      return <View key={index} style={styles.descriptionImage as any} />;
+                    }
+                    return (
+                      <Image
+                        key={index}
+                        // Further size-first downscale: 300 → 200 px edge
+                        // (area drops to ~4/9, roughly 2.25× smaller) and
+                        // quality 60 → 50 trims another ~15%. Combined with
+                        // the prior cut, description images now transfer
+                        // and decode about 2× faster than the previous step.
+                        source={{ uri: buildProductDisplayImageUri(imgUrl, 200, 50) }}
+                        style={styles.descriptionImage as any}
+                        resizeMode="contain"
+                        resizeMethod={Platform.OS === 'android' ? 'resize' : undefined}
+                        fadeDuration={0}
+                      />
+                    );
+                  })}
                 </View>
               )}
 
@@ -4374,6 +4415,35 @@ const ProductDetailScreen: React.FC = () => {
                 // commits the next state update.
                 isLoadingMoreRelatedRef.current = true;
                 setRelatedProductsPage(prev => prev + 1);
+              }
+
+              // Description-image lazy reveal. Each row is a fixed-height
+              // placeholder (300 + SPACING.md = ~316 px) so we can compute
+              // the index of the row at the bottom of the viewport from
+              // (scrollBottom - descriptionContainerY) / rowHeight. When
+              // that index passes the current reveal cursor, bump it by 5
+              // so the next batch of bitmaps starts downloading just before
+              // the user scrolls them into view.
+              const descTop = descriptionContainerYRef.current;
+              const totalImages = descriptionHtmlDerived.images.length;
+              if (
+                totalImages > 0 &&
+                Number.isFinite(descTop) &&
+                descriptionImagesRevealed < totalImages
+              ) {
+                const ROW_HEIGHT = 316; // descriptionImage height + marginBottom
+                const BATCH = 5;
+                const scrollBottom = contentOffset.y + layoutMeasurement.height;
+                const reachedIdx = Math.floor((scrollBottom - descTop) / ROW_HEIGHT);
+                if (reachedIdx >= descriptionImagesRevealed) {
+                  const nextCount = Math.min(
+                    totalImages,
+                    Math.max(descriptionImagesRevealed + BATCH, reachedIdx + BATCH),
+                  );
+                  if (nextCount > descriptionImagesRevealed) {
+                    setDescriptionImagesRevealed(nextCount);
+                  }
+                }
               }
             },
           }
