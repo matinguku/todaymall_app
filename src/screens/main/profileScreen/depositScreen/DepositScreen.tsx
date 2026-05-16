@@ -97,6 +97,7 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
   const [withdrawReason, setWithdrawReason] = useState('');
   const [withdrawAccountNumber, setWithdrawAccountNumber] = useState('');
   const [withdrawAccountName, setWithdrawAccountName] = useState('');
+  const [withdrawBankName, setWithdrawBankName] = useState('');
 
   // Balance state (fetched from API)
   const [totalDeposit, setTotalDeposit] = useState(0);
@@ -330,7 +331,7 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
       Alert.alert(t('common.error'), t('deposit.invalidAmount'));
       return;
     }
-    if (!withdrawAccountNumber.trim() || !withdrawAccountName.trim()) {
+    if (!withdrawAccountNumber.trim() || !withdrawAccountName.trim() || !withdrawBankName.trim()) {
       Alert.alert(t('common.error'), t('deposit.enterAccountDetails'));
       return;
     }
@@ -342,7 +343,7 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
         amount: amount,
         currency: 'KRW',
         receivingBankInformation: {
-          bankName: t('deposit.bankName'),
+          bankName: withdrawBankName.trim(),
           accountNumber: withdrawAccountNumber.trim(),
           accountHolder: withdrawAccountName.trim(),
         },
@@ -356,6 +357,7 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
         setWithdrawReason('');
         setWithdrawAccountNumber('');
         setWithdrawAccountName('');
+        setWithdrawBankName('');
         setShowWithdrawModal(false);
       } else {
         Alert.alert(t('common.error'), response.error || 'Failed to create withdrawal request.');
@@ -698,6 +700,16 @@ const DepositScreen: React.FC<DepositScreenProps> = ({ embedded = false, onEmbed
                 placeholderTextColor={COLORS.gray[500]}
                 value={withdrawAccountName}
                 onChangeText={setWithdrawAccountName}
+              />
+
+              {/* Bank Name Input */}
+              <Text style={styles.modalInputLabel}>{t('deposit.bankNameLabel')}</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder={t('deposit.enterBankName')}
+                placeholderTextColor={COLORS.gray[500]}
+                value={withdrawBankName}
+                onChangeText={setWithdrawBankName}
               />
 
               {/* Account Number Input */}

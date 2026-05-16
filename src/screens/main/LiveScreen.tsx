@@ -21,6 +21,7 @@ import WebView from 'react-native-webview';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import Text from '../../components/Text';
 import LanguageButton from '../../components/LanguageButton';
+import KakaoTalkFloatingButton from '../../components/KakaoTalkFloatingButton';
 import { API_BASE_URL, COLORS, FONTS, SPACING, BORDER_RADIUS, SCREEN_WIDTH } from '../../constants';
 import { useAppSelector } from '../../store/hooks';
 import { useLiveCommerceMutation } from '../../hooks/useLiveCommerceMutation';
@@ -2149,6 +2150,7 @@ const LiveScreen: React.FC = () => {
         )}
       </ScrollView>
       )}
+      <KakaoTalkFloatingButton />
     </SafeAreaView>
   );
 };

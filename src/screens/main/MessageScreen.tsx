@@ -77,6 +77,14 @@ const MessageScreen: React.FC<MessageScreenProps> = ({ initialTabOverride, onEmb
   } = useSocket();
   const locale = useAppSelector((s) => s.i18n.locale) as 'en' | 'ko' | 'zh';
 
+  const t = (key: string) => {
+    const keys = key.split('.');
+    let value: any = translations[locale as keyof typeof translations];
+    for (const k of keys) { value = value?.[k]; }
+    if (typeof value === 'string') return value;
+    return undefined;
+  };
+
   // Layout-first paint: render header + tab switcher immediately and defer
   // the heavy FlatList content (inquiries / general / file downloads) to the
   // next frame so the user sees the page composition first. Uses
@@ -95,14 +103,6 @@ const MessageScreen: React.FC<MessageScreenProps> = ({ initialTabOverride, onEmb
       }
     }, [isAuthenticated, navigation])
   );
-
-  const t = (key: string) => {
-    const keys = key.split('.');
-    let value: any = translations[locale as keyof typeof translations];
-    for (const k of keys) { value = value?.[k]; }
-    if (typeof value === 'string') return value;
-    return undefined;
-  };
 
   const initialTab = initialTabOverride ?? (route.params?.initialTab === 'general' ? 'general' : 'order');
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
@@ -373,6 +373,8 @@ const MessageScreen: React.FC<MessageScreenProps> = ({ initialTabOverride, onEmb
       in_progress: 'inquiry.status.inProgress',
       pending: 'inquiry.status.pending',
       confirmed: 'inquiry.status.confirmed',
+      unconfirmed: 'inquiry.status.unconfirmed',
+      completed: 'inquiry.status.completed',
     };
     const key = statusKeyMap[status];
     return (key && t(key)) || status;
@@ -381,11 +383,13 @@ const MessageScreen: React.FC<MessageScreenProps> = ({ initialTabOverride, onEmb
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'open':
-      case 'pending': return COLORS.red;
+      case 'pending':
+      case 'unconfirmed': return COLORS.red;
       case 'in_progress': return '#FF8C00';
       case 'closed':
       case 'resolved':
-      case 'confirmed': return '#28A745';
+      case 'confirmed':
+      case 'completed': return '#28A745';
       default: return COLORS.gray[500];
     }
   };

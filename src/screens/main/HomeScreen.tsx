@@ -10,7 +10,6 @@ import {
   Dimensions,
   StatusBar,
   Animated,
-  Easing,
   Alert,
   Platform,
   Modal,
@@ -18,7 +17,6 @@ import {
   PermissionsAndroid,
   useWindowDimensions,
   ActivityIndicator,
-  Linking,
 } from 'react-native';
 import { launchCamera, launchImageLibrary, MediaType, ImagePickerResponse, CameraOptions, ImageLibraryOptions } from 'react-native-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -29,7 +27,7 @@ import { requestCameraPermission, requestPhotoLibraryPermission } from '../../ut
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import Svg, { Defs, RadialGradient as SvgRadialGradient, Stop, Rect, Mask, Circle, Path as SvgPath } from 'react-native-svg';
+import Svg, { Defs, RadialGradient as SvgRadialGradient, Stop, Rect, Mask, Circle } from 'react-native-svg';
 
 // Create animated icon component
 const AnimatedIcon = Animated.createAnimatedComponent(Icon);
@@ -41,6 +39,7 @@ import { RootStackParamList, Product, NewInProduct, Story, Carousel } from '../.
 
 import { ProductCard, SearchButton, NotificationBadge, ImagePickerModal } from '../../components';
 import LanguageButton from '../../components/LanguageButton';
+import KakaoTalkFloatingButton from '../../components/KakaoTalkFloatingButton';
 import { Banner } from '../../types';
 import { useBannersMutation } from '../../hooks/useBannersMutation';
 import { useCarouselsMutation } from '../../hooks/useCarouselsMutation';
@@ -444,7 +443,7 @@ const AutoLiveChannelSection = React.memo(({
       Math.max(220, Math.min(Math.floor(promoCardWidth * 0.45), 360))
     : isTablet
       ? Math.max(140, Math.min(Math.floor(promoCardWidth * 0.45), 200))
-      : 85;
+      : Math.max(56, Math.min(Math.floor(promoCardWidth * 0.36), 104));
   const promoSmallImageSizeBase = isTabletLandscape
     ? // Landscape tablet: bigger small images too so the top-row pair
       // matches the new big-image scale.
@@ -1299,104 +1298,6 @@ const HomeScreenContent: React.FC = () => {
   const [showScrollToTop, setShowScrollToTop] = useState(false);
   const scrollToTopOpacity = useRef(new Animated.Value(0)).current;
 
-  // Floating KAKAO/TALK chat baton (bottom-right). Two labels cross-fade
-  // every KAKAO_TALK_SWAP_MS so the bubble alternates between "KAKAO" and
-  // "TALK". Driven by a single Animated.Value that toggles between 0 and 1
-  // — opacity of the two text layers interpolates inversely. Native driver
-  // so it's cheap to run on a timer.
-  const KAKAO_TALK_SWAP_MS = 1500;
-  const KAKAO_TALK_FADE_MS = 320;
-  /** Vertical bounce (px up, then back) — runs only while Home is focused */
-  const KAKAO_BOUNCE_UP_PX = 25;
-  const KAKAO_BOUNCE_UP_MS = 380;
-  const KAKAO_BOUNCE_DOWN_MS = 420;
-  const KAKAO_BOUNCE_REST_MS = 140;
-  // Dimensions: design SVG is 34 × 39; rendered at 1.5× per request.
-  const KAKAO_TALK_W = 34 * 1.5;
-  const KAKAO_TALK_H = 39 * 1.5;
-  const kakaoTalkPhase = useRef(new Animated.Value(0)).current;
-  const kakaoBounceY = useRef(new Animated.Value(0)).current;
-  const kakaoLabelOpacity = kakaoTalkPhase.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 0],
-  });
-  const talkLabelOpacity = kakaoTalkPhase.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 1],
-  });
-  // Cross-fade + bounce only while Home is focused; stop on blur and reset so
-  // returning to Home always starts from "KAKAO" and rest position.
-  useFocusEffect(
-    useCallback(() => {
-      let phase = 0;
-      kakaoTalkPhase.stopAnimation();
-      kakaoTalkPhase.setValue(0);
-      kakaoBounceY.stopAnimation();
-      kakaoBounceY.setValue(0);
-
-      const interval = setInterval(() => {
-        phase = phase === 0 ? 1 : 0;
-        Animated.timing(kakaoTalkPhase, {
-          toValue: phase,
-          duration: KAKAO_TALK_FADE_MS,
-          useNativeDriver: true,
-        }).start();
-      }, KAKAO_TALK_SWAP_MS);
-
-      const bounceLoop = Animated.loop(
-        Animated.sequence([
-          Animated.timing(kakaoBounceY, {
-            toValue: -KAKAO_BOUNCE_UP_PX,
-            duration: KAKAO_BOUNCE_UP_MS,
-            easing: Easing.out(Easing.quad),
-            useNativeDriver: true,
-          }),
-          Animated.timing(kakaoBounceY, {
-            toValue: 0,
-            duration: KAKAO_BOUNCE_DOWN_MS,
-            easing: Easing.in(Easing.quad),
-            useNativeDriver: true,
-          }),
-          Animated.delay(KAKAO_BOUNCE_REST_MS),
-        ]),
-      );
-      bounceLoop.start();
-
-      return () => {
-        clearInterval(interval);
-        bounceLoop.stop();
-        kakaoTalkPhase.stopAnimation();
-        kakaoTalkPhase.setValue(0);
-        kakaoBounceY.stopAnimation();
-        kakaoBounceY.setValue(0);
-      };
-    }, [kakaoTalkPhase, kakaoBounceY]),
-  );
-  const openKakaoTalk = useCallback(async () => {
-    // Try the KakaoTalk app's plusfriend deep link first. If the app isn't
-    // installed (or the URL scheme isn't whitelisted on iOS), fall back to
-    // the web channel page so the user still lands somewhere useful.
-    // Replace the channel id below with the real TodayMall KakaoTalk
-    // channel when it's provisioned.
-    const channelId = '_todaymall';
-    const nativeUrl = `kakaoplus://plusfriend/home/${channelId}`;
-    const webUrl = `https://pf.kakao.com/${channelId}`;
-    try {
-      const canOpen = await Linking.canOpenURL(nativeUrl);
-      if (canOpen) {
-        await Linking.openURL(nativeUrl);
-        return;
-      }
-    } catch {
-      // ignore and fall through to the web URL
-    }
-    try {
-      await Linking.openURL(webUrl);
-    } catch {
-      // swallow — the user will just see no-op rather than an error toast.
-    }
-  }, []);
-  
   // State for new "New In" products
   const [newInProducts, setNewInProducts] = useState<any[]>([]);
   const [productsByCategory, setProductsByCategory] = useState<any>({});
@@ -3307,45 +3208,8 @@ const HomeScreenContent: React.FC = () => {
 
       {/* Floating KAKAO/TALK chat baton — bottom-right, above the tab bar.
           Bubble shape + label cross-fade; whole control bounces vertically while Home is focused. */}
-      <Animated.View
-        pointerEvents="box-none"
-        style={[
-          styles.kakaoTalkButton,
-          { transform: [{ translateY: kakaoBounceY }] },
-        ]}
-      >
-        <TouchableOpacity
-          onPress={openKakaoTalk}
-          activeOpacity={0.85}
-          style={styles.kakaoTalkTouchableFill}
-        >
-          <Svg
-            width={KAKAO_TALK_W}
-            height={KAKAO_TALK_H}
-            viewBox="0 0 34 39"
-            style={StyleSheet.absoluteFill}
-            pointerEvents="none"
-          >
-            <SvgPath
-              d="M17 0C26.3888 0 34 7.61116 34 17C34 24.0692 29.6847 30.1298 23.5449 32.6934L12.4805 38.835L12.8555 33.4893C5.47003 31.6388 0 24.9591 0 17C0 7.61116 7.61116 0 17 0Z"
-              fill="#000"
-            />
-          </Svg>
-          <View style={styles.kakaoTalkLabelStack} pointerEvents="none">
-            <Animated.Text
-              style={[styles.kakaoTalkLabel, { opacity: kakaoLabelOpacity }]}
-            >
-              KAKAO
-            </Animated.Text>
-            <Animated.Text
-              style={[styles.kakaoTalkLabel, { opacity: talkLabelOpacity }]}
-            >
-              TALK
-            </Animated.Text>
-          </View>
-        </TouchableOpacity>
-      </Animated.View>
-      
+      <KakaoTalkFloatingButton />
+
       <ImagePickerModal
         visible={imagePickerModalVisible}
         onClose={() => setImagePickerModalVisible(false)}
@@ -3992,47 +3856,6 @@ const styles = StyleSheet.create({
     right: SPACING.lg,
     bottom: 100,
     zIndex: 999,
-  },
-  // KAKAO/TALK floating baton — sits just above the tab bar. The previous
-  // `bottom: 96` left too much air between the bubble and the Account
-  // icon, so it's been reduced to one-fifth of that distance (≈19) to
-  // bring the bubble right up next to the tab row.
-  // Dimensions are 1.5× the design SVG (34 × 39 → 51 × 58.5).
-  kakaoTalkButton: {
-    position: 'absolute',
-    right: SPACING.lg,
-    bottom: 19,
-    width: 34 * 1.5,
-    height: 39 * 1.5,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 999,
-  },
-  kakaoTalkTouchableFill: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  // Stacks the two text layers on top of each other so they can cross-fade
-  // in place. The label band height matches the bubble's body (the upper
-  // 34 of the original 39 viewBox), scaled 1.5×, so the text sits centered
-  // inside the bubble rather than over the pointed tail.
-  kakaoTalkLabelStack: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 34 * 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  kakaoTalkLabel: {
-    position: 'absolute',
-    color: COLORS.white,
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.3,
   },
   scrollToTopTouchable: {
     width: 50,

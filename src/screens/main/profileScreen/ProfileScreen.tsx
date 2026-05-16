@@ -54,6 +54,8 @@ import { useDeleteFromWishlistMutation } from '../../../hooks/useDeleteFromWishl
 import { usePlatformStore } from '../../../store/platformStore';
 import { formatPriceKRW, formatDepositBalance } from '../../../utils/i18nHelpers';
 import { logDevApiFailure } from '../../../utils/devLog';
+import { getAlibabaThumbnailImageUri } from '../../../utils/productImage';
+import { useToast } from '../../../context/ToastContext';
 import { useGetOrdersMutation } from '../../../hooks/useGetOrdersMutation';
 import BuyListScreen from './settingScreen/BuyListScreen';
 import CouponScreen from './depositScreen/CouponScreen';
@@ -382,9 +384,26 @@ const ProfileScreen: React.FC = () => {
   }, []);
 
   // Wishlist hooks
-  const { isProductLiked } = useWishlistStatus();
-  const { mutate: addToWishlist } = useAddToWishlistMutation();
-  const { mutate: deleteFromWishlist } = useDeleteFromWishlistMutation();
+  const { isProductLiked, addExternalId, removeExternalId, refreshExternalIds } = useWishlistStatus();
+  const { showToast } = useToast();
+  const { mutate: addToWishlist } = useAddToWishlistMutation({
+    onSuccess: async () => {
+      showToast(t('home.productAddedToWishlist'), 'success');
+      await refreshExternalIds();
+    },
+    onError: (error) => {
+      showToast(error || t('home.failedToAddToWishlist'), 'error');
+    },
+  });
+  const { mutate: deleteFromWishlist } = useDeleteFromWishlistMutation({
+    onSuccess: async () => {
+      showToast(t('home.productRemovedFromWishlist'), 'success');
+      await refreshExternalIds();
+    },
+    onError: (error) => {
+      showToast(error || t('home.failedToRemoveFromWishlist'), 'error');
+    },
+  });
 
   // If user is not logged in, redirect to Auth (Login) when Profile gains focus
   useFocusEffect(
@@ -738,33 +757,39 @@ const ProfileScreen: React.FC = () => {
   // Toggle wishlist function
   const toggleWishlist = async (product: Product) => {
     if (!user || isGuest) {
+      showToast(t('home.pleaseLogin') || 'Please login first', 'warning');
       return;
     }
 
-    const externalId = 
+    const externalId =
       (product as any).externalId?.toString() ||
       (product as any).offerId?.toString() ||
       '';
 
     if (!externalId) {
+      showToast(t('home.invalidProductId') || 'Invalid product ID', 'error');
       return;
     }
 
     const isLiked = isProductLiked(product);
     const source = (product as any).source || selectedPlatform || '1688';
-    const country = currentLocale || 'en';
 
     if (isLiked) {
+      // Optimistic remove: updates state + AsyncStorage immediately so the heart flips back.
+      await removeExternalId(externalId);
       deleteFromWishlist(externalId);
     } else {
-      const imageUrl = product.image || '';
+      const imageUrl = getAlibabaThumbnailImageUri(product) || product.image || '';
       const price = product.price || 0;
-      const title = product.name || '';
+      const title = product.name || (product as any).title || '';
 
       if (!imageUrl || !title || price <= 0) {
+        showToast(t('home.invalidProductData') || 'Invalid product data', 'error');
         return;
       }
 
+      // Optimistic add: flips the heart now; the mutation persists server-side.
+      await addExternalId(externalId);
       addToWishlist({ offerId: externalId, platform: source });
     }
   };
@@ -1202,24 +1227,25 @@ const ProfileScreen: React.FC = () => {
   const renderQuickAccessSection = () => {
     const expressCount = myOrderDashCounts.internationalInTransit;
     const cards = [
-      expressCount > 0 && (
-        <TouchableOpacity
-          key="delivery"
-          style={styles.quickAccessCard}
-          onPress={() => navigation.navigate('MyDeliveries' as never)}
-        >
-          <View style={styles.quickAccessHeader}>
-            <Text style={styles.quickAccessTitle}>{t('profile.expressDelivery')}</Text>
-            <Text style={styles.quickAccessSubtitle}>{tWithParams('profile.itemsPendingShipment', { count: expressCount })}</Text>
-          </View>
-          <View style={styles.quickAccessImageContainer}>
-            <Image
-              source={{ uri: 'https://via.placeholder.com/120x120/D4B896/FFFFFF?text=Delivery' }}
-              style={styles.quickAccessImage}
-            />
-          </View>
-        </TouchableOpacity>
-      ),
+       expressCount > 0 && 
+       //(
+      //   <TouchableOpacity
+      //     key="delivery"
+      //     style={styles.quickAccessCard}
+      //     onPress={() => navigation.navigate('MyDeliveries' as never)}
+      //   >
+      //     <View style={styles.quickAccessHeader}>
+      //       <Text style={styles.quickAccessTitle}>{t('profile.expressDelivery')}</Text>
+      //       <Text style={styles.quickAccessSubtitle}>{tWithParams('profile.itemsPendingShipment', { count: expressCount })}</Text>
+      //     </View>
+      //     <View style={styles.quickAccessImageContainer}>
+      //       <Image
+      //         source={{ uri: 'https://via.placeholder.com/120x120/D4B896/FFFFFF?text=Delivery' }}
+      //         style={styles.quickAccessImage}
+      //       />
+      //     </View>
+      //   </TouchableOpacity>
+      // ),
       (
         <TouchableOpacity
           key="wishlist"

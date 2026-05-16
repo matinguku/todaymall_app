@@ -1456,7 +1456,7 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.lg,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.gray[200],
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.background,
   },
   backButton: {
     padding: SPACING.xs,

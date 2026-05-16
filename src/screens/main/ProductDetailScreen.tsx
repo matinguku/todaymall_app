@@ -1721,8 +1721,10 @@ const ProductDetailScreen: React.FC = () => {
       const productKey = (p: any): string =>
         (p?.offerId?.toString?.()) || (p?.externalId?.toString?.()) || (p?.id?.toString?.()) || '';
 
+      let appendedCount = 0;
       if (page === 1) {
         setRelatedProducts(mapped);
+        appendedCount = mapped.length;
       } else {
         setRelatedProducts(prev => {
           const seen = new Set(prev.map(productKey).filter(Boolean));
@@ -1732,6 +1734,7 @@ const ProductDetailScreen: React.FC = () => {
             seen.add(k);
             return true;
           });
+          appendedCount = fresh.length;
           return [...prev, ...fresh];
         });
       }
@@ -1740,7 +1743,12 @@ const ProductDetailScreen: React.FC = () => {
       const totalPages = pagination
         ? Math.ceil((pagination.total || 0) / (pagination.pageSize || 10))
         : 0;
-      const hasMore = !!pagination && (pagination.page || 1) < totalPages;
+      // Stop paging when the server has no more pages OR when the page we
+      // just received contributed nothing new after filtering out the current
+      // product and duplicates — otherwise the scroll handler keeps bumping
+      // the page index against an effectively-empty list.
+      const serverHasMore = !!pagination && (pagination.page || 1) < totalPages;
+      const hasMore = serverHasMore && appendedCount > 0;
       setRelatedProductsHasMore(hasMore);
       isLoadingMoreRelatedRef.current = false;
     } catch {
@@ -4361,6 +4369,10 @@ const ProductDetailScreen: React.FC = () => {
                 const now = Date.now();
                 if (now - scrollRelatedPrefetchAtRef.current < 220) return;
                 scrollRelatedPrefetchAtRef.current = now;
+                // Latch the in-flight guard here so subsequent scroll events
+                // can't bump the page index again before the fetch effect
+                // commits the next state update.
+                isLoadingMoreRelatedRef.current = true;
                 setRelatedProductsPage(prev => prev + 1);
               }
             },

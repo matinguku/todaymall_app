@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import Text from '../../../components/Text';
 import Icon from '../../../components/Icon';
+import KakaoTalkFloatingButton from '../../../components/KakaoTalkFloatingButton';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, SCREEN_WIDTH, IMAGE_CONFIG, BACK_NAVIGATION_HIT_SLOP } from '../../../constants';
 import ArrowBackIcon from '../../../assets/icons/ArrowBackIcon';
@@ -78,6 +79,14 @@ const LiveSellerDetailScreen: React.FC = () => {
   const [activeFilter, setActiveFilter] = useState<FilterTab>('bestMatch');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  // Debounced copy of the search keyword. The filter pipeline reads this
+  // instead of `searchQuery` so that rapid typing doesn't re-walk the full
+  // product list on every keystroke.
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearchQuery(searchQuery), 250);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
   // Date filter (YYYY-MM-DD). 'all' shows every product regardless of
   // broadcast date. The trigger in the list header opens a Modal that
   // lets the user pick a different date.
@@ -484,11 +493,13 @@ const LiveSellerDetailScreen: React.FC = () => {
   const filteredProducts = useMemo(() => {
     let result = [...allProducts];
 
-    const keyword = searchQuery.trim().toLowerCase();
+    const keyword = debouncedSearchQuery.trim().toLowerCase();
     if (keyword) {
-      result = result.filter((p) =>
-        String(p.title || p.name || '').toLowerCase().includes(keyword)
-      );
+      result = result.filter((p) => {
+        const title = String(p.title || p.name || '').toLowerCase();
+        const liveCode = String(p.liveCode || '').toLowerCase();
+        return title.includes(keyword) || liveCode.includes(keyword);
+      });
     }
 
     // Filter by category
@@ -513,14 +524,23 @@ const LiveSellerDetailScreen: React.FC = () => {
         break;
     }
     return result;
-  }, [allProducts, activeFilter, selectedCategory, selectedDate, searchQuery]);
+  }, [allProducts, activeFilter, selectedCategory, selectedDate, debouncedSearchQuery]);
 
   const handleLoadMore = useCallback(() => {
+    // Stop paginating while the user has typed a search keyword or applied a
+    // local filter — the filtered list is shorter than the viewport, which
+    // makes FlatList fire onEndReached over and over, walking the server
+    // pages even though the active keyword may never match more results.
+    const isFilteringLocally =
+      debouncedSearchQuery.trim().length > 0 ||
+      selectedCategory !== 'all' ||
+      selectedDate !== 'all';
+    if (isFilteringLocally) return;
     if (!loadingMore && hasMore) {
       const nextPage = currentPage + 1;
       fetchProducts(nextPage, true);
     }
-  }, [currentPage, hasMore, loadingMore]);
+  }, [currentPage, hasMore, loadingMore, debouncedSearchQuery, selectedCategory, selectedDate]);
 
   const scrollToTop = useCallback(() => {
     flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -874,7 +894,7 @@ const LiveSellerDetailScreen: React.FC = () => {
           keyExtractor={productKeyExtractor}
           numColumns={2}
           columnWrapperStyle={styles.productsRow}
-          ListHeaderComponent={renderListHeader}
+          ListHeaderComponent={renderListHeader()}
           ListFooterComponent={renderFooter}
           ListEmptyComponent={renderEmpty}
           onScroll={handleScroll}
@@ -991,6 +1011,7 @@ const LiveSellerDetailScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+      <KakaoTalkFloatingButton />
     </View>
   );
 };

@@ -13,6 +13,7 @@ import Icon from '../../../../components/Icon';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { COLORS, FONTS, SPACING, IMAGE_CONFIG, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
 import { useToast } from '../../../../context/ToastContext';
+import { useTranslation } from '../../../../hooks/useTranslation';
 
 interface TrackingEvent {
   status: string;
@@ -25,22 +26,23 @@ const DeliveryDetailScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<any>();
   const { showToast } = useToast();
+  const { t } = useTranslation();
   const [showAllTracking, setShowAllTracking] = useState(false);
   const [showAllOrderDetails, setShowAllOrderDetails] = useState(false);
 
   // Sample data
   const trackingNumber = '9928383938383847';
   const courierCompany = '中通快递';
-  
+
   const trackingEvents: TrackingEvent[] = [
     {
-      status: 'Delivered',
+      status: t('profile.deliveryDetailScreen.statusDelivered'),
       date: '02-02',
       time: '11:31',
       description: '您的快件已在收货取出签收，如遇问题请联系快递员【主管：13943602234】，无需找商家/平台。签收代收点：快递-方达华府每日鲜超市，咨询电话：0433-8159476，投诉电话：0433-2629992。关注"中通快递"官方微信公众号反馈问题，处理更快捷！感谢使用中通快递，期待再次为您服务！',
     },
     {
-      status: '待取件',
+      status: t('profile.deliveryDetailScreen.statusAwaitingPickup'),
       date: '01-03',
       time: '17:16',
       description: '快件已由快递员【主管：13943602234】送达代收点存放，取件地址：【快递-方达华府每日鲜超市】，请于08:00-20:00】，请及时取件。如遇取件问题或找不到包裹等问题请联系快递员，无需找商家/平台。咨询电话：0433-8159476，投诉电话：0433-2629992。关注"中通快递"官方微信公众号反馈实时物流信息',
@@ -75,7 +77,7 @@ const DeliveryDetailScreen: React.FC = () => {
 
   const handleCopy = (text: string, label: string) => {
     Clipboard.setString(text);
-    showToast(`${label} copied`, 'success');
+    showToast(t('profile.deliveryDetailScreen.copied').replace('{label}', label), 'success');
   };
 
   return (
@@ -88,6 +90,7 @@ const DeliveryDetailScreen: React.FC = () => {
         >
           <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
         </TouchableOpacity>
+        <Text style={styles.headerTitle}>{t('profile.deliveryDetailScreen.title')}</Text>
         <View style={styles.headerIcons}>
           <TouchableOpacity style={styles.headerIconButton}>
             <Icon name="headset-mic" size={24} color={COLORS.text.primary} />
@@ -106,8 +109,8 @@ const DeliveryDetailScreen: React.FC = () => {
         <View style={styles.trackingNumberSection}>
           <Icon name="cube" size={20} color="#4A90E2" />
           <Text style={styles.courierCompany}>{courierCompany}：{trackingNumber}</Text>
-          <TouchableOpacity onPress={() => handleCopy(trackingNumber, 'Tracking number')}>
-            <Text style={styles.copyButton}>Copy</Text>
+          <TouchableOpacity onPress={() => handleCopy(trackingNumber, t('profile.deliveryDetailScreen.trackingNumberLabel'))}>
+            <Text style={styles.copyButton}>{t('profile.deliveryDetailScreen.copy')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -136,7 +139,9 @@ const DeliveryDetailScreen: React.FC = () => {
             onPress={() => setShowAllTracking(!showAllTracking)}
           >
             <Text style={styles.viewMoreText}>
-              View {showAllTracking ? 'Less' : 'More'} Tracking Details
+              {showAllTracking
+                ? t('profile.deliveryDetailScreen.viewLessTracking')
+                : t('profile.deliveryDetailScreen.viewMoreTracking')}
             </Text>
             <Icon 
               name={showAllTracking ? 'chevron-up' : 'chevron-down'} 
@@ -179,7 +184,7 @@ const DeliveryDetailScreen: React.FC = () => {
             onPress={() => setShowAllOrderDetails(!showAllOrderDetails)}
           >
             <Text style={styles.viewMoreText}>
-              View All Order Details
+              {t('profile.deliveryDetailScreen.viewAllOrderDetails')}
             </Text>
             <Icon 
               name={showAllOrderDetails ? 'chevron-up' : 'chevron-down'} 
@@ -191,54 +196,54 @@ const DeliveryDetailScreen: React.FC = () => {
           {showAllOrderDetails && (
             <View style={styles.orderDetailsExpanded}>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Subtotal</Text>
+                <Text style={styles.detailLabel}>{t('profile.deliveryDetailScreen.subtotal')}</Text>
                 <Text style={styles.detailValue}>${orderDetails.subtotal}</Text>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Shipping Fee</Text>
+                <Text style={styles.detailLabel}>{t('profile.deliveryDetailScreen.shippingFee')}</Text>
                 <Text style={styles.detailValue}>${orderDetails.shippingFee}</Text>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Store Discount</Text>
+                <Text style={styles.detailLabel}>{t('profile.deliveryDetailScreen.storeDiscount')}</Text>
                 <Text style={[styles.detailValue, styles.discountValue]}>-¥{orderDetails.storeDiscount}</Text>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Amount Paid</Text>
+                <Text style={styles.detailLabel}>{t('profile.deliveryDetailScreen.amountPaid')}</Text>
                 <Text style={[styles.detailValue, styles.amountPaid]}>¥{orderDetails.amountPaid}</Text>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Payment Method</Text>
+                <Text style={styles.detailLabel}>{t('profile.deliveryDetailScreen.paymentMethod')}</Text>
                 <Text style={styles.detailValue}>{orderDetails.paymentMethod}</Text>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Order Number</Text>
+                <Text style={styles.detailLabel}>{t('profile.deliveryDetailScreen.orderNumber')}</Text>
                 <View style={styles.detailValueWithCopy}>
                   <Text style={styles.detailValue}>{orderDetails.orderNumber}</Text>
-                  <TouchableOpacity onPress={() => handleCopy(orderDetails.orderNumber, 'Order number')}>
-                    <Text style={styles.copyButton}>Copy</Text>
+                  <TouchableOpacity onPress={() => handleCopy(orderDetails.orderNumber, t('profile.deliveryDetailScreen.orderNumberLabel'))}>
+                    <Text style={styles.copyButton}>{t('profile.deliveryDetailScreen.copy')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Transaction Snapshot</Text>
+                <Text style={styles.detailLabel}>{t('profile.deliveryDetailScreen.transactionSnapshot')}</Text>
                 <TouchableOpacity>
                   <Text style={styles.linkText}>{orderDetails.transactionSnapshot}</Text>
                 </TouchableOpacity>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Customs Clearance Code</Text>
+                <Text style={styles.detailLabel}>{t('profile.deliveryDetailScreen.customsClearanceCode')}</Text>
                 <Text style={styles.detailValue}>{orderDetails.customsClearanceCode}</Text>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Creation Time</Text>
+                <Text style={styles.detailLabel}>{t('profile.deliveryDetailScreen.creationTime')}</Text>
                 <Text style={styles.detailValue}>{orderDetails.creationTime}</Text>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Payment Time</Text>
+                <Text style={styles.detailLabel}>{t('profile.deliveryDetailScreen.paymentTime')}</Text>
                 <Text style={styles.detailValue}>{orderDetails.paymentTime}</Text>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Shipping Time</Text>
+                <Text style={styles.detailLabel}>{t('profile.deliveryDetailScreen.shippingTime')}</Text>
                 <Text style={styles.detailValue}>{orderDetails.shippingTime}</Text>
               </View>
             </View>
@@ -267,6 +272,11 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: FONTS.sizes.lg,
+    fontWeight: '700',
+    color: COLORS.text.primary,
   },
   headerIcons: {
     flexDirection: 'row',

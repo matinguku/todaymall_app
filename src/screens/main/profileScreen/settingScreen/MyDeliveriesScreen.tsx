@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../../../components/Icon';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS, FONTS, SPACING, IMAGE_CONFIG, BACK_NAVIGATION_HIT_SLOP } from '../../../../constants';
+import { useTranslation } from '../../../../hooks/useTranslation';
 
 type DeliveryStatus = 'awaiting_pickup' | 'out_for_delivery' | 'in_transit' | 'awaiting_shipment' | 'delivered';
 
@@ -26,6 +27,7 @@ interface Delivery {
 
 const MyDeliveriesScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { t } = useTranslation();
   const [selectedTab, setSelectedTab] = useState<DeliveryStatus>('delivered');
 
   // Sample delivery data
@@ -34,7 +36,7 @@ const MyDeliveriesScreen: React.FC = () => {
       id: '1',
       status: 'delivered',
       date: '02-02',
-      courierCompany: 'Delivery confirmation',
+      courierCompany: t('profile.myDeliveriesScreen.deliveryConfirmation'),
       trackingNumber: '9928383938383847',
       productImage: `https://via.placeholder.com/${IMAGE_CONFIG.PRODUCT_DISPLAY_PIXEL}`,
       productTitle: '商品名称展示',
@@ -77,10 +79,12 @@ const MyDeliveriesScreen: React.FC = () => {
       <Image source={{ uri: item.productImage }} style={styles.productImage} />
       <View style={styles.deliveryInfo}>
         <View style={styles.deliveryHeader}>
-          <Text style={styles.statusText}>Delivered</Text>
+          <Text style={styles.statusText}>{t('profile.myDeliveriesScreen.statusDelivered')}</Text>
           <Text style={styles.dateText}>{item.date}</Text>
         </View>
-        <Text style={styles.courierText}>Courier company: {item.courierCompany}</Text>
+        <Text style={styles.courierText}>
+          {t('profile.myDeliveriesScreen.courierLabel').replace('{company}', item.courierCompany)}
+        </Text>
         <Text style={styles.productTitle}>{item.productTitle}</Text>
       </View>
       <Icon name="chevron-forward" size={20} color={COLORS.text.secondary} />
@@ -97,7 +101,9 @@ const MyDeliveriesScreen: React.FC = () => {
         >
           <Icon name="arrow-back" size={24} color={COLORS.text.primary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Deliveries ({deliveries.length})</Text>
+        <Text style={styles.headerTitle}>
+          {t('profile.myDeliveriesScreen.title').replace('{count}', String(deliveries.length))}
+        </Text>
         <TouchableOpacity style={styles.menuButton}>
           <Icon name="ellipsis-horizontal" size={24} color={COLORS.text.primary} />
         </TouchableOpacity>
@@ -105,13 +111,13 @@ const MyDeliveriesScreen: React.FC = () => {
 
       {/* Status Tabs */}
       <View style={styles.tabsContainer}>
-        {renderTabButton('awaiting_pickup', 'Awaiting Pickup')}
-        {renderTabButton('out_for_delivery', 'Out for Delivery')}
+        {renderTabButton('awaiting_pickup', t('profile.myDeliveriesScreen.tabAwaitingPickup'))}
+        {renderTabButton('out_for_delivery', t('profile.myDeliveriesScreen.tabOutForDelivery'))}
       </View>
       <View style={styles.tabsContainer}>
-        {renderTabButton('in_transit', 'In Transit')}
-        {renderTabButton('awaiting_shipment', 'Awaiting Shipment')}
-        {renderTabButton('delivered', 'Delivered')}
+        {renderTabButton('in_transit', t('profile.myDeliveriesScreen.tabInTransit'))}
+        {renderTabButton('awaiting_shipment', t('profile.myDeliveriesScreen.tabAwaitingShipment'))}
+        {renderTabButton('delivered', t('profile.myDeliveriesScreen.tabDelivered'))}
       </View>
 
       {/* Deliveries List */}
@@ -122,7 +128,7 @@ const MyDeliveriesScreen: React.FC = () => {
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No deliveries found</Text>
+            <Text style={styles.emptyText}>{t('profile.myDeliveriesScreen.emptyText')}</Text>
           </View>
         }
       />
