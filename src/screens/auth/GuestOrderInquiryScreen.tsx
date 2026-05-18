@@ -428,7 +428,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.gray[200],
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.background,
   },
   backButton: {
     width: 36,

@@ -611,9 +611,18 @@ const GeneralInquiryChatScreen: React.FC = () => {
         </View>
       ) : (
         <KeyboardAvoidingView
-          style={[styles.flex, { paddingBottom: Platform.OS === 'android' && keyboardHeight > 0 ? keyboardHeight + insets.bottom : 0 }]}
+          style={styles.flex}
+          // iOS uses `padding` so the bottom edge slides up with the keyboard;
+          // Android relies on the manifest's `adjustResize`, which already
+          // shrinks the window. Adding manual paddingBottom here on top of
+          // adjustResize was double-counting and pushing the input bar off
+          // the bottom of the screen.
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+          // Offset = the height of everything ABOVE this view (status bar +
+          // safe-area top + custom header). Using insets.top alone works for
+          // both notched and non-notched devices because the SafeAreaView
+          // wrapper already accounts for the header sitting inside it.
+          keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
         >
           <ScrollView
             ref={scrollViewRef}
@@ -676,6 +685,10 @@ const GeneralInquiryChatScreen: React.FC = () => {
           )}
 
           {/* Message input */}
+          {/* paddingBottom: when the keyboard is up, just use the base 10;
+              when it's closed, add insets.bottom so the bar clears the home
+              indicator. With KeyboardAvoidingView (iOS) / adjustResize (Android)
+              now doing the lift, we no longer need to add keyboardHeight here. */}
           <View style={[styles.inputContainer, { paddingBottom: keyboardHeight > 0 ? 10 : 10 + insets.bottom }]}>
             <TouchableOpacity style={styles.attachIconBtn} onPress={handleMoreOptions}>
               <Icon name="image-outline" size={22} color={COLORS.gray[500]} />
@@ -752,7 +765,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
     paddingVertical: 12,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.background,
   },
   backButton: {
     width: 36,

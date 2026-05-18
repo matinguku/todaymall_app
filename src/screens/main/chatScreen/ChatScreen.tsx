@@ -795,9 +795,17 @@ const ChatScreen: React.FC = () => {
         </View>
       ) : (
         <KeyboardAvoidingView
-          style={{ flex: 1, paddingBottom: Platform.OS === 'android' && keyboardHeight > 0 ? keyboardHeight + insets.bottom : 0 }}
+          style={{ flex: 1 }}
+          // iOS uses `padding` so the bottom edge slides up with the keyboard;
+          // Android relies on the manifest's `adjustResize`, which already
+          // shrinks the window. Adding manual paddingBottom on top of
+          // adjustResize was double-counting and pushing the input bar off
+          // the bottom of the screen.
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+          // Offset = the height of everything ABOVE this view. Using insets.top
+          // is correct here because the SafeAreaView wrapper already accounts
+          // for the custom header sitting inside it.
+          keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
         >
           <ScrollView
             ref={scrollViewRef}
@@ -924,14 +932,14 @@ const ChatScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: COLORS.background,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
     paddingVertical: 12,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.background,
   },
   backButton: {
     width: 36,
